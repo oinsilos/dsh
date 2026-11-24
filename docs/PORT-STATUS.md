@@ -249,5 +249,20 @@ WorkBuddy 国际版、Qoder 国际全部消失。
   面板卡片 已接入 / 账号 1/1 / 模型 9/9（无余额口径 ⇒ 隐藏「剩余积分」列）。
 - 守卫：`tests/agnescode-channel.mjs`（6 组：解密/解析/域名/目录/权益/会话读取）。
 
+### 11-25 追问「Qoder 看不到千问4 / zcode / codearts 核对过吗」
+
+| 渠道 | 结论 | 证据 |
+| --- | --- | --- |
+| CodeArts | **已核对**（远端 + 磁盘缓存） | `~/.cache/deveco/codearts_models.json` 11 条，11-25 00:44:51 刷新 |
+| ZCode | **已核对**（远端优先） | `fetchModels()` 先拉 `client/configs`，当前 2 条可用；另 2 条上游空响应只留兜底表 |
+| Qoder | **没核对**（静态表）→ 已修 | `QoderAdapter.listModels()` 注释「不发网络请求，恒用兜底表」；本机 Qoder 客户端 11-21 的 `chatModelUpdates` 含 `qmodel_latest` / `jmodel`，而表里没有 |
+
+修复：`QODER_FALLBACK_MODELS` / `QODER_CN_FALLBACK_MODELS` 增加
+`qmodel_latest` = **Qwen4-Max（官方 0.4×，ctx 1M）**；CN 表另按官方文档把
+`kmodel_latest` 改为 Kimi-K3.1-Pro（1.0×）、`mmodel` 改为 MiniMax-M3.1-Flash（0.1×）。
+真机：Qoder (中国版) 14 个模型，`Qwen4-Max · x0.4` 可见。
+`jmodel`（官方客户端标 new）文档未给名称/倍率，暂不列入。
+
+
 另：Accio 登录后补 `userinfo`（昵称/掩码手机号/区域），账号列表不再显示一串 id；
 自有目录缓存改为「失败不覆盖 + 10 分钟 TTL + 变化点强制刷新」。

@@ -71,8 +71,8 @@ const numberIn = (row, key) => {
 const qoder = tableOf('QODER_FALLBACK_MODELS')
 const qoderIds = idsOf(qoder)
 assert.ok(qoderIds.includes('fast'), 'Qoder 必须补上 fast（上游 CN 与 global 都有，pack 原表漏了）')
-assert.ok(!qoderIds.includes('qmodel_latest'), 'qmodel_latest 上游已下架，调它回 400，必须删掉')
-assert.ok(!qoderIds.includes('qmodel'), 'qmodel 同上（改名成 qmodel_38max/qfmodel）')
+assert.ok(qoderIds.includes('qmodel_latest'), 'qmodel_latest = Qwen4-Max（2026-11 重新上线，官方文档 0.4×），必须在表里')
+assert.ok(!qoderIds.includes('qmodel'), 'qmodel 已改名成 qmodel_38max/qfmodel，必须删掉')
 assert.ok(qoderIds.includes('qmodel_38max'), '改名后的 Qwen3.8-Max 必须在表里')
 assert.ok(qoderIds.includes('qfmodel'), '改名后的 Qwen3.8-Flash 必须在表里')
 
@@ -83,13 +83,15 @@ const QODER_RATES = {
   // 与 dsh-connect-qoder 写的 0.5（基础价）不是同一个量 —— 保留 pack 实测值。
   qmodel_38max: 0.2, qfmodel: 0, dmodel: 0.5, dfmodel: 0.1,
   gmodel: 0.8, gfmodel: 0.1, kmodel_latest: 1.4, kmodel: 0.8, mmodel: 0.2, fast: 0.8,
+  // 2026-11-25：Qwen4-Max（qmodel_latest）重新上线，官方文档 0.4×。
+  qmodel_latest: 0.4,
 }
 for (const [id, rate] of Object.entries(QODER_RATES)) {
   const row = rowOf(qoder, id)
   assert.ok(row !== '', `Qoder 缺少模型 ${id}`)
   assert.equal(numberIn(row, 'priceFactor'), rate, `${id} 的倍率必须是 ${rate}（实测值，不许改）`)
 }
-assert.equal(qoderIds.length, 16, `Qoder 表应为 16 条，实际 ${qoderIds.length}`)
+assert.equal(qoderIds.length, 17, `Qoder 表应为 17 条，实际 ${qoderIds.length}`)
 
 /* ── Qoder 中国版（CN 表，另一张！） ────────────────────────────────────── */
 
@@ -102,11 +104,18 @@ assert.equal(qoderIds.length, 16, `Qoder 表应为 16 条，实际 ${qoderIds.le
 const qoderCn = tableOf('QODER_CN_FALLBACK_MODELS')
 const cnIds = idsOf(qoderCn)
 assert.ok(cnIds.includes('fast'), 'CN 表也必须补 fast（上游 CN 实测有，pack 两版都漏了）')
-assert.ok(!cnIds.includes('qmodel_latest'), 'CN 表的 qmodel_latest 上游已下架，必须删')
-assert.ok(!cnIds.includes('qmodel'), 'CN 表的 qmodel 同上')
+assert.ok(cnIds.includes('qmodel_latest'), 'CN 表也必须补 Qwen4-Max（官方 CN 文档 0.4×）')
+assert.ok(!cnIds.includes('qmodel'), 'CN 表的 qmodel 已改名，必须删')
 assert.ok(cnIds.includes('q37fmodel'), 'q37fmodel（Qwen3.7-Flash）是 CN 独有，必须留着')
 assert.ok(cnIds.includes('gm51model'), 'gm51model 是 CN 独有，必须留着')
-assert.equal(cnIds.length, 13, `CN 表应为 13 条，实际 ${cnIds.length}`)
+assert.equal(cnIds.length, 14, `CN 表应为 14 条，实际 ${cnIds.length}`)
+// CN 表原有的倍率一个都不能动
+assert.equal(numberIn(rowOf(qoderCn, 'qmodel_latest'), 'priceFactor'), 0.4, 'Qwen4-Max 是 0.4 倍（官方文档）')
+// 2026-11-25 按官方《模型选择器》文档校正的两条展示名/倍率
+assert.ok(rowOf(qoderCn, 'kmodel_latest').includes('Kimi-K3.1-Pro'), 'kmodel_latest 现名 Kimi-K3.1-Pro')
+assert.equal(numberIn(rowOf(qoderCn, 'kmodel_latest'), 'priceFactor'), 1, 'Kimi-K3.1-Pro 官方 1.0×')
+assert.ok(rowOf(qoderCn, 'mmodel').includes('MiniMax-M3.1-Flash'), 'mmodel 现名 MiniMax-M3.1-Flash')
+assert.equal(numberIn(rowOf(qoderCn, 'mmodel'), 'priceFactor'), 0.1, 'MiniMax-M3.1-Flash 官方 0.1×')
 // CN 表原有的倍率一个都不能动
 assert.equal(numberIn(rowOf(qoderCn, 'fast'), 'priceFactor'), 0.8, 'fast 是 0.8 倍')
 assert.equal(numberIn(rowOf(qoderCn, 'qmodel_38max'), 'priceFactor'), 0.2,

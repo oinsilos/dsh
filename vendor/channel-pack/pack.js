@@ -37642,6 +37642,22 @@ var QODER_FALLBACK_MODELS = [
     promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.5, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 4 \u6298" }
   },
   {
+    // ⚠️ 2026-11-25 加回：`qmodel_latest` 在 9 月下架后，于 11 月中旬以 **Qwen4-Max**
+    // 重新上线。证据：Qoder 官方《模型选择器》文档（Qwen4-Max，0.4×）；
+    // 本机 Qoder 客户端 2026-11-21 的 `qoder.chatModelUpdates` 也把
+    // `qmodel_latest` 标为 "new"，且 `chat_model_preferences` 里 ctx=1M。
+    // 旧断言「qmodel_latest 已下架」是 9 月快照，已作废。
+    id: "qmodel_latest",
+    name: "Qwen4-Max",
+    contextWindow: 1e6,
+    supportsImage: true,
+    supportsThinking: true,
+    priceFactor: 0.4,
+    efforts: ["xhigh", "low", "medium"],
+    defaultEffort: "xhigh",
+    supportsDisable: true
+  },
+  {
     // ⚠️ `priceFactor: 0` 是**免费**（实测），不是缺失 —— 见接口注释。
     id: "qfmodel",
     name: "Qwen3.8-Flash",
@@ -37756,6 +37772,19 @@ var QODER_CN_FALLBACK_MODELS = [
     promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.5, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 4 \u6298" }
   },
   {
+    // ⚠️ 2026-11-25 加回：同国际版，`qmodel_latest` = Qwen4-Max（官方文档 0.4×）。
+    // 本机 CN 客户端 11-21 的模型选择器里它是 "new"；偏好表 ctx=1M。
+    id: "qmodel_latest",
+    name: "Qwen4-Max",
+    contextWindow: 1e6,
+    supportsImage: true,
+    supportsThinking: true,
+    priceFactor: 0.4,
+    efforts: ["xhigh", "low", "medium"],
+    defaultEffort: "xhigh",
+    supportsDisable: true
+  },
+  {
     // ⚠️ `priceFactor: 0` 是**免费**，不是缺失 —— 0 是合法值，不能用 `> 0` 过滤。
     // 实测最大窗口：984,000 目标 → 服务端计入 **983,490**（越界点 990,000，
     // 越界时服务端回 `Range of input length should be [1, 983616]`）。填 1M。
@@ -37791,14 +37820,14 @@ var QODER_CN_FALLBACK_MODELS = [
   { id: "gfmodel", name: "GLM-5.3-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1, efforts: ["high", "max"], defaultEffort: "max" },
   // CN 独有：GLM-5.2（国际版目录无此 key）
   { id: "gm51model", name: "GLM-5.2", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.6, efforts: ["high", "max"], defaultEffort: "max", supportsDisable: true },
-  { id: "kmodel_latest", name: "Kimi-K3", contextWindow: 1e6, supportsImage: true, priceFactor: 1.4, efforts: ["high", "low", "max"], defaultEffort: "max" },
+  { id: "kmodel_latest", name: "Kimi-K3.1-Pro", contextWindow: 1e6, supportsImage: true, priceFactor: 1, efforts: ["high", "low", "max"], defaultEffort: "max" },
   { id: "kmodel", name: "Kimi-K2.8-Preview", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "max" },
   // ⚠️ 版本是 **M2.7**（国际版 M3），且 CN 的 `is_vl` 为 false，故两个标记都不写。
   // ⚠️ 唯一档位表只有 200K 一档的 CN 模型 —— 不要跟着其它条改成 1M。
   // ⚠️ 目录里也**没有 `thinking_config`** → 不可选档位（与 IDE「不支持」一致）。
     // 上游 CN 实测有、pack 两版兜底表都漏了（dsh-connect-qoder 2026-11-02，0.8 倍）。
   { id: "fast", name: "Fast", contextWindow: 2e5, supportsImage: true, supportsThinking: false, priceFactor: 0.8 },
-{ id: "mmodel", name: "MiniMax-M2.7", contextWindow: 2e5, priceFactor: 0.2 }
+{ id: "mmodel", name: "MiniMax-M3.1-Flash", contextWindow: 1e6, supportsImage: true, priceFactor: 0.1 }
 ];
 var QODER_CN = {
   // ⚠️ id 不带连字符：它同时是 cordis 服务名（`qodercnAuth`）、LLM 路由名

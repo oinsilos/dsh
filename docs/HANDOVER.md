@@ -156,10 +156,25 @@ minimaxintl 4、marvis 1、**accio 0**（modelCode 按账号下发、刻意为�
   登录一次国际版客户端后点「添加账号」即可。
 
 
-### ② 已有渠道的"更好的实现"（按严重度）
-qoder 真目录/倍率（需 cosy 签名或 WASM）> codearts 推理 UA 覆盖 + 上下文窗口（IDE 日志）
-> raccoon 浏览器授权链（扫码页已 404）> zcode 3012 版本×身份块同代 > minimax 传输重试
-> cline 目录 O(N²) > loomy 冷却 UTC+8 24:00 > trae 4006 → `CONTEXT_WINDOW_EXCEEDED`
+### ② 已有渠道的目录核对结果（2026-11-25 实测）
+
+- **CodeArts**：远端目录 + 磁盘缓存（`~/.cache/deveco/codearts_models.json`），
+  本次启动 00:44 刚刷新，11 条（含 GLM-5.3 / Kimi-K3.1-Pro / OpenPangu）。**已核对**。
+- **ZCode**：远端优先（`client/configs`），当前账号拿到 **2 条**可用；另两条
+  （GLM-5-Turbo / GLM-5.2）上游返回空响应，只留在离线兜底表并标注。**已核对**。
+- **Qoder（中国版/国际版）**：`QoderAdapter.listModels()` 明确「不发网络请求，
+  恒用兜底表」（目录端点要 WASM 签名）⇒ 之前**没核对**，表停在 2026-09/11-02。
+  2026-11-25 已按 Qoder 官方《模型选择器》文档 + 本机客户端
+  `chatModelUpdates`（11-21）补/改：
+  - 新增 `qmodel_latest` = **Qwen4-Max · 0.4×**（客户端标 "new"，ctx 1M）；
+  - `kmodel_latest` = **Kimi-K3.1-Pro · 1.0×**；
+  - `mmodel` = **MiniMax-M3.1-Flash · 0.1×**（ctx 1M）；
+  - 旧断言「qmodel_latest 已下架」作废（那是 9 月快照）。
+  - 官方客户端另有 `jmodel`（标 "new"），**文档没有展示名/倍率**，暂不列入；
+    拿到目录后再补。
+  - 仍是静态表的固有缺口：Qoder 目录端点需 WASM 签名，未实现前只能人工跟着文档更。
+- **raccoon 扫码链**：上游扫码页本身 404，代码侧修不了。
+
 
 ### ③ 豆包的未取证项
 签到状态腿（`landing/get`）实测 200/`code:0` 但报文里**没读到布尔位** ⇒ 现在对字段
