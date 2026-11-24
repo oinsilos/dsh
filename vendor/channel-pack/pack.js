@@ -37655,31 +37655,6 @@ var QODER_FALLBACK_MODELS = [
     defaultEffort: "medium",
     supportsDisable: true
   },
-  // ⚠️ 这两个模型目录里**只有 `disabled` + `enabled.is_default`，没有 `efforts`**
-  // —— 即官方只提供「关闭思考」一个选项（用户 2026-09-28 确认：
-  // 「上面两个没有思考档位就是关闭的意思」）。故 `efforts` 留空，
-  // 由 `supportsDisable` 表达，适配器会追加 `none`（复刻客户端 `gU()`）。
-  {
-    id: "qmodel_latest",
-    name: "Qwen3.7-Max",
-    contextWindow: 1e6,
-    supportsImage: true,
-    supportsThinking: false,
-    priceFactor: 0.1,
-    originalPriceFactor: 0.5,
-    supportsDisable: true,
-    promotion: { active: true, discountFactor: 0.2, beforePromotionPriceFactor: 0.5, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 2 \u6298" }
-  },
-  {
-    id: "qmodel",
-    name: "Qwen3.7-Plus",
-    contextWindow: 1e6,
-    supportsImage: true,
-    supportsThinking: false,
-    priceFactor: 0.04,
-    supportsDisable: true,
-    promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.1, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 4 \u6298" }
-  },
   { id: "kmodel_latest", name: "Kimi-K3", contextWindow: 1e6, supportsImage: true, supportsThinking: false, priceFactor: 1.4, efforts: ["high", "low", "max"], defaultEffort: "max" },
   // ⚠️ 该模型**未下发 `max_input_tokens`**（这正是「该字段不是权威值」的旁证）——
   // 旧表因此退回 `context_config` 的**默认档** 200K，但官方客户端给用户选的是
@@ -37689,7 +37664,9 @@ var QODER_FALLBACK_MODELS = [
   { id: "gfmodel", name: "GLM-5.3-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1, efforts: ["high", "max"], defaultEffort: "max" },
   { id: "dmodel", name: "DeepSeek-V4-Pro", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.5, efforts: ["high", "max"], defaultEffort: "max", supportsDisable: true },
   { id: "dfmodel", name: "DeepSeek-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1, efforts: ["high", "max", "low"], defaultEffort: "max", supportsDisable: true },
-  { id: "mmodel", name: "MiniMax-M3", contextWindow: 1e6, supportsImage: true, supportsThinking: false, priceFactor: 0.2 }
+    // 上游 CN 与 global 都有；pack 原表漏了（dsh-connect-qoder 实测 0.8 倍，200K 窗口）。
+  { id: "fast", name: "Fast", contextWindow: 2e5, supportsImage: true, supportsThinking: false, priceFactor: 0.8 },
+{ id: "mmodel", name: "MiniMax-M3", contextWindow: 1e6, supportsImage: true, supportsThinking: false, priceFactor: 0.2 }
 ];
 var QODER = {
   id: "qoder",
@@ -37794,28 +37771,8 @@ var QODER_CN_FALLBACK_MODELS = [
     defaultEffort: "medium",
     supportsDisable: true
   },
-  {
-    // ⚠️ **没有 `efforts`，只有「关闭思考」**（见本表前的口径注释）。
-    id: "qmodel_latest",
-    name: "Qwen3.7-Max",
-    contextWindow: 1e6,
-    supportsImage: true,
-    supportsThinking: true,
-    priceFactor: 0.1,
-    supportsDisable: true,
-    promotion: { active: true, discountFactor: 0.2, beforePromotionPriceFactor: 0.5, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF02\u6298" }
-  },
-  {
-    // ⚠️ 同上：只有「关闭思考」。
-    id: "qmodel",
-    name: "Qwen3.7-Plus",
-    contextWindow: 1e6,
-    supportsImage: true,
-    supportsThinking: true,
-    priceFactor: 0.04,
-    supportsDisable: true,
-    promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.1, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF04\u6298" }
-  },
+
+
   // CN 独有：Qwen3.7-Flash（国际版目录无此 key）
   // ⚠️ 目录里**完全没有 `thinking_config`** → 不可选档位（IDE 显示「不支持」）。
   { id: "q37fmodel", name: "Qwen3.7-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1 },
@@ -37839,7 +37796,9 @@ var QODER_CN_FALLBACK_MODELS = [
   // ⚠️ 版本是 **M2.7**（国际版 M3），且 CN 的 `is_vl` 为 false，故两个标记都不写。
   // ⚠️ 唯一档位表只有 200K 一档的 CN 模型 —— 不要跟着其它条改成 1M。
   // ⚠️ 目录里也**没有 `thinking_config`** → 不可选档位（与 IDE「不支持」一致）。
-  { id: "mmodel", name: "MiniMax-M2.7", contextWindow: 2e5, priceFactor: 0.2 }
+    // 上游 CN 实测有、pack 两版兜底表都漏了（dsh-connect-qoder 2026-11-02，0.8 倍）。
+  { id: "fast", name: "Fast", contextWindow: 2e5, supportsImage: true, supportsThinking: false, priceFactor: 0.8 },
+{ id: "mmodel", name: "MiniMax-M2.7", contextWindow: 2e5, priceFactor: 0.2 }
 ];
 var QODER_CN = {
   // ⚠️ id 不带连字符：它同时是 cordis 服务名（`qodercnAuth`）、LLM 路由名
@@ -42569,50 +42528,59 @@ var RACCOON_REASONING_EFFORTS = Object.freeze([
 ]);
 var RACCOON_DEFAULT_EFFORT = RACCOON_EFFORT_ON;
 var RACCOON_FALLBACK_MODELS = [
+  /* ═══ 2026-11-24 由 our-free-model 维护：换掉 2026-10 的 6 条旧快照。
+     * 对照 dsh-providers-hub raccoon-product.ts 的 2026-11-17 实测（7 条 visible）：
+     * 新增 sn-qwen4-max、sn-kimi-k3-1-pro；sn-deepseek-v4-1-flash 换成 -1017。
+     * 展示名写**基线倍率**，活动折扣由远端现算（静态表写折扣必腐坏）。
+     * maxTokens 取上游能接受的 65_536（issue IKS1L5：1e5 会整轮 400）。
+     */
   {
     id: "sn-sensenova-6-8-flash",
-    name: "SenseNova-6.8-Flash \xB7 \u514D\u8D39",
+    name: "SenseNova-6.8-Flash \u00B7 \u514D\u8D39",
     contextWindow: 256e3,
     maxTokens: 63999,
     supportsImage: true
   },
   {
     id: "sn-sensenova-6-8-flash-lite",
-    name: "SenseNova-6.8-Flash-Lite \xB7 \u514D\u8D39",
+    name: "SenseNova-6.8-Flash-Lite \u00B7 \u514D\u8D39",
     contextWindow: 256e3,
     maxTokens: 63999,
     supportsImage: true
   },
   {
-    id: "sn-glm-5-3",
-    name: "GLM-5-3 \xB7 x0.75",
+    id: "sn-qwen4-max",
+    name: "Qwen4-Max \u00B7 x0.75",
     contextWindow: 1e6,
-    maxTokens: 1e5,
+    maxTokens: 65536,
     supportsImage: true
   },
   {
-    id: "sn-kimi-k3",
-    // ⚠️ 1 倍也要显示（用户报障「为什么 Kimi-K3 没有倍率，ide 是 1 倍，
-    // 1 倍也要显示倍率」）—— 见 `raccoonDisplayName` 的注释。
-    name: "Kimi-K3 \xB7 x1",
+    id: "sn-glm-5-3",
+    name: "GLM-5-3 \u00B7 x0.75",
     contextWindow: 1e6,
-    maxTokens: 1e5,
+    maxTokens: 65536,
+    supportsImage: true
+  },
+  {
+    id: "sn-kimi-k3-1-pro",
+    name: "Kimi-K3.1-Pro \u00B7 x1",
+    contextWindow: 1e6,
+    maxTokens: 65536,
     supportsImage: true
   },
   {
     id: "sn-glm-5-3-flash",
-    name: "GLM-5-3-Flash \xB7 x0.2\u2192x0.1",
+    name: "GLM-5-3-Flash \u00B7 x0.2",
     contextWindow: 1e6,
-    maxTokens: 1e5,
-    // ⚠️ 远端 tags 不含 `vision`，但**实测能看图**（见 RACCOON_IMAGE_CAPABILITY_OVERRIDES）。
+    maxTokens: 65536,
     supportsImage: true
   },
   {
-    id: "sn-deepseek-v4-1-flash",
-    name: "DeepSeek-V4.1-Flash \xB7 x0.25",
+    id: "sn-deepseek-v4-1-flash-1017",
+    name: "DeepSeek-V4.1-Flash-1017 \u00B7 x0.25",
     contextWindow: 1e6,
-    maxTokens: 1e5,
-    // ⚠️ 同上：远端 tags 不含 `vision`，实测 5/5 读对随机数字。
+    maxTokens: 65536,
     supportsImage: true
   }
 ];
@@ -49780,17 +49748,20 @@ function isUsableZcodeCredential(value) {
 
 // vendor/channel-pack/src/zcode-product.ts
 var ZCODE_FALLBACK_MODELS = [
+  /* ═══ 2026-11-24 由 our-free-model 维护：从 2 条扩到 4 条。
+     * 上游 client/configs 的 builtinModels 有 4 个；pack 原注释说
+     * GLM-5-Turbo / GLM-5.2 「实测返回空响应」（2026-09-28），故只放 2 条。
+     * 用户 2026-11-24 报障「模型不止」—— 上游可能已修，列出来并标注，
+     * 让用户自己试；真不可用时请求会返回空回复，比「根本看不到」好。
+     * （摘自 dsh-providers-hub zcode-product.ts 的 2026-09-28 实测记录。）
+     */
   {
     id: "GLM-5.3-Flash",
     name: "GLM-5.3-Flash",
-    // 上游值（client/configs 的 builtinModels）。
     contextWindow: 1e6,
     maxTokens: 128e3,
-    // 上游 capabilities.vision === true。
     supportsImage: true,
-    // 上游 reasoning.levels 的顺序即展示顺序（low → high → max）。
     reasoningLevels: ["low", "high", "max"],
-    // 上游 reasoning.defaultLevel。
     defaultReasoningLevel: "max"
   },
   {
@@ -49798,13 +49769,25 @@ var ZCODE_FALLBACK_MODELS = [
     name: "GLM-5.3",
     contextWindow: 1e6,
     maxTokens: 128e3,
-    /**
-     * ⚠ **上游 `capabilities` 是空对象** ⇒ 这个模型**没有 vision**。
-     * 我此前按「同族应该一样」推断成 `true` —— 那是错的。
-     */
     supportsImage: false,
     reasoningLevels: ["low", "high", "max"],
     defaultReasoningLevel: "max"
+  },
+  {
+    /* ⚠ 实测（2026-09-28）返回空响应 —— 可能已修，请自行验证。 */
+    id: "GLM-5-Turbo",
+    name: "GLM-5-Turbo",
+    contextWindow: 2e5,
+    maxTokens: 32768,
+    supportsImage: false
+  },
+  {
+    /* ⚠ 实测（2026-09-28）返回空响应 —— 可能已修，请自行验证。 */
+    id: "GLM-5.2",
+    name: "GLM-5.2",
+    contextWindow: 1e6,
+    maxTokens: 128e3,
+    supportsImage: false
   }
 ];
 var ZCODE = {

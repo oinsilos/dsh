@@ -69,8 +69,12 @@ export function installChannelCatalogVisibility(pool, { shouldHide } = {}) {
   let hiding = null
 
   const applyFlag = hide => {
+    // ⚠️ 关闭时必须写**显式假值** `'0'`，不能删除变量：
+    // 上游 `resolveHideWithoutAccountFlag(undefined)` 返回 true（= 走「有账号才
+    // 可见」那条判定），删除等于把「没登录就看没有」留在 env 路径上。
+    // 只有在用户原来就设过该变量时才还原它的取值。
     if (hide) process.env[HIDE_FLAG] = '1'
-    else if (originalFlag === undefined) delete process.env[HIDE_FLAG]
+    else if (originalFlag === undefined) process.env[HIDE_FLAG] = '0'
     else process.env[HIDE_FLAG] = originalFlag
   }
 
@@ -78,13 +82,28 @@ export function installChannelCatalogVisibility(pool, { shouldHide } = {}) {
   if (pool[Symbol.for('our-free-model.catalog-visibility')] !== true) {
     try {
       pool.hasLoggedInAccount = async function hasLoggedInAccount(provider) {
-        // 现读开关：适配器构造时捕获的是账号池对象，开关变化无需重装。
+        /*
+         * 两种状态都要能确定，不能「放行后继续问上游」：
+         *
+         * - 总开关**开**   → `false`（13 个渠道分组全收起）
+         * - 总开关**关**   → `true`（**一律显示**，含未登录的渠道）
+         *
+         * ⚠️ 原来「关」时 `return await original.call(this, provider)` —— 那等于
+         * 把判定交回上游的「有账号才可见」。于是在面板里登录着的渠道看得见模型，
+         * **没登录的渠道连分组都不出现**，用户改模型表也永远看不到效果
+         * （2026-11-24 报障「qoder 和 zcode 模型显示也没变化」——
+         * Qoder 从没账号、QoderCN 的账号被用户移除 ⇒ 两个分组一直是空的，
+         * 与模型表无关）。用户明确要求「未登录也列出」，故这里显式返回 true。
+         *
+         * 这条门控的唯一调用点就是 `listModels()` 的展示判定，不影响路由与
+         * 推理（`resolveModelInfo()` 不经过它），所以放行不会让死模型可选后崩。
+         */
         try {
-          if (shouldHideNow()) return false
+          return shouldHideNow() !== true
         } catch {
-          // 读开关异常时退回上游判定，绝不因为一次抖动隐藏整组。
+          // 读开关异常时保持「显示」：宁可多显示，也不让整组凭空消失。
+          return true
         }
-        return await original.call(this, provider)
       }
       Object.defineProperty(pool, Symbol.for('our-free-model.catalog-visibility'), {
         value: true, enumerable: false, configurable: true,
@@ -94,7 +113,13 @@ export function installChannelCatalogVisibility(pool, { shouldHide } = {}) {
     }
   }
 
-  /** 让环境变量与当前开关一致；上游门控先读它，必须由总开关说了算。 */
+  /**
+   * 让环境变量与当前开关一致；上游门控先读它，必须由总开关说了算。
+   *
+   * ⚠️ 关闭时写 **`'0'`** 而不是删除：`resolveHideWithoutAccountFlag(undefined)`
+   * 返回 `true`（= 走「有账号才可见」那条判定），只有**显式假值**才让它短路成
+   * 「全部可见」。删除等于把上面那个 bug 留在 env 路径上。
+   */
   const sync = () => {
     let hide = false
     try { hide = shouldHideNow() === true } catch { hide = false }

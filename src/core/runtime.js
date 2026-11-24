@@ -4,6 +4,7 @@ import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
 import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
+import { buildOwnCatalog } from '../channels/catalog.js'
 import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage } from '../store.js'
 import { STATE, detectEgress, probeCatalog } from '../probe.js'
 import { CODE, getJson } from '../http.js'
@@ -50,6 +51,8 @@ export function createModelRuntime({
   attributionUserAgent = 'our-free-model',
   resolveImage,
   sealedCredential = () => null,
+  /** 自有渠道的凭据解析（provider → 凭据 JSON），由入口注入。 */
+  ownCredential = async () => null,
   onSealedUnavailable = () => {},
   onTopology = () => {},
 }) {
@@ -61,6 +64,8 @@ export function createModelRuntime({
   /** The aggregate lane: one row per enabled provider/model the user configured.
    *  Derived from settings, not from a listing, so it is rebuilt on every merge. */
   let aggregateCatalog = []
+  /** 自有渠道（渠道包不认识的那些）：由入口喂进来，目录必须同步可读。 */
+  let ownCatalog = []
   /** The virtual rows a combo contributes; rebuilt last, after every real lane. */
   let comboCatalog = []
   /** The free lane's own roster: the base every other lane is merged onto. */
@@ -86,7 +91,7 @@ export function createModelRuntime({
   const rebuildCatalog = () => {
     const seen = new Set()
     const merged = []
-    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog]) {
+    for (const entry of [...freeCatalog, ...sealedCatalog, ...kiloCatalog, ...aggregateCatalog, ...ownCatalog]) {
       if (entry === null || entry === undefined || seen.has(entry.id)) continue
       seen.add(entry.id)
       merged.push(entry)
@@ -117,6 +122,7 @@ export function createModelRuntime({
     state,
     resolveImage,
     sealedCredential,
+    ownCredential,
     recordUsage: record => {
       if (disposed) return
       recordUsage(stats, record)
@@ -309,6 +315,14 @@ export function createModelRuntime({
     syncAggregateCatalog() {
       if (disposed) return catalog
       mergeCatalogs()
+      emitTopology()
+      return catalog
+    },
+    /** 自有渠道的目录由入口提供（账号表 + 权益查询的缓存），变更后重建视图。 */
+    setOwnCatalog(rows) {
+      ownCatalog = Array.isArray(rows) ? rows : []
+      if (disposed) return catalog
+      rebuildCatalog()
       emitTopology()
       return catalog
     },

@@ -1429,6 +1429,102 @@
     "source": "fcc"
   },
   {
+    "id": "modelscope",
+    "name": "ModelScope (魔搭)",
+    "category": "apikey",
+    "auth": {
+      "kind": "apiKey",
+      "env": "MODELSCOPE_API_KEY",
+      "url": "https://modelscope.cn/my/myaccesstoken"
+    },
+    "baseUrl": "https://api-inference.modelscope.cn/v1",
+    "format": "openai-chat",
+    "models": [
+      {
+        "id": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "name": "DeepSeek-V4.1-Flash",
+        "contextWindow": 1048576,
+        "vision": true,
+        "reasoning": null
+      },
+      {
+        "id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+        "name": "DeepSeek-V4-Flash-0731",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+        "name": "DeepSeek-V4-Pro-0813",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "ZhipuAI/GLM-5.2",
+        "name": "GLM-5.2",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "ZhipuAI/GLM-4.7-Flash",
+        "name": "GLM-4.7-Flash",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "Qwen/Qwen3.8-Flash-Next",
+        "name": "Qwen3.8-Flash-Next",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "Qwen/Qwen3.8-27B",
+        "name": "Qwen3.8-27B",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "Qwen/Qwen3.5-397B-A17B",
+        "name": "Qwen3.5-397B-A17B",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "Shanghai_AI_Laboratory/Intern-S1",
+        "name": "Intern-S1",
+        "contextWindow": 512000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "stepfun-ai/Step-3.7-Flash",
+        "name": "Step-3.7-Flash",
+        "contextWindow": 512000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "nex-agi/Nex-N2.5-Pro",
+        "name": "Nex-N2.5-Pro",
+        "contextWindow": 512000,
+        "vision": false,
+        "reasoning": null
+      }
+    ],
+    "notes": "Alibaba ModelScope API-Inference: OpenAI-compatible /v1, static ms- access token. Catalog also lists retired ids that answer \"has no provider supported\" — discovery keeps whatever the listing says, tests/test:client does not call it. Only the \"none\" thinking level is measured; other efforts are silently ignored upstream, so no reasoning menu is declared.",
+    "website": "https://modelscope.cn",
+    "local": false,
+    "source": "upstream:jet-hub",
+    "modelsUrl": "https://api-inference.modelscope.cn/v1/models"
+  },
+  {
     "id": "morph",
     "name": "Morph LLM",
     "category": "apikey",
@@ -2079,6 +2175,123 @@
     "local": false,
     "source": "fcc",
     "modelsUrl": "https://inference.poolside.ai/v1/models"
+  },
+  {
+    "id": "qiniu",
+    "name": "Qiniu (七牛云)",
+    "category": "apikey",
+    "auth": {
+      "kind": "apiKey",
+      "env": "QINIU_API_KEY",
+      "url": "https://portal.qiniu.com/ai/models"
+    },
+    "baseUrl": "https://api.qnaigc.com/v1",
+    "format": "openai-chat",
+    "models": [
+      {
+        "id": "deepseek/deepseek-v4.1-flash",
+        "name": "deepseek-v4.1-flash",
+        "contextWindow": 1000000,
+        "vision": true,
+        "reasoning": null
+      },
+      {
+        "id": "deepseek/deepseek-v4-pro-0813",
+        "name": "deepseek-v4-pro-0813",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "z-ai/glm-5.3",
+        "name": "glm-5.3",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "z-ai/glm-5.3-flash",
+        "name": "glm-5.3-flash",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "qwen/qwen3.8-max",
+        "name": "qwen3.8-max",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "qwen/qwen3.8-flash-next",
+        "name": "qwen3.8-flash-next",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "moonshotai/kimi-k3",
+        "name": "kimi-k3",
+        "contextWindow": 1048576,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "moonshotai/kimi-k2.6",
+        "name": "kimi-k2.6",
+        "contextWindow": 262000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "minimax/minimax-m3",
+        "name": "minimax-m3",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "bytedance/doubao-seed-2-1-pro",
+        "name": "doubao-seed-2-1-pro",
+        "contextWindow": 256000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "xiaomi/mimo-v2.6-flash",
+        "name": "mimo-v2.6-flash",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "stepfun/step-3.7-flash",
+        "name": "step-3.7-flash",
+        "contextWindow": 256000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "qiniu/conatus-free",
+        "name": "conatus-free",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      },
+      {
+        "id": "tencent/hy4-preview",
+        "name": "hy4-preview",
+        "contextWindow": 1000000,
+        "vision": false,
+        "reasoning": null
+      }
+    ],
+    "notes": "Qiniu AI gateway: OpenAI-compatible /v1, long-lived API key with no refresh endpoint (no balance endpoint either). Model ids are platform-issued and mix namespaced and bare forms — discovery is authoritative and ids are passed through verbatim (splitting or normalising them makes the model unresolvable).",
+    "website": "https://www.qiniu.com",
+    "local": false,
+    "source": "upstream:jet-hub",
+    "modelsUrl": "https://api.qnaigc.com/v1/models"
   },
   {
     "id": "qwencloud",

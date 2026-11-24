@@ -30,7 +30,7 @@ import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION } from './src/adapter.js'
-import { DATA_DIR_NAME, decodeWindow, resolveDshHome } from './src/store.js'
+import { DATA_DIR_NAME, JsonStore, decodeWindow, resolveDshHome } from './src/store.js'
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from './src/forward.js'
@@ -47,6 +47,25 @@ import { AnnouncementFeed } from './src/feed.js'
 import { PluginUpdater } from './src/updater.js'
 import { selfReload, watchPackage, isReloading } from './src/reload.js'
 import { installChannelCatalogVisibility } from './src/channel-visibility.js'
+import { createChannelExtras } from './src/channels/index.js'
+import { createChannelAccounts, OWN_PROVIDERS } from './src/channels/accounts.js'
+import { buildOwnCatalog } from './src/channels/catalog.js'
+import { createDeviceLogin } from './src/channels/device-login.js'
+import { createSmsLogin } from './src/channels/sms-login.js'
+import { exchangeCode, startBrowserLogin } from './src/channels/accio.js'
+import { MINIMAX_PRODUCTS, ensureMinimaxCredential } from './src/channels/minimax.js'
+import { ensureMarvisCredential, exchangeMarvisCode, isMarvisCallbackUrl, marvisAuthorizeUrl } from './src/channels/marvis.js'
+import {
+  MAGICREW_HARVEST_EXPRESSION,
+  completeMagicrewLogin,
+  magicrewProductOf,
+  parseMagicrewHarvest,
+} from './src/channels/magicrew.js'
+import { issueMonkeycodeKey, monkeycodeProductOf, sessionCookieOf } from './src/channels/monkeycode.js'
+import { BAIZHI, exchangeBaizhiKey } from './src/channels/baizhi.js'
+import { authorizeUrl as officeaceAuthorizeUrl, exchangeOfficeaceCode, generateDpopKey, pkcePair } from './src/channels/officeace-auth.js'
+import { OFFICEACE } from './src/channels/officeace.js'
+import { interceptCallback, startChromiumSession } from './src/channels/browser/chromium.js'
 import { createPushHub } from './src/push.js'
 import { rejectionFor, isLoopbackHost, connectionAdmissionView } from './src/trust.js'
 import { resolveAttributionUserAgent } from './adapter/kernel.js'
@@ -419,12 +438,47 @@ export function apply(ctx, config) {
     }
   }
 
+  /**
+   * 自有渠道的**推理凭据**：每个回合现解析，过期就地续期，续上了才回写账号表。
+   *
+   * 为什么必须在这里：`createModelRuntime` 的默认实现是 `async () => null`，
+   * 于是自有渠道的请求永远以「凭据不可用」结束 —— 目录看得见、模型选得中、
+   * 一发就失败，正是「自己加的渠道用不了」的形状。
+   *
+   * 续期按渠道分派：只登记**有 refresh 语义**的那几家（MiniMax 国际版）；
+   * 没有登记的原样返回，缺 access_token 时交给推理腿判 `CODE.credential`。
+   */
+  const OWN_REFRESH = {
+    minimaxintl: credential => ensureMinimaxCredential(credential, { product: MINIMAX_PRODUCTS.minimaxintl }),
+    marvis: credential => ensureMarvisCredential(credential),
+  }
+  async function ownCredentialFor(provider) {
+    let list = []
+    try { list = ownAccounts.enabled(provider) } catch { return null }
+    const account = list[0]
+    if (account === undefined) return null
+    const credential = await ownAccounts.credentialOf(account)
+    if (credential === null) return null
+    const refresh = OWN_REFRESH[provider]
+    if (refresh === undefined) return credential
+    const ensured = await refresh(credential)
+    if (ensured.error !== undefined) {
+      // 续期失败但手上还有令牌：照旧发出去，让上游判 —— 本地判「过期」比上游准。
+      return typeof credential.access_token === 'string' && credential.access_token !== '' ? credential : null
+    }
+    if (ensured.refreshed === true) {
+      try { await ownAccounts.attach(account.id, ensured.credential) } catch { /* 落盘失败不影响本回合 */ }
+    }
+    return ensured.credential
+  }
+
   const modelRuntime = createModelRuntime({
     ...stores,
     logger,
     attributionUserAgent: 'deepseek-harness',
     resolveImage: imageResolver(ctx, logger),
     sealedCredential: sealedCredentialOf,
+    ownCredential: ownCredentialFor,
     onSealedUnavailable: () => logger.warn?.('our-free-model: the sealed lane is not available in this composition (no recognized host profile); its models stay hidden'),
     onTopology: () => emitTopology(),
   })
@@ -1045,9 +1099,53 @@ export function apply(ctx, config) {
    * only: routing resolves models through `resolveModel`, never this gate.
    */
   let channelVisibility = { installed: false, sync() {} }
+  let channelExtras = createChannelExtras({})
+  /**
+   * 本插件自己的渠道账号（渠道包完全不认识的那些，如 codely）。
+   *
+   * 凭据照旧写宿主的 `credentials`，ref 名带 `OFM_` 前缀与渠道包的命名空间分开；
+   * 这里只持久化「指向凭据的引用 + 展示信息」。账号表落在
+   * `~/.dsh/our-free-model/channels.json`。
+   *
+   * ⚠️ 必须在 `ctx.inject(['credentials', …])` 之内构造：`ctx.credentials` 在
+   * apply 期可能还没发布（与渠道包同一约束，见下面 pack 那段注释）。注入前的
+   * 占位实现把一切操作降级成「没有账号」，页面照常渲染。
+   */
+  const channelAccountStore = new JsonStore(
+    path.join(dataDir, 'channels.json'),
+    { version: 1, accounts: [] },
+    { log: message => logger.warn?.(message) },
+  )
+  const NO_ACCOUNTS = {
+    list: () => [], enabled: () => [], find: () => undefined,
+    create: () => { throw new Error('credentials service unavailable') },
+    update: () => undefined, remove: async () => false, attach: async () => undefined,
+    credentialOf: async () => null,
+  }
+  let ownAccounts = NO_ACCOUNTS
+  let deviceLogin = createDeviceLogin({ accounts: NO_ACCOUNTS })
+  let smsLogin = createSmsLogin({ accounts: NO_ACCOUNTS })
+  /** 宿主 llm 服务（诊断路由用；注入前是 null）。 */
+  let hostLlm = null
+  /** Accio 的浏览器授权流程（内存态；回调等待期间持有 loopback 服务器）。 */
+  const accioLogins = new Map()
   ctx.inject(['credentials', 'commands', 'llm'], scoped => {
     let stopped = false
     scoped.effect(() => () => { stopped = true }, 'our-free-model: channel pack')
+    // 本插件自己的渠道账号：凭据服务在这里才确定可用（apply 期可能尚未发布）。
+    ownAccounts = createChannelAccounts(
+      channelAccountStore,
+      {
+        set: (ref, value) => scoped.credentials.set(ref, value),
+        // 宿主的凭据服务不一定有 delete（不同内核代次能力不同）；没有时表仍然干净。
+        ...typeof scoped.credentials.delete === 'function' ? { delete: ref => scoped.credentials.delete(ref) } : {},
+      },
+      ref => scoped.credentials.resolve(ref),
+    )
+    // 诊断用：宿主 llm 服务（`listModels` 是「宿主过滤后」的真实答案）。
+    hostLlm = scoped.llm
+    deviceLogin = createDeviceLogin({ accounts: ownAccounts })
+    smsLogin = createSmsLogin({ accounts: ownAccounts })
     // Dynamic import: the pack's own imports (the kernel's llm and credential
     // modules) are host-provided, and a composition that lacks them must still
     // load this plugin's free lane. `pack.js` is the bundled form of the
@@ -1068,6 +1166,62 @@ export function apply(ctx, config) {
       channelVisibility = installChannelCatalogVisibility(scoped.get('accountPool', false), {
         shouldHide: () => settings.get().hideChannelModels === true,
       })
+      // 渠道权益扩展：读同一个账号池、同一份凭据，补渠道包没有出口的能力
+      // （CodeArts 的活动领取与倍率、Qoder 的目录、Codely 的整条渠道）。
+      // 放在 pack.apply 之后：`provide('accountPool', pool)` 是 apply 的最后一步。
+      channelExtras = createChannelExtras({
+        pool: scoped.get('accountPool', false),
+        resolve: ref => scoped.credentials.resolve(ref),
+        ownAccounts,
+        logger,
+      })
+      // 自有渠道进模型选择器：目录同步可读，由这里喂一次（账号表 + 权益缓存）。
+      void syncOwnCatalog()
+      /*
+       * 自动诊断：启动后延迟跑一次宿主 `llm.listModels()`，把每个渠道的真实条数
+       * 写进 `own-catalog.log`。
+       *
+       * 为什么必须自动：`hasLoggedInAccount()` 依赖凭据解析，而它在真机上的返回值
+       * 从外部观测不到。用户四轮报障「看不到模型」，全部卡在这一环没有观测点
+       * （2026-11-24）。延迟 6 秒是等 pack 注册完 adapter、凭据服务就绪。
+       */
+      const autoDiagnose = async () => {
+        try {
+          const packs = ['codearts', 'buddy', 'workbuddy', 'lobsterai', 'qoder', 'qodercn', 'trae', 'cline', 'loomy', 'raccoon', 'minimax', 'zcode', 'gemini']
+          const counts = []
+          const problems = []
+          for (const provider of packs) {
+            try {
+              const models = hostLlm === null ? [] : await hostLlm.listModels(provider)
+              const list = Array.isArray(models) ? models : []
+              counts.push(`${provider}:${list.length}`)
+              if (list.length === 0) {
+                // 空分组要看是谁的锅：账号可见性 vs adapter 本身
+                const pool = scoped.get('accountPool', false)
+                let visible = null
+                try { visible = typeof pool?.hasLoggedInAccount === 'function' ? await pool.hasLoggedInAccount(provider) : null } catch { visible = 'threw' }
+                problems.push(`${provider}(visible=${visible})`)
+              }
+            } catch (failure) {
+              counts.push(`${provider}:ERR`)
+              problems.push(`${provider}(${String(failure?.message ?? failure).slice(0, 60)})`)
+            }
+          }
+          const ownRows = modelRuntime.catalog.filter(entry => entry.channel === 'own')
+          diagLog({
+            kind: 'auto-diag',
+            hostLlm: hostLlm !== null,
+            visibilityInstalled: channelVisibility?.installed === true,
+            hideChannelModels: settings.get().hideChannelModels === true,
+            counts: counts.join(' '),
+            empty: problems.join(' ') || 'none',
+            ownRows: ownRows.length,
+          })
+        } catch (failure) {
+          diagLog({ kind: 'auto-diag-failed', error: String(failure?.message ?? failure) })
+        }
+      }
+      setTimeout(() => { void autoDiagnose() }, 6000)?.unref?.()
       channelPack = { state: 'ready', error: '' }
       logger.info?.(`our-free-model: free-channel pack mounted (CodeArts, CodeBuddy, and 11 more)${channelVisibility.installed ? ', catalog visibility switch armed' : ''}`)
     }).catch(error => {
@@ -1076,6 +1230,251 @@ export function apply(ctx, config) {
       logger.warn?.(`our-free-model: free-channel pack unavailable (${channelPack.error})`)
     })
   })
+
+  /**
+   * 把「自有渠道的账号 + 权益目录」编成模型行喂给运行时。
+   *
+   * 目录必须同步可读（宿主的 `listModels` 契约不能在渲染路径上等网络），所以权益
+   * 查询的结果缓存在这里，账号变化或领取成功后重新编一次。查询失败就退回各渠道
+   * 的兜底表 —— 与渠道包那 13 家同一取向：宁可显示少一点，也不要整组消失。
+   */
+  /**
+   * 链路诊断日志：写文件而不是 logger —— 桌面版没有可持续读取的宿主日志，
+   * 「新渠道看不到模型」这类问题没有落点就只能猜（2026-11-24 排查实录）。
+   * 每行一个 JSON 事件，追加写；文件在数据目录里，用户能直接发回来。
+   */
+  const diagLog = event => {
+    try {
+      const line = JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n'
+      fs.appendFileSync(path.join(dataDir, 'own-catalog.log'), line)
+    } catch { /* 诊断日志绝不影响主流程 */ }
+  }
+  const ownCatalogs = new Map()
+  const syncOwnCatalog = async () => {
+    diagLog({ kind: 'sync-begin', hasExtras: channelExtras !== undefined && channelExtras.available === true })
+    const enabled = {}
+    for (const provider of OWN_PROVIDERS) {
+      const accounts = ownAccounts.enabled(provider)
+      enabled[provider] = accounts.length > 0
+      diagLog({ kind: 'provider', provider, accounts: accounts.length, signedIn: enabled[provider] })
+      if (accounts.length === 0) continue
+      if (!ownCatalogs.has(provider)) {
+        try {
+          const status = await channelExtras.status(provider)
+          ownCatalogs.set(provider, Array.isArray(status?.catalog) ? status.catalog : [])
+          diagLog({ kind: 'catalog', provider, rows: ownCatalogs.get(provider).length })
+        } catch (error) {
+          diagLog({ kind: 'catalog-failed', provider, error: String(error?.message ?? error) })
+          logger.warn?.(`our-free-model: ${provider} 目录不可用（${error?.message ?? error}）`)
+        }
+      }
+    }
+    const rows = buildOwnCatalog({
+      catalogs: Object.fromEntries(ownCatalogs),
+      enabled,
+      hideAll: settings.get().hideChannelModels === true,
+    })
+    diagLog({ kind: 'sync-done', rows: rows.length, hideAll: settings.get().hideChannelModels === true })
+    modelRuntime.setOwnCatalog(rows)
+    diagLog({ kind: 'set', runtimeRows: modelRuntime.catalog.filter(entry => entry.channel === 'own').length })
+  }
+
+  /**
+   * 浏览器登录（CDP 拦截回调型）：目前只有 Marvis。
+   *
+   * 流程与设备码同形（`start` 立刻回账号与地址、`poll` 逐次看结果），差别只在
+   * 「谁在等」：设备码等上游轮询，这里等**我们截停的回调 URL**。拦截与浏览器
+   * 生命周期都在 `src/channels/browser/chromium.js`，本处只管账号落库。
+   */
+  const browserLogins = new Map()
+  /** 走「起浏览器」那条腿的渠道：Marvis 拦回调，Magicrew 读 localStorage。 */
+  const BROWSER_LOGIN_PROVIDERS = new Set(['marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace'])
+  const BROWSER_LOGIN_TIMEOUT_MS = 240_000
+
+  async function startBrowserChannelLogin(provider, options = {}) {
+    if (!BROWSER_LOGIN_PROVIDERS.has(provider)) return { error: `该渠道没有浏览器登录：${provider}` }
+    const account = ownAccounts.create(provider)
+    let session
+    try {
+      if (provider === 'marvis') {
+        const loginType = options.loginType === '2' ? '2' : '1'
+        const guid = crypto.randomUUID()
+        const loginUrl = marvisAuthorizeUrl(loginType, guid)
+        session = await startChromiumSession({ url: loginUrl, log: message => logger.info?.(`our-free-model: ${message}`) })
+        const hook = interceptCallback(session, isMarvisCallbackUrl)
+        const flow = { accountId: account.id, provider, session, hook, guid, loginType, done: false, result: undefined }
+        hook.promise.then(value => { flow.done = true; flow.result = value ?? null })
+        browserLogins.set(account.id, flow)
+        return { accountId: account.id, loginUrl, mode: 'browser' }
+      }
+      // Magicrew：网页登录完成后从 localStorage 读 JWT（键名带 `MAGIC:user:` 前缀）。
+      const providerProduct = magicrewProductOf(provider) ?? monkeycodeProductOf(provider)
+      const loginUrl = provider === 'monkeycode' || provider === 'monkeycodeintl'
+        ? `${providerProduct.platformBase}/`
+        : `${providerProduct.webOrigin}/login`
+      session = await startChromiumSession({ url: loginUrl, log: message => logger.info?.(`our-free-model: ${message}`) })
+      const flow = {
+        accountId: account.id,
+        provider,
+        product: providerProduct,
+        session,
+        done: false,
+        deadline: Date.now() + BROWSER_LOGIN_TIMEOUT_MS,
+      }
+      browserLogins.set(account.id, flow)
+      return { accountId: account.id, loginUrl, mode: 'browser' }
+    } catch (error) {
+      // 浏览器起不来就把占位账号删掉，否则面板会留一条永远登不上的空账号。
+      await ownAccounts.remove(account.id).catch(() => {})
+      session?.close?.()
+      return { error: String(error?.message ?? error) }
+    }
+  }
+
+  /** 收掉一条浏览器流程（幂等）。 */
+  function closeBrowserFlow(accountId) {
+    const flow = browserLogins.get(accountId)
+    if (flow === undefined) return undefined
+    browserLogins.delete(accountId)
+    try { flow.hook?.dispose?.() } catch { /* 已释放 */ }
+    try { flow.session?.close?.() } catch { /* 已关 */ }
+    return flow
+  }
+
+  async function pollBrowserChannelLogin(accountId) {
+    const flow = browserLogins.get(accountId)
+    if (flow === undefined) return { done: true, success: false, error: '登录流程不存在或已结束，请重新发起' }
+
+    if (flow.provider === 'officeace') {
+      if (flow.done !== true) return { done: false, status: 'pending' }
+      closeBrowserFlow(accountId)
+      const callback = flow.result
+      if (typeof callback !== 'string' || callback === '') {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: '登录窗口已关闭或超时，请重新发起' }
+      }
+      let code = ''
+      try { code = new URL(callback).searchParams.get('code') ?? '' } catch { code = '' }
+      if (code === '') { await ownAccounts.remove(accountId).catch(() => {}); return { done: true, success: false, error: '回调里没有 code' } }
+      // ⚠️ code 秒级过期：这里**立刻**换，不拆两步。
+      const exchanged = await exchangeOfficeaceCode({ code, codeVerifier: flow.codeVerifier, privateJwk: flow.privateJwk })
+      if (exchanged.error !== undefined) {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: exchanged.error }
+      }
+      await ownAccounts.attach(accountId, exchanged.credential, { nickname: OFFICEACE.displayName })
+      void syncOwnCatalog()
+      return { done: true, success: true, nickname: OFFICEACE.displayName }
+    }
+
+    if (flow.provider === 'marvis') {
+      if (flow.done !== true) return { done: false, status: 'pending' }
+      closeBrowserFlow(accountId)
+      const callback = flow.result
+      if (typeof callback !== 'string' || callback === '') {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: '登录窗口已关闭或超时，请重新发起' }
+      }
+      let parsed
+      try { parsed = new URL(callback) } catch { parsed = null }
+      const code = parsed?.searchParams.get('code') ?? ''
+      if (code === '') {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: '授权被拒绝（回调里没有 code）' }
+      }
+      const state = parsed.searchParams.get('state') ?? undefined
+      const exchanged = await exchangeMarvisCode({ code, loginType: flow.loginType, guid: flow.guid, state })
+      if (exchanged.error !== undefined) {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: exchanged.error }
+      }
+      const credential = exchanged.credential
+      const nickname = typeof credential.nickname === 'string' ? credential.nickname : undefined
+      await ownAccounts.attach(accountId, credential, {
+        ...nickname === undefined ? {} : { nickname },
+        ...typeof credential.expires_at === 'number' ? { expiresAt: credential.expires_at } : {},
+      })
+      void syncOwnCatalog()
+      return { done: true, success: true, ...nickname === undefined ? {} : { nickname } }
+    }
+
+    // Magicrew：每轮读一次页面里的实时 localStorage（Chromium 会把它缓在内存，
+    // 落盘要等关窗 —— 所以只能走 `Runtime.evaluate`，不能读磁盘 leveldb）。
+    if (Date.now() > flow.deadline) {
+      closeBrowserFlow(accountId)
+      await ownAccounts.remove(accountId).catch(() => {})
+      return { done: true, success: false, error: '登录窗口已关闭或超时，请重新发起' }
+    }
+    // MonkeyCode：会话是 **HttpOnly cookie**（`document.cookie` 读不到），
+    // 只能走 CDP 的 `Network.getCookies`；拿到后当场签网关凭据（两件一起收）。
+    // 百智云：控制台 cookie → 换 `sk-` Key；401/403 是「登录态还没生效」，继续等。
+    if (flow.provider === 'baizhi') {
+      let cookie
+      try {
+        const list = await flow.session.cookies('https://baizhi.cloud/')
+        cookie = list.filter(item => typeof item?.name === 'string' && typeof item?.value === 'string').map(item => `${item.name}=${item.value}`).join('; ')
+      } catch {
+        return { done: false, status: 'pending' }
+      }
+      if (cookie === '') return { done: false, status: 'pending' }
+      const exchanged = await exchangeBaizhiKey({ session_cookie: cookie })
+      if (exchanged.error !== undefined) {
+        // 还没生效：保持 pending，下一轮再试（不要删账号）。
+        if (exchanged.notEffective === true) return { done: false, status: 'pending' }
+        closeBrowserFlow(accountId)
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: exchanged.error }
+      }
+      closeBrowserFlow(accountId)
+      await ownAccounts.attach(accountId, exchanged.credential, { nickname: BAIZHI.displayName })
+      void syncOwnCatalog()
+      return { done: true, success: true, nickname: BAIZHI.displayName }
+    }
+
+    if (flow.provider === 'monkeycode' || flow.provider === 'monkeycodeintl') {
+      let cookie
+      try {
+        cookie = sessionCookieOf(await flow.session.cookies(flow.product.platformBase), flow.product)
+      } catch {
+        return { done: false, status: 'pending' }
+      }
+      if (cookie === undefined) return { done: false, status: 'pending' }
+      const issued = await issueMonkeycodeKey({ session_cookie: cookie }, flow.product)
+      closeBrowserFlow(accountId)
+      if (issued.error !== undefined) {
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: issued.error }
+      }
+      await ownAccounts.attach(accountId, issued.credential, { nickname: flow.product.displayName })
+      void syncOwnCatalog()
+      return { done: true, success: true, nickname: flow.product.displayName }
+    }
+    let harvested
+    try {
+      harvested = parseMagicrewHarvest(await flow.session.evaluate(MAGICREW_HARVEST_EXPRESSION))
+    } catch {
+      // 页面还在跳转/被关掉：当作「还没好」，下一轮再看。
+      return { done: false, status: 'pending' }
+    }
+    if (harvested === undefined) return { done: false, status: 'pending' }
+    const completed = await completeMagicrewLogin(flow.product, harvested)
+    closeBrowserFlow(accountId)
+    if (completed.error !== undefined) {
+      await ownAccounts.remove(accountId).catch(() => {})
+      return { done: true, success: false, error: completed.error }
+    }
+    const credential = completed.credential
+    await ownAccounts.attach(accountId, credential, {
+      ...typeof credential.apiKeyExpiresAt === 'number' ? { expiresAt: credential.apiKeyExpiresAt } : {},
+    })
+    void syncOwnCatalog()
+    return { done: true, success: true, nickname: flow.product.displayName }
+  }
+
+  /** 取消一条浏览器登录（用户手动关掉流程时调用）。 */
+  function cancelBrowserLogin(accountId) {
+    return closeBrowserFlow(accountId) !== undefined
+  }
 
   const logAdmissionRejection = surface => ({ status, source, reason }) => {
     // Fixed fields only: headers, request URLs and admission errors may contain
@@ -1087,6 +1486,8 @@ export function apply(ctx, config) {
     refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress,
     pool: fetchPoolSnapshot,
     eacAuth,
+    // 浏览器登录（CDP 拦截回调）：与设备码同形的两步式，由自己起的 Chromium 完成。
+    browserLogin: { start: startBrowserChannelLogin, poll: pollBrowserChannelLogin, cancel: cancelBrowserLogin },
     // ── the aggregate lane's settings surface ────────────────────────────────
     // The registry is static data; the configured half is the settings file with
     // every key masked. Writing one provider rebuilds the catalog and re-emits
@@ -1239,6 +1640,17 @@ export function apply(ctx, config) {
     // The absorbed channel pack's liveness, for the 白嫖接入 page: the page
     // renders its channel grid from this bit plus the pack's own RPC.
     channels: () => channelPack,
+    // 渠道权益扩展（余额明细 / 活动领取 / 倍率）。与 `channels` 分开：它读的是
+    // 「同一份账号与凭据」，但不依赖渠道包的 RPC 面，因此渠道包降级时这一路
+    // 仍能回答自己为什么不可用。
+    channelExtras: () => channelExtras,
+    // 本插件自己的渠道（渠道包不认识的）：账号表与两步式登录流程。
+    // 传的是对象（`list` / `update` / `remove` 都要用），不是单个函数。
+    channelAccounts: () => ownAccounts,
+    // 账号/目录变化后重编自有渠道的模型行（选择器与网关都读同一份 catalog）。
+    syncOwnCatalog: () => syncOwnCatalog(),
+    deviceLogin: () => deviceLogin,
+    smsLogin: () => smsLogin,
     // The catalog visibility switch lives in `apply`'s scope (it wraps the pool
     // the pack provides on mount), so the route reaches it through here.
     channelVisibility: () => channelVisibility,
@@ -1826,6 +2238,188 @@ function createApiRoutes(deps) {
           deps.logger?.warn?.(`our-free-model: pool snapshot unavailable (${reason})`)
           return send(404, { error: `pool unavailable (${reason})` })
         }
+      }
+      if (method === 'GET' && routePath === '/channels/extra') {
+        // 渠道权益扩展（余额明细 / 活动 / 倍率）。逐账号问上游，故由页面按需
+        // 触发；单账号失败在响应里逐行说明，不是整个 500。
+        const provider = String(url.searchParams.get('provider') ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        return send(200, await deps.channelExtras().status(provider))
+      }
+      if (method === 'POST' && routePath === '/channels/extra/claim') {
+        // 写操作：领取一个活动（省略 campaignId 时取该渠道的每日签到活动）。
+        // 上游按天幂等，重复领取回「已领」；这里同样把三种结论分开回报，
+        // 让页面不必猜「没变化」是什么意思。
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        const accountId = String(body?.accountId ?? '').trim()
+        if (provider === '' || accountId === '') return send(400, { error: 'provider and accountId are required' })
+        const outcome = await deps.channelExtras().claim(
+          provider,
+          accountId,
+          body?.campaignId === undefined || body.campaignId === null ? undefined : String(body.campaignId),
+        )
+        deps.logger?.info?.(`our-free-model: extra claim ${provider}/${accountId} → ${outcome.kind}`)
+        // 领取会改变余额；目录本身不变，但账号可用性可能从「无」变成「有」，
+        // 故重编一次（幂等，且只对自有渠道产生行）。
+        if (outcome.kind !== 'failed') void deps.syncOwnCatalog?.()
+        return send(outcome.kind === 'failed' ? 502 : 200, outcome)
+      }
+      // ── 本插件自己的渠道账号（渠道包不认识的那些） ──────────────────────────
+      //
+      // 三条只读 + 三条写：登录是**两步式**的（先拿设备码回 URL，再轮询），
+      // 与渠道包 `account.create` / `login.poll` 同一形状，因为「等用户在浏览器里
+      // 授权几十秒」不能在同一个请求里挂住。
+      /**
+       * 链路诊断：直接问宿主 `llm.listModels(provider)`「过滤后」的真实答案。
+       *
+       * 这一环此前从没验证过——我们验证了 pack 的兜底表（`listAllModels`），却没验证
+       * 宿主经过 providerCatalogVisible / disabledModels / deadModels 过滤后**交给
+       * 选择器**的到底是什么。面板据此显示每个渠道的实际条数，用户一眼就能看到
+       * 「宿主有没有新模型」，不用再靠猜（2026-11-24 三轮排查的教训）。
+       */
+      if (method === 'GET' && routePath === '/diag/models') {
+        const providers = ['qoder', 'qodercn', 'zcode', 'raccoon', 'loomy', 'codearts', 'buddy', 'minimax', 'trae', 'cline', 'gemini']
+        const rows = []
+        for (const provider of providers) {
+          let count = 0
+          let ids = []
+          let error = null
+          try {
+            const models = hostLlm === null ? [] : await hostLlm.listModels(provider)
+            count = Array.isArray(models) ? models.length : 0
+            ids = Array.isArray(models) ? models.slice(0, 4).map(model => model.id ?? model.name ?? '?') : []
+          } catch (failure) {
+            error = String(failure?.message ?? failure)
+          }
+          rows.push({ provider, count, ids, error })
+        }
+        const ownRows = modelRuntime.catalog.filter(entry => entry.channel === 'own')
+        const summary = rows.map(row => row.provider + ':' + row.count).join(' ')
+        diagLog({ kind: 'diag-models', counts: summary, own: ownRows.length })
+        return send(200, {
+          hostLlm: hostLlm !== null,
+          packProviders: rows,
+          ownRows: ownRows.length,
+          ownSample: ownRows.slice(0, 4).map(entry => entry.id),
+        })
+      }
+      // 自有渠道的模型清单：面板「模型」折叠用它（渠道包的 model.list 不认识这些 id）。
+      // 读的就是喂给选择器的那份 catalog，两处永远一致。
+      if (method === 'GET' && routePath === '/channels/own/models') {
+        const provider = String(url.searchParams.get('provider') ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        const rows = modelRuntime.catalog
+          .filter(entry => entry.channel === 'own' && entry.provider === provider)
+        diagLog({ kind: 'models-route', provider, total: rows.length })
+        const models = rows.map(entry => ({
+            id: entry.id,
+            name: entry.name,
+            disabled: false,
+            dead: false,
+            ...entry.needsLogin === true ? { needsLogin: true } : {},
+          }))
+        return send(200, { provider, models })
+      }
+      if (method === 'GET' && routePath === '/channels/own') {
+        const provider = String(url.searchParams.get('provider') ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        return send(200, { provider, accounts: deps.channelAccounts().list(provider), supported: deps.deviceLogin().supports(provider) })
+      }
+      if (method === 'POST' && routePath === '/channels/own/login/start') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        const started = await deps.deviceLogin().start(provider)
+        return send(started.error === undefined ? 200 : 400, started)
+      }
+      if (method === 'GET' && routePath === '/channels/own/login/poll') {
+        const accountId = String(url.searchParams.get('account') ?? '').trim()
+        if (accountId === '') return send(400, { error: 'account is required' })
+        const polled = await deps.deviceLogin().poll(accountId)
+        // 登录完成即重编自有渠道的模型行（账号从「无」变「有」）。
+        if (polled.done === true && polled.success === true) void deps.syncOwnCatalog()
+        // 轮询本身成功（还没授权）不是错误：`done:false` 就是「继续等」。
+        return send(200, polled)
+      }
+      // Accio：浏览器 PKCE。与设备码同一形状（先回地址、再轮询等回调），
+      // 但等的是**我们自己**起的 loopback，不是上游的轮询端点。
+      if (method === 'POST' && routePath === '/channels/own/oauth/start') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (provider !== 'accio') return send(400, { error: `该渠道没有浏览器授权登录：${provider}` })
+        const account = ownAccounts.create(provider)
+        const flow = await startBrowserLogin({ region: typeof body?.region === 'string' ? body.region : 'cn' })
+        accioLogins.set(account.id, flow)
+        return send(200, { accountId: account.id, loginUrl: flow.loginUrl })
+      }
+      if (method === 'GET' && routePath === '/channels/own/oauth/poll') {
+        const accountId = String(url.searchParams.get('account') ?? '').trim()
+        const flow = accioLogins.get(accountId)
+        if (flow === undefined) return send(200, { done: true, success: false, error: '登录流程不存在或已结束，请重新发起' })
+        try {
+          const { code, verifier, redirectUri } = await flow.waitForCode()
+          const exchanged = await exchangeCode({ code, codeVerifier: verifier, redirectUri })
+          accioLogins.delete(accountId)
+          if (exchanged.error !== undefined) return send(200, { done: true, success: false, error: exchanged.error })
+          await ownAccounts.attach(accountId, exchanged.credential)
+          void syncOwnCatalog()
+          return send(200, { done: true, success: true, nickname: exchanged.credential.access_token.slice(0, 6) })
+        } catch (error) {
+          accioLogins.delete(accountId)
+          return send(200, { done: true, success: false, error: String(error?.message ?? error) })
+        }
+      }
+      // 浏览器登录（Marvis）：起隔离浏览器，在回调请求**发出之前**截停。
+      // 与设备码同形的两步式：先回地址，再轮询等回调。
+      if (method === 'POST' && routePath === '/channels/own/browser/start') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        const started = await deps.browserLogin.start(provider, { loginType: body?.loginType })
+        return send(started.error === undefined ? 200 : 400, started)
+      }
+      if (method === 'GET' && routePath === '/channels/own/browser/poll') {
+        const accountId = String(url.searchParams.get('account') ?? '').trim()
+        if (accountId === '') return send(400, { error: 'account is required' })
+        return send(200, await deps.browserLogin.poll(accountId))
+      }
+      // AutoClaw 这类「短信验证码」渠道：与设备码是两套流程，故两条独立路由。
+      // 验证码本身不落盘 —— 它是**一次性**凭据，只在内存里走一趟。
+      if (method === 'POST' && routePath === '/channels/own/sms/send') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        const phone = String(body?.phone ?? '').trim()
+        if (!smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
+        return send(200, await smsLogin().send(provider, phone))
+      }
+      if (method === 'POST' && routePath === '/channels/own/sms/login') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (!smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
+        const result = await smsLogin().login(provider, String(body?.phone ?? '').trim(), String(body?.code ?? '').trim())
+        if (result.error === undefined) void deps.syncOwnCatalog()
+        return send(result.error === undefined ? 200 : 400, result)
+      }
+      if (method === 'POST' && routePath === '/channels/own/login/cancel') {
+        const body = await readJson(req)
+        const accountId = String(body?.accountId ?? '').trim()
+        deps.deviceLogin().cancel(accountId)
+        deps.browserLogin.cancel(accountId)
+        return send(200, { ok: true })
+      }
+      if (method === 'POST' && routePath === '/channels/own/update') {
+        const body = await readJson(req)
+        const account = deps.channelAccounts().update(String(body?.accountId ?? '').trim(), {
+          ...typeof body?.nickname === 'string' ? { nickname: body.nickname } : {},
+          ...typeof body?.enabled === 'boolean' ? { enabled: body.enabled } : {},
+        })
+        return account === undefined ? send(404, { error: 'account not found' }) : send(200, { ok: true, account })
+      }
+      if (method === 'POST' && routePath === '/channels/own/remove') {
+        const body = await readJson(req)
+        const removed = await deps.channelAccounts().remove(String(body?.accountId ?? '').trim())
+        return removed ? send(200, { ok: true }) : send(404, { error: 'account not found' })
       }
       if (method === 'GET' && routePath === '/announcement') {
         // A managed install also stands down the owner's onboarding copy: the

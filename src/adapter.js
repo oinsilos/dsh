@@ -22,6 +22,8 @@ import { toChatMessages, toClaudeMessages, toResponseInput, toToolDefs, repairTo
 import { CODE, UpstreamError, postStreamed } from './http.js'
 import { postSealedStreamed } from './eac.js'
 import { postKiloStreamed } from './kilo.js'
+import { postOwnChannelStreamed } from './channels/inference.js'
+import { isOwnEntry } from './channels/catalog.js'
 import { postAggregateStreamed, isAggregateEntry } from './aggregate.js'
 import { finishReason, readStream, windowTokens } from './stream.js'
 import { DEFAULT_LEVEL, MIN_BUDGET, budgetFor, defaultEffortFor, effortPatchFor, effortsFor, resolveLevel } from './effort.js'
@@ -324,10 +326,25 @@ export class FreeModelAdapter {
     const sealed = isEacEntry(entry)
     const kilo = isKiloEntry(entry)
     const aggregate = isAggregateEntry(entry)
+    // 自有渠道（Codely / AutoClaw / Accio）：走本插件的账号表 + 各自的线上协议，
+    // 由 `src/channels/inference.js` 统一把帧交成我们的解码器认识的那一种。
+    const own = isOwnEntry(entry)
     // The absorbed channels speak the Chat wire regardless of what their ids
     // resemble; only the free lane splits endpoints per model, and an aggregate
-    // row carries the wire its provider actually serves.
+    // row carries the wire its provider actually serves. An absorbed channel's
+    // own row may declare its wire (MiniMax speaks Anthropic Messages).
     const wire = plan.wire ?? wireOf(entry)
+    /**
+     * What the **upstream** must see in `model`.
+     *
+     * Own and aggregate rows carry this lane's routing prefix in `id`
+     * (`minimaxintl/MiniMax-M3`, `nvidia_nim/nvidia/…`); the provider only knows
+     * the bare id. Sending the composite id is how every own-channel turn used to
+     * fail at the far end even with a valid credential.
+     */
+    const wireModel = (own || aggregate) && typeof entry.modelId === 'string' && entry.modelId !== ''
+      ? entry.modelId
+      : entry.id
     const style = STYLE_FOR_WIRE[wire]
     const warnings = []
     const resolveImage = this.deps.resolveImage
@@ -365,7 +382,7 @@ export class FreeModelAdapter {
     // 一份 payload，共用同一个数组会让 `image-dropped` 按 build 次数重复累积，还会
     // 让已经交出去的首段样本跟着后面的 build 一起变长。
     const payloadFor = (input, ceiling, recovering, sink, savingsSink) => {
-      const payload = buildPayload(wire, entry.id, input, options, ceiling, resolveImage, sink)
+      const payload = buildPayload(wire, wireModel, input, options, ceiling, resolveImage, sink)
       if (declared.length > 0) payload.tools = declared
       if (typeof options.temperature === 'number' && Number.isFinite(options.temperature)) payload.temperature = options.temperature
       if (wire !== 'responses' && Array.isArray(options.stop) && options.stop.length > 0) payload.stop = options.stop
@@ -404,7 +421,7 @@ export class FreeModelAdapter {
       // caller's tools exactly as declared, so the fingerprint pass is free-lane
       // only. The aggregate lane is somebody else's gateway entirely — renaming
       // its tools to this lane's decoy quartet would break the caller's calls.
-      const renameMap = sealed || kilo || aggregate ? new Map() : applyFingerprint(payload, wire === 'messages' ? 'claude' : style === 'flat')
+      const renameMap = sealed || kilo || aggregate || own ? new Map() : applyFingerprint(payload, wire === 'messages' ? 'claude' : style === 'flat')
       const controller = new AbortController()
       const onAbort = () => controller.abort(options.signal?.reason)
       options.signal?.addEventListener('abort', onAbort, { once: true })
@@ -417,26 +434,39 @@ export class FreeModelAdapter {
       }, timeoutMs) : undefined
       timer?.unref?.()
       const channel = createChannel()
+      // 自有渠道的凭据要先取（异步），故在构造请求之前解析一次；取不到就是
+      // null，`postOwnChannelStreamed` 会把它判成 CODE.auth 而不是「未知错误」。
+      const ownCredential = own && typeof this.deps.ownCredential === 'function'
+        ? await this.deps.ownCredential(entry.provider)
+        : null
       const request = (sealed
         ? postSealedTurn(this.deps, payload, controller.signal, value => channel.push(value))
-        : kilo
-          ? postKiloStreamed({ body: payload, signal: controller.signal, onData: value => channel.push(value) })
-          : aggregate
-            ? postAggregateStreamed({
-              config: settings.aggregate ?? {},
-              providerId: entry.providerId,
-              modelId: entry.modelId,
-              body: payload,
-              signal: controller.signal,
-              onData: value => channel.push(value),
-            })
-            : postStreamed({
-          path: endpointFor(entry.id), body: payload, session,
-          requestId: attempt === 0 ? recoveryId : mintRequestId(),
-          attributionUserAgent: snapshot.attributionUserAgent,
-          signal: controller.signal,
-          onData: value => channel.push(value),
-        }))
+        : own
+          ? postOwnChannelStreamed({
+            provider: entry.provider,
+            credential: ownCredential,
+            body: payload,
+            signal: controller.signal,
+            onData: value => channel.push(value),
+          })
+          : kilo
+            ? postKiloStreamed({ body: payload, signal: controller.signal, onData: value => channel.push(value) })
+            : aggregate
+              ? postAggregateStreamed({
+                config: settings.aggregate ?? {},
+                providerId: entry.providerId,
+                modelId: entry.modelId,
+                body: payload,
+                signal: controller.signal,
+                onData: value => channel.push(value),
+              })
+              : postStreamed({
+                path: endpointFor(entry.id), body: payload, session,
+                requestId: attempt === 0 ? recoveryId : mintRequestId(),
+                attributionUserAgent: snapshot.attributionUserAgent,
+                signal: controller.signal,
+                onData: value => channel.push(value),
+              }))
         .then(() => channel.push(undefined))
         .catch(error => channel.push(error instanceof Error ? error : new Error(String(error))))
       let firstDeltaAt
@@ -737,6 +767,7 @@ function toFailure(error) {
  */
 function wireOf(entry) {
   if (isAggregateEntry(entry)) return entry.wire ?? 'chat'
+  if (isOwnEntry(entry)) return entry.wire ?? 'chat'
   if (isEacEntry(entry) || isKiloEntry(entry)) return 'chat'
   return wireFor(entry.id)
 }

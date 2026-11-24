@@ -1,0 +1,180 @@
+/**
+ * 设备码登录的**两步式**流程容器（Codely / MiniMax 国际版）。
+ *
+ * 为什么是两步式：面板必须在 `account.create` 之后**立刻**拿到用户码与验证地址
+ * （用户在浏览器里授权要花几十秒），而「等登录完成」不能在同一个请求里挂住 ——
+ * 渠道包的 13 个渠道也是这个形状（`account.create` 先回 URL，`login.poll` 再看结果）。
+ *
+ * ## 每次只轮询一次
+ *
+ * `poll()` **不循环**：面板每个 tick 调一次。上游的 `pending` / `slow_down` 原样回给
+ * 面板（`done:false`），只有拿到令牌、被拒、过期或超时才 `done:true`。
+ * 在服务端挂一个 while 循环会让一个 HTTP 请求占住 15 分钟，且重启即丢。
+ *
+ * ## 状态只活在内存
+ *
+ * 进程重启后未完成的登录就该重新发起（上游设备码本身也有 900 秒有效期），
+ * 把它落盘只会产生「重启后还挂着一条永远等不到的登录」。
+ *
+ * @module src/channels/device-login.js
+ */
+
+import { exchangeCode, fetchNickname, pollDeviceLogin, startDeviceLogin } from './codely.js'
+import { MINIMAX_PRODUCTS, pollDeviceTokenOnce, startDeviceAuthorization } from './minimax.js'
+
+/**
+ * 一家渠道的设备码流程。
+ *
+ * - `start({fetch})` → `{state, userCode, verificationUri, verificationUriComplete, intervalMs, expiresIn}`
+ *   或 `{error}`；`state` 是流程自己留着的后续凭据（设备码 / PKCE verifier）。
+ * - `poll(state, {fetch})` → `{status, credential?, expiresAt?, nickname?, error?}`，
+ *   `status` ∈ `pending | slow_down | authorized | denied | expired | error`。
+ */
+const FLOWS = {
+  codely: {
+    async start({ fetch: fetchImpl }) {
+      const started = await startDeviceLogin({ fetch: fetchImpl })
+      if (started.error !== undefined) return started
+      return {
+        state: { authRequestToken: started.authRequestToken },
+        userCode: started.userCode,
+        verificationUri: started.verificationUri,
+        verificationUriComplete: started.verificationUriComplete,
+        intervalMs: started.intervalMs,
+        expiresIn: started.expiresIn,
+      }
+    },
+    async poll(state, { fetch: fetchImpl }) {
+      const polled = await pollDeviceLogin(state.authRequestToken, { fetch: fetchImpl })
+      if (polled.status !== 'authorized') {
+        return { status: polled.status, ...polled.error === undefined ? {} : { error: polled.error } }
+      }
+      const exchanged = await exchangeCode(polled.code, { fetch: fetchImpl })
+      if (exchanged.error !== undefined) return { status: 'error', error: exchanged.error }
+      const nickname = await fetchNickname(exchanged.credential.access_token, { fetch: fetchImpl })
+      return {
+        status: 'authorized',
+        credential: { ...exchanged.credential, ...nickname === undefined ? {} : { nickname } },
+        ...exchanged.expiresAt === undefined ? {} : { expiresAt: exchanged.expiresAt },
+        ...nickname === undefined ? {} : { nickname },
+      }
+    },
+  },
+  /**
+   * MiniMax 国际版：OAuth 设备码 + PKCE S256。
+   *
+   * ⚠️ 令牌响应自带 `provider` 标记（见 `src/channels/minimax.js`）：同一份凭据被
+   * 国内站误用时，请求前就会判出来，而不是等上游回 400 才怀疑「密钥坏了」。
+   */
+  minimaxintl: {
+    async start({ fetch: fetchImpl }) {
+      const product = MINIMAX_PRODUCTS.minimaxintl
+      const started = await startDeviceAuthorization({ product, fetch: fetchImpl })
+      if (started.error !== undefined) return started
+      return {
+        state: {
+          deviceCode: started.deviceCode,
+          codeVerifier: started.codeVerifier,
+          expiresInSec: started.expiresInSec,
+        },
+        userCode: started.userCode,
+        verificationUri: started.verificationUri,
+        verificationUriComplete: started.verificationUriComplete,
+        intervalMs: started.intervalSec * 1000,
+        expiresIn: started.expiresInSec,
+      }
+    },
+    async poll(state, { fetch: fetchImpl }) {
+      const product = MINIMAX_PRODUCTS.minimaxintl
+      const polled = await pollDeviceTokenOnce(
+        { deviceCode: state.deviceCode, codeVerifier: state.codeVerifier },
+        { product, fetch: fetchImpl },
+      )
+      if (polled.status !== 'authorized') {
+        return { status: polled.status, ...polled.error === undefined ? {} : { error: polled.error } }
+      }
+      return {
+        status: 'authorized',
+        credential: polled.credential,
+        ...typeof polled.credential.expires_at === 'number' ? { expiresAt: polled.credential.expires_at } : {},
+      }
+    },
+  },
+}
+
+export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
+  /** accountId → { provider, state, intervalMs, startedAt, expiresInMs } */
+  const pending = new Map()
+
+  return {
+    supports(provider) {
+      return Object.prototype.hasOwnProperty.call(FLOWS, provider)
+    },
+
+    /** 发起一次登录：立刻建占位账号，返回用户码与验证地址。 */
+    async start(provider) {
+      const flow = FLOWS[provider]
+      if (flow === undefined) return { error: `该渠道没有设备码登录：${provider}` }
+      const started = await flow.start({ fetch: fetchImpl })
+      if (started.error !== undefined) return started
+      const account = accounts.create(provider)
+      pending.set(account.id, {
+        provider,
+        state: started.state,
+        intervalMs: started.intervalMs,
+        startedAt: Date.now(),
+        // 上游自己会给有效期；缺省按 15 分钟算，避免状态永不清理。
+        expiresInMs: (started.expiresIn ?? 900) * 1000,
+      })
+      return {
+        accountId: account.id,
+        userCode: started.userCode,
+        verificationUri: started.verificationUri,
+        verificationUriComplete: started.verificationUriComplete,
+        intervalMs: started.intervalMs,
+        expiresIn: started.expiresIn,
+      }
+    },
+
+    /**
+     * 轮询一次。`authorized` 时才写凭据、回填账号。
+     *
+     * @returns `{done, success?, nickname?, error?, status?, intervalMs?}` ——
+     *   `done:false` 表示还没好，面板继续轮询（与渠道包 `login.poll` 同语义）。
+     */
+    async poll(accountId) {
+      const flow = pending.get(accountId)
+      if (flow === undefined) return { done: true, success: false, error: '登录流程不存在或已结束，请重新发起' }
+      if (Date.now() - flow.startedAt > flow.expiresInMs) {
+        pending.delete(accountId)
+        return { done: true, success: false, error: '登录等待超时，请重新发起' }
+      }
+      const polled = await FLOWS[flow.provider].poll(flow.state, { fetch: fetchImpl })
+      if (polled.status === 'authorized') {
+        await accounts.attach(accountId, {
+          ...polled.credential,
+          ...polled.nickname === undefined ? {} : { nickname: polled.nickname },
+        }, {
+          ...polled.nickname === undefined ? {} : { nickname: polled.nickname },
+          ...polled.expiresAt === undefined ? {} : { expiresAt: polled.expiresAt },
+        })
+        pending.delete(accountId)
+        return { done: true, success: true, ...polled.nickname === undefined ? {} : { nickname: polled.nickname } }
+      }
+      if (polled.status === 'denied' || polled.status === 'expired' || polled.status === 'completed' || polled.status === 'error') {
+        pending.delete(accountId)
+        return {
+          done: true,
+          success: false,
+          error: polled.error ?? (polled.status === 'completed' ? '授权码已被取走，请重新发起登录' : '授权已拒绝或已过期'),
+        }
+      }
+      // pending / slow_down / unknown：还没好，面板继续轮询。
+      return { done: false, status: polled.status, intervalMs: flow.intervalMs }
+    },
+
+    cancel(accountId) {
+      return pending.delete(accountId)
+    },
+  }
+}
