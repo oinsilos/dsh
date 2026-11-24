@@ -30,6 +30,7 @@
  */
 
 import crypto from 'node:crypto'
+import { codeartsRateLabel } from './codearts-catalog.js'
 
 export const SNAP_ENGINE_URL = 'https://snap-access.cn-north-4.myhuaweicloud.com'
 export const OPS_DELIVERY_PATH = '/v1/ops/delivery'
@@ -212,8 +213,14 @@ export function parseActivities(payload) {
   }))
 }
 
-/** `/v1/model/builtin` → `{modelId: 'x0.18'}`；没有 credit 的模型不出现在表里。 */
-export function parseRatios(payload) {
+/**
+ * `/v1/model/builtin` → `{modelId: 'x0.18'}`；没有 credit 的模型不出现在表里。
+ *
+ * 2026-11-25：时段选择改为与**渠道选择器同一份**实现（`codearts-catalog.js`）——
+ * 错峰时段（21:00–次日 7:59）deepseek 是 0.09x，面板与选择器必须显示同一个数，
+ * 否则同一行会出现两个倍率。`nowMs` 只为测试注入。
+ */
+export function parseRatios(payload, nowMs = Date.now()) {
   const body = payload !== null && typeof payload === 'object' ? payload : {}
   const rows = Array.isArray(body.builtinModels) ? body.builtinModels : []
   const out = {}
@@ -221,15 +228,8 @@ export function parseRatios(payload) {
     if (row === null || typeof row !== 'object') continue
     const id = typeof row.model_id === 'string' ? row.model_id.trim() : ''
     if (id === '' || row.enable === false) continue
-    const credits = Array.isArray(row.credit) ? row.credit.filter(entry => entry !== null && typeof entry === 'object') : []
-    if (credits.length === 0) continue
-    // 只取常规时段（default）：低峰价的 0.09x 拿来当标题会低估用户平时的支出。
-    const pick = credits.find(entry => entry.time_slot_id === 'default')
-      ?? credits.find(entry => entry.time_slot_id === undefined || entry.time_slot_id === null)
-      ?? credits[0]
-    const match = /^\s*(\d+(?:\.\d+)?)\s*x\s*$/i.exec(String(pick?.ratio_display ?? ''))
-    if (match === null) continue
-    out[id] = `x${match[1]}`
+    const label = codeartsRateLabel(row, nowMs)
+    if (label !== undefined) out[id] = label
   }
   return out
 }

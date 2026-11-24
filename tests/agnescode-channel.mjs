@@ -73,17 +73,22 @@ console.log('ok 3/6 域名钉扎（正反用例）')
 
 const models = parseAgnesModels({
   data: [
-    { id: 'agnes-3.0-pro', model_type: 'text', max_input_tokens: 1_000_000, max_output_tokens: 256_000 },
+    { id: 'agnes-3.0-pro', model_type: 'text', max_input_tokens: 1_000_000, max_output_tokens: 256_000, points_cost_multiplier: 1.5 },
+    { id: 'kimi-k3', model_type: 'text', points_cost_multiplier: 6 },
     { id: 'deepseek-v4.1-flash', model_type: 'text', is_member_only: true },
+    { id: 'free-model', model_type: 'text', points_cost_multiplier: 0 },
     { id: 'agnes-image-1', model_type: 'image' },
     { id: 'agnes-3.0-pro', model_type: 'text' },
   ],
 })
-assert.deepEqual(models.map(row => row.id), ['agnes-3.0-pro', 'deepseek-v4.1-flash'], '去重 + 只留 text')
-assert.equal(models[0].name, 'agnes-3.0-pro')
+assert.deepEqual(models.map(row => row.id), ['agnes-3.0-pro', 'kimi-k3', 'deepseek-v4.1-flash', 'free-model'], '去重 + 只留 text')
+// 倍率必须进展示名：选择器只渲染 name，不标出来用户会误选贵 6 倍的那行
+assert.equal(models[0].name, 'agnes-3.0-pro · x1.50')
+assert.equal(models[1].name, 'kimi-k3 · x6.00')
 assert.equal(models[0].contextWindow, 1_000_000)
 assert.equal(models[0].maxOutput, 256_000)
-assert.equal(models[1].name, 'deepseek-v4.1-flash（会员）', '会员专享要有后缀提示')
+assert.equal(models[2].name, 'deepseek-v4.1-flash（会员）', '会员专享要有后缀提示；缺倍率时不编造')
+assert.equal(models[3].name, 'free-model · x0.00', '0 是真实报价（免费），不能当缺值吞掉')
 console.log('ok 4/6 目录解析（去重/过滤/会员标记）')
 
 /* ── 5. 权益扩展：远端目录 / 401 / 无兜底 ───────────────────────────────── */

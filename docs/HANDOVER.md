@@ -156,23 +156,25 @@ minimaxintl 4、marvis 1、**accio 0**（modelCode 按账号下发、刻意为�
   登录一次国际版客户端后点「添加账号」即可。
 
 
-### ② 已有渠道的目录核对结果（2026-11-25 实测）
+### ② 已有渠道的目录核对结果（2026-11-25 实测，**真目录已接上**）
 
-- **CodeArts**：远端目录 + 磁盘缓存（`~/.cache/deveco/codearts_models.json`），
-  本次启动 00:44 刚刷新，11 条（含 GLM-5.3 / Kimi-K3.1-Pro / OpenPangu）。**已核对**。
+- **CodeArts**：远端目录（`gateway/config` + `/v1/model/builtin` + AgentCenter 窗口），
+  2026-11-25 已把 `credit[].ratio_display`（按时段选生效档）、`model_desc`、`context`、
+  原始 `model_id`（不裁 `-1017`）全部接进适配器 ⇒ 选择器显示 `GLM-5.3-Flash · x0.08`，
+  12 条（含 DeepSeek-V4.1-Flash-1017 / 智速模式）。解析在
+  `src/channels/codearts-catalog.js`（面板与选择器共用），测试 `tests/codearts-catalog.mjs`。
 - **ZCode**：远端优先（`client/configs`），当前账号拿到 **2 条**可用；另两条
   （GLM-5-Turbo / GLM-5.2）上游返回空响应，只留在离线兜底表并标注。**已核对**。
-- **Qoder（中国版/国际版）**：`QoderAdapter.listModels()` 明确「不发网络请求，
-  恒用兜底表」（目录端点要 WASM 签名）⇒ 之前**没核对**，表停在 2026-09/11-02。
-  2026-11-25 已按 Qoder 官方《模型选择器》文档 + 本机客户端
-  `chatModelUpdates`（11-21）补/改：
-  - 新增 `qmodel_latest` = **Qwen4-Max · 0.4×**（客户端标 "new"，ctx 1M）；
-  - `kmodel_latest` = **Kimi-K3.1-Pro · 1.0×**；
-  - `mmodel` = **MiniMax-M3.1-Flash · 0.1×**（ctx 1M）；
-  - 旧断言「qmodel_latest 已下架」作废（那是 9 月快照）。
-  - 官方客户端另有 `jmodel`（标 "new"），**文档没有展示名/倍率**，暂不列入；
-    拿到目录后再补。
-  - 仍是静态表的固有缺口：Qoder 目录端点需 WASM 签名，未实现前只能人工跟着文档更。
+- **Qoder（中国版/国际版）**：2026-11-25 已实现**真目录** —— 渠道包补上
+  `QoderEncryptedInfer.prepareRequest`（WASM 通用签名）+ `decrypt_server_response`，
+  按 `GET {encryptedInferBase}/api/v2/model/list?Encode=1` 拉取，响应并 `chat` ∪ `app`
+  场景、按 id 去重（解析在 `src/channels/qoder-catalog.js`，测试 `tests/qoder-catalog.mjs`）。
+  真机验证：选择器 13 条，含 **Qwen4-Max · x0.4**、GLM-5.4 · x0.8、Step-5-Preview · x0.3、
+  `Qwen3.8-Max · x0.5→x0.2` 等 —— 全是上游实时数据，静态表只作拉不到时的回退。
+  仍缺：`COSY_VERSION` 仍是 1.1.49（hub 用 1.1.79），`fast` 等受版本门控的条目不出现；
+  抬版本会同时改推理签名，未实测前不动。
+- **AgnesCode**：解析已支持 `points_cost_multiplier`，但本机账号 `/models` 响应
+  **没有该字段**（9 条实测），故选择器不显示倍率；上游发了就会自动显示。
 - **raccoon 扫码链**：上游扫码页本身 404，代码侧修不了。
 
 

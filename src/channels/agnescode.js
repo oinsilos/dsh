@@ -218,8 +218,13 @@ export async function readAgnescodeSession({
  * `/models` → `[{id, name, contextWindow, maxOutput}]`。
  *
  * 上游行形：`{id, model_type:'text', is_member_only, max_input_tokens,
- * max_output_tokens, description, ...}`。会员专享模型照列（能否调用由上游判），
- * 展示名后缀「（会员）」避免误选。
+ * max_output_tokens, description, points_cost_multiplier, allowed_subscription, ...}`。
+ * 会员专享模型照列（能否调用由上游判），展示名后缀「（会员）」避免误选。
+ *
+ * ⚠️ **倍率必须进展示名**（`points_cost_multiplier`）：DSH 的选择器只渲染
+ * `name`，没有展示价格的通道，而这条是计费事实 —— `kimi-k3` 6×、`gpt-6-astra`
+ * 25×，不标出来用户会在「看起来一样」的两行里选中贵 25 倍的那个。
+ * `0` 是真实报价（免费），照写 `x0.00`，不能当缺值吞掉。
  */
 export function parseAgnesModels(payload) {
   const rows = Array.isArray(payload?.data) ? payload.data : []
@@ -232,9 +237,11 @@ export function parseAgnesModels(payload) {
     if (typeof row.model_type === 'string' && row.model_type !== 'text') continue
     seen.add(id)
     const member = row.is_member_only === true
+    const multiplier = Number(row.points_cost_multiplier)
+    const rate = Number.isFinite(multiplier) && multiplier >= 0 ? ` · x${multiplier.toFixed(2)}` : ''
     out.push({
       id,
-      name: member ? `${id}（会员）` : id,
+      name: `${id}${member ? '（会员）' : ''}${rate}`,
       ...Number(row.max_input_tokens) > 0 ? { contextWindow: Number(row.max_input_tokens) } : {},
       ...Number(row.max_output_tokens) > 0 ? { maxOutput: Number(row.max_output_tokens) } : {},
     })

@@ -266,3 +266,48 @@ WorkBuddy 国际版、Qoder 国际全部消失。
 
 另：Accio 登录后补 `userinfo`（昵称/掩码手机号/区域），账号列表不再显示一串 id；
 自有目录缓存改为「失败不覆盖 + 10 分钟 TTL + 变化点强制刷新」。
+
+## 2026-11-25：Qoder 真目录 + CodeArts 倍率（对照 dsh-providers-hub 补齐）
+
+### Qoder：从「恒用静态表」改成真目录（用户指定要实现的项）
+
+- 渠道包里补了两个 WASM 能力：`QoderEncryptedInfer.prepareRequest`（通用签名，
+  `qodercontext_prepareRequest`）与 `decryptQoderServerResponseOrRaw`
+  （`decrypt_server_response`，失败即明文 —— 官方 `rb()` 语义）。
+- 目录端点：`GET {encryptedInferBase}/api/v2/model/list?Encode=1`。
+  **不要**手写 `/algo` 前缀（WASM 自己补）。响应 `{场景:[模型]}`，并 `chat` ∪ `app`
+  （`lmodel` 只在 app），跨场景按 id 去重（DSH 对重复 id 抛 `INVALID_CATALOG`）。
+- 解析抽到 `src/channels/qoder-catalog.js`，守卫 `tests/qoder-catalog.mjs`（34 条）：
+  窗口取 `context_config` 最大档（不取 `max_input_tokens`）、档位三形态 + 白名单、
+  `available_reasoning_effort` 要包一层、`enable:false` 丢弃。
+- 适配器：`ensureRemoteModels()` 30 分钟 TTL + 失败 5 分钟冷却；
+  `listModels`/`resolveModel`/`inputModalitiesFor`/`stream` 统一走 `modelOf()`
+  （远端优先、兜底表回落），展示名带倍率、`resolveModel` 用裸名。
+- **真机验证**（重启 DSH 后选择器）：Qoder (中国版) 13 条 —— `Auto · x0.3`、
+  `Qwen4-Max · x0.4`、`Qwen3.8-Max · x0.5→x0.2`、`Qwen3.8-Flash · x0.1→x0.04`、
+  `GLM-5.4 · x0.8`、`Step-5-Preview · x0.3`、`MiniMax-M3.1-Flash · x0.1` ……
+  这些条目（GLM-5.4 / Step-5-Preview）静态表里根本没有 ⇒ 证明走的是远端。
+
+### CodeArts：倍率 / 窗口 / 介绍 / 原始 id（用户报障「CodeArts 没有倍率」）
+
+- `src/channels/codearts-catalog.js`（新，纯函数）：`credit[].ratio_display` →
+  `x{n}`，按时段选生效档（错峰 21:00–次日 7:59 是 0.09x，白天 0.18x）；
+  `model_desc` 原样；`context`/`context_window` 只认正整数；**原始 `model_id`
+  不裁 `-1017`**；VL 模型仍不进目录。
+- 渠道包：`parseModelInfo` 改用它；`fetchCodeArtsRemoteModels` 增 `byId` 合并
+  （gateway 缺 `model_desc` 时用 builtin 补）与 **AgentCenter 动态窗口**
+  （两步签名：`agent-type`/`x-language` 小写且**参与签名**；query 按 key 排序后签）。
+- 适配器：`listAllModels`/`listModels` 名称带 ` · x{n}`、落 `description`；
+  `resolveModel` 用裸名 + 远端窗口。面板 `parseRatios` 也改用时段的同一份实现。
+- **真机验证**：选择器 12 条 —— `GLM-5.2 · x0.7`、`OpenPangu-2.0-Flash · x0.32`、
+  `GLM-5.3 · x0.79`、`GLM-5.3-Flash · x0.08`、`DeepSeek-V4.1-Flash · x0.09`、
+  `DeepSeek-V4.1-Flash-1017 · x0.12`、`Kimi-K3 · x2.38`、`Kimi-K3.1-Pro · x1.63`、
+  `智速模式 · x0.12`。底部 chip 也显示 `CodeArts Agent · GLM-5.3-Flash · x0.08`。
+
+### 仍缺（已登记在 README「与 dsh-providers-hub 的缺口对照」）
+
+- CodeArts 图片输入（wire + 逐模型模态；现在只声明 text，避免图被静默投影成文本）。
+- CodeArts 仅 AgentCenter 出现的模型：只作窗口源、不进目录（与 hub 同取舍）。
+- Qoder `COSY_VERSION` 仍 1.1.49（hub 1.1.79）⇒ `fast` 等受版本门控的条目不出现。
+- OfficeAce 倍率（`/v1/model-token-rates` V11 签名）未接。
+- AgnesCode 倍率：解析已支持，但本机 `/models` 响应没有 `points_cost_multiplier`。

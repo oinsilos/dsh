@@ -68,12 +68,24 @@ assert.equal(activities[0].campaignId, '1', 'campaignId 实测是数字，必须
 assert.equal(activities[0].amount, 1000)
 assert.equal(activities[1].claimable, false)
 
+const SLOTS = { default: { schedule: null }, off_peak: { schedule: '0 0 21 * * *', duration: 11, timeunit: 'hour' } }
 const ratios = parseRatios({ builtinModels: [
-  { model_id: 'deepseek-v4-flash', credit: [{ time_slot_id: 'default', ratio_display: '0.18x' }, { time_slot_id: 'off_peak', ratio_display: '0.09x' }] },
+  {
+    model_id: 'deepseek-v4-flash',
+    time_slots: SLOTS,
+    credit: [{ time_slot_id: 'default', ratio_display: '0.18x' }, { time_slot_id: 'off_peak', ratio_display: '0.09x' }],
+  },
   { model_id: 'qwen3-vl-235b', credit: [] },
   { model_id: 'glm-5.2', enable: false, credit: [{ ratio_display: '1x' }] },
-] })
-assert.deepEqual(ratios, { 'deepseek-v4-flash': 'x0.18' }, '取 default 时段；无 credit / 已停用的模型不进表')
+] }, Date.parse('2026-11-25T04:00:00Z'))
+assert.deepEqual(ratios, { 'deepseek-v4-flash': 'x0.18' }, '白天取 default 时段；无 credit / 已停用的模型不进表')
+// 错峰时段（21:00–次日 7:59）必须显示 0.09x —— 面板与选择器共用同一份时段判定
+const offPeak = parseRatios({ builtinModels: [{
+  model_id: 'deepseek-v4-flash',
+  time_slots: SLOTS,
+  credit: [{ time_slot_id: 'default', ratio_display: '0.18x' }, { time_slot_id: 'off_peak', ratio_display: '0.09x' }],
+}] }, Date.parse('2026-11-25T14:00:00Z'))
+assert.deepEqual(offPeak, { 'deepseek-v4-flash': 'x0.09' }, '错峰时段必须显示生效价')
 
 assert.equal(classifyClaim({ claimable: true, status: 'ENTRY', amount: 100 }, { ok: true, data: { benefitAmount: 1000 } }).kind, 'claimed')
 assert.equal(classifyClaim({ claimable: true, status: 'ENTRY' }, { ok: true, data: {} }).kind, 'claimed')
@@ -139,5 +151,5 @@ const bare = createCodeArtsExtras({ credentialOf: async () => ({ access_token: '
 const bareStatus = await bare.statusOf(account)
 assert.match(bareStatus.error, /AK\/SK/)
 
-console.log('codearts extras OK:', 24, 'assertions')
+console.log('codearts extras OK:', 25, 'assertions')
 process.exit(0)

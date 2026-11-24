@@ -345,27 +345,27 @@ node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲�
 发请求」的契约，点击后的异步再渲染由真壳的 React 负责；故它对折叠内容断言的是
 **请求契约**，数据语义交给前三个脚本。
 
-## 已知差异（对照上游实现，2.2.0）
-本插件的 13 个渠道来自 `vendor/channel-pack` 的一份快照，与各产品自己的 DSH 插件
-（`dsh-codearts`、`dsh-connect-qoder`、`dsh-providers-hub`）比对后，仍有三处落后：
+## 与 `dsh-providers-hub` 的缺口对照（2026-11-25）
 
-- **CodeArts 没有倍率，也少了两个发现源**：快照只用 `gateway/config` 与
-  `snap /v1/model/builtin` 两条端点，解析时只留 `model_id/model_name`，把同一份响应里的
-  `credit[].ratio_display`（倍率）、`context_window`、`supports_images` 全部丢弃，并主动过滤
-  `-VL-` 模型；窗口读的是 5 条硬编码静态表。上游 `dsh-codearts` 从 `credit[].ratio_display`
-  读倍率、走 agent-center/第三方四路发现，`dsh-providers-hub` 实测证明窗口只在
-  agent-center 下发。
-  **本插件侧的进展（2.3.0）**：倍率与活动领取已在 `src/channels/codearts.js` 补齐，
-  面板「活动」折叠与模型行的倍率标签都走这里；**DSH 选择器里仍没有倍率**（那由渠道
-  包的适配器名字决定），四路发现源与静态窗口也仍缺 —— 这两项要重建快照。
-- **Qoder / Qoder 中国版的模型目录是静态表**：快照注释称「模型列表端点需要 WASM 签名，
-  本插件不实现」，而上游 `dsh-connect-qoder` 用纯 TypeScript 的 cosy 签名（`node:crypto`）
-  就能拉 `/algo/api/v2/model/list?Encode=1` 并读取 `price_factor` 与促销显示倍率。
-- **每日自动签到默认开启**：默认值来自渠道包（`enabled: true`），不是本插件的选择；
-  页面上已加提示，需要关闭请用「每日自动签到」开关。
+渠道包来自早前快照；参考实现 `dsh-providers-hub` 同时装在本机，可直接对照。本轮已补：
 
-这三条都要改 `vendor/channel-pack/pack.js`（生成产物，标注 do not edit），因此需要重建
-快照或等上游渠道包更新；本插件这一侧只能把已有数据如实展示。
+| 能力 | 上游做法 | 本插件现状 |
+| --- | --- | --- |
+| Qoder 真目录 | WASM `prepareRequest` 打 `/api/v2/model/list?Encode=1`，响应并 `chat` ∪ `app` 场景 | ✅ 已实现（`src/channels/qoder-catalog.js` + 渠道包）；真机选择器 13 条，含 Qwen4-Max / GLM-5.4 / Step-5-Preview |
+| Qoder 倍率 | `price_factor` + `promotion` 时段 | ✅ 名称带 ` · x0.4` / `x0.5→x0.2` |
+| CodeArts 倍率 | `credit[].ratio_display`（按时段选生效档） | ✅ 选择器名称带 ` · x0.08`；面板与选择器共用 `src/channels/codearts-catalog.js` |
+| CodeArts 窗口 | AgentCenter 动态值 > builtin `context` > 静态表 | ✅ 两层远端已接（builtin `context` + AgentCenter 两步签名） |
+| CodeArts 介绍 | `model_desc` 原样透传 | ✅ |
+| CodeArts 原始 id | 不裁 `-1017` 日期后缀 | ✅（选择器 12 条，旧版/新版并存） |
+
+仍缺（已登记）：
+
+- **CodeArts 图片输入**：适配器仍只声明 `text` —— 它的 stream 会把图片投影成文本，声明 `image` 会让图**静默丢失**；要补的是 wire 形态与逐模型模态（hub 已做）。
+- **CodeArts 仅 AgentCenter 出现的模型**：只作窗口源、不进目录（与 hub 同取舍）。
+- **Qoder 版本闸门**：`COSY_VERSION` 仍是 1.1.49（hub 用 1.1.79），`fast` 等受版本门控的条目不会下发；抬版本会同时改变推理签名，未实测前不动。
+- **OfficeAce 倍率**：需要 `/v1/model-token-rates` 的 V11 签名，未接。
+- **AgnesCode 倍率**：解析已支持 `points_cost_multiplier`，但本机账号的 `/models` 响应里**没有该字段**（2026-11-25 实测 9 条，键全集不含倍率），上游不发就不显示（不臆造）。
+- **每日自动签到默认开启**：默认值来自渠道包（`enabled: true`），不是本插件的选择；页面上已加提示，需要关闭请用「每日自动签到」开关。
 
 面板共六个页签：免费模型、聚合渠道、白嫖模型接入、管线、观测、对外服务。
 
