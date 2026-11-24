@@ -6,11 +6,14 @@
  * 也就是说这句话只是警告，没有重新生成的路径。表是纯数据数组，改它就是唯一能修
  * 「模型少了」的地方。
  *
- * 这个测试把三处改动钉住，同时守住「不许凭印象改倍率」：
- * 1. **Qoder**：补 `fast`（上游 CN+global 都有，pack 漏了）；删 `qmodel_latest`/`qmodel`
- *    （上游已改名，调它们回 400）。其余 14 条倍率必须与 pack 原值逐条一致。
- * 2. **ZCode**：从 2 条扩到 4 条（GLM-5-Turbo / GLM-5.2 实测可能不可用，列出来自己试）。
- * 3. **Raccoon**：从 6 条换成上游 2026-11-17 实测的 7 条 —— 关键是 `sn-qwen4-max`
+ * 这个测试把几处改动钉住，同时守住「不许凭印象改倍率」：
+ * 1. **Qoder 国际版**：补 `fast`；删 `qmodel_latest`/`qmodel` 的旧断言已反转（11 月
+ *    Qwen4-Max 重新上线）。其余倍率必须与 pack 原值逐条一致。
+ * 2. **Qoder 中国版**：2026-11-25 整表换成**远端实拉**的新表（见该数组头部注释）——
+ *    删掉已下架的 `q37fmodel`/`gm51model`，新增 `gmodel_latest`（GLM-5.4）与
+ *    `jmodel`（Step-5-Preview）；`fast` 从 0.8 改为远端 0.6。
+ * 3. **ZCode**：从 2 条扩到 4 条（GLM-5-Turbo / GLM-5.2 实测可能不可用，列出来自己试）。
+ * 4. **Raccoon**：从 6 条换成上游 2026-11-17 实测的 7 条 —— 关键是 `sn-qwen4-max`
  *    （用户报障「千问4看不到」的直接原因）；`sn-deepseek-v4-1-flash` 换成 `-1017`
  *    （上游把旧 id 下架了，剥版本号会 404）。
  *
@@ -103,11 +106,16 @@ assert.equal(qoderIds.length, 17, `Qoder 表应为 17 条，实际 ${qoderIds.le
  */
 const qoderCn = tableOf('QODER_CN_FALLBACK_MODELS')
 const cnIds = idsOf(qoderCn)
-assert.ok(cnIds.includes('fast'), 'CN 表也必须补 fast（上游 CN 实测有，pack 两版都漏了）')
-assert.ok(cnIds.includes('qmodel_latest'), 'CN 表也必须补 Qwen4-Max（官方 CN 文档 0.4×）')
+assert.ok(cnIds.includes('fast'), 'CN 表必须含 fast（2026-11-25 远端实拉，版本闸门抬到 1.1.79 后可见）')
+assert.ok(cnIds.includes('qmodel_latest'), 'CN 表必须含 Qwen4-Max（远端实拉 0.4×）')
 assert.ok(!cnIds.includes('qmodel'), 'CN 表的 qmodel 已改名，必须删')
-assert.ok(cnIds.includes('q37fmodel'), 'q37fmodel（Qwen3.7-Flash）是 CN 独有，必须留着')
-assert.ok(cnIds.includes('gm51model'), 'gm51model 是 CN 独有，必须留着')
+// 2026-11-25 整表换成远端实拉：这两条已被上游下架，不能靠旧快照留着
+assert.ok(!cnIds.includes('q37fmodel'), 'q37fmodel（Qwen3.7-Flash）已被上游下架（远端目录无此 key）')
+assert.ok(!cnIds.includes('gm51model'), 'gm51model（GLM-5.2）已被上游下架（远端目录无此 key）')
+// 远端新增的两条
+assert.ok(rowOf(qoderCn, 'gmodel_latest').includes('GLM-5.4'), 'gmodel_latest = GLM-5.4（远端实拉新增）')
+assert.ok(rowOf(qoderCn, 'jmodel').includes('Step-5-Preview'), 'jmodel = Step-5-Preview（远端实拉新增）')
+assert.equal(numberIn(rowOf(qoderCn, 'jmodel'), 'priceFactor'), 0.3, 'Step-5-Preview 远端 0.3×')
 assert.equal(cnIds.length, 14, `CN 表应为 14 条，实际 ${cnIds.length}`)
 // CN 表原有的倍率一个都不能动
 assert.equal(numberIn(rowOf(qoderCn, 'qmodel_latest'), 'priceFactor'), 0.4, 'Qwen4-Max 是 0.4 倍（官方文档）')
@@ -116,11 +124,13 @@ assert.ok(rowOf(qoderCn, 'kmodel_latest').includes('Kimi-K3.1-Pro'), 'kmodel_lat
 assert.equal(numberIn(rowOf(qoderCn, 'kmodel_latest'), 'priceFactor'), 1, 'Kimi-K3.1-Pro 官方 1.0×')
 assert.ok(rowOf(qoderCn, 'mmodel').includes('MiniMax-M3.1-Flash'), 'mmodel 现名 MiniMax-M3.1-Flash')
 assert.equal(numberIn(rowOf(qoderCn, 'mmodel'), 'priceFactor'), 0.1, 'MiniMax-M3.1-Flash 官方 0.1×')
-// CN 表原有的倍率一个都不能动
-assert.equal(numberIn(rowOf(qoderCn, 'fast'), 'priceFactor'), 0.8, 'fast 是 0.8 倍')
+// 2026-11-25 远端实拉的值（与 qoder-catalog-qodercn.json 逐条一致）
+assert.equal(numberIn(rowOf(qoderCn, 'fast'), 'priceFactor'), 0.6, 'fast 远端是 0.6 倍（旧表 0.8 已作废）')
+assert.equal(numberIn(rowOf(qoderCn, 'auto'), 'priceFactor'), 0.3, 'Auto 远端是 0.3 倍')
 assert.equal(numberIn(rowOf(qoderCn, 'qmodel_38max'), 'priceFactor'), 0.2,
-  'CN 的 qmodel_38max 也是 0.2（含夜间 4 折活动，基础价 0.5 记在 promotion.beforePromotionPriceFactor）')
-assert.equal(numberIn(rowOf(qoderCn, 'qfmodel'), 'priceFactor'), 0, 'qfmodel 免费（0 是合法读数）')
+  'CN 的 qmodel_38max 也是 0.2（含错峰 4 折活动，基础价 0.5 记在 promotion.beforePromotionPriceFactor）')
+assert.equal(numberIn(rowOf(qoderCn, 'qfmodel'), 'priceFactor'), 0.04,
+  'qfmodel 远端生效价 0.04（错峰 4 折；基础价 0.1）')
 
 /* ── ZCode ──────────────────────────────────────────────────────────────── */
 

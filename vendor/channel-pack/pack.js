@@ -31244,6 +31244,12 @@ async function fetchCodeArtsRemoteModels(credential, fetcher = fetch) {
       const ctx = windows.get(model.id);
       if (ctx !== void 0) model.contextWindow = ctx;
     }
+    // AgentCenter 有、目录没有的 id：**只作窗口源**，不进选择器。
+    // 理由（与 hub 同）：AgentCenter 不下发倍率 ⇒ 进目录就是裸名，用户会以为它免费。
+    for (const [id, ctx] of windows) {
+      if (seen.has(id) || /-VL-/i.test(id) || /-VL$/i.test(id)) continue;
+      models.push({ id, name: id, contextWindow: ctx, windowOnly: true });
+    }
   }
   if (benefitIds.length > 0) {
     setBenefitMemoryCache(benefitIds);
@@ -32931,7 +32937,7 @@ var CodeArtsAdapter = class extends LlmAdapter {
    */
   listAllModels() {
     const source = this.remoteModels ?? DEFAULT_MODELS.map((id) => ({ id, name: id }));
-    return source.filter((m) => !/-VL-/i.test(m.id) && !/-VL$/i.test(m.id)).map((m) => ({ id: m.id, name: __ofmCodeArtsDisplayName(m) }));
+    return source.filter((m) => m.windowOnly !== true && !/-VL-/i.test(m.id) && !/-VL$/i.test(m.id)).map((m) => ({ id: m.id, name: __ofmCodeArtsDisplayName(m) }));
   }
   async listModels(_provider) {
     if (!await providerCatalogVisible(this.options.accountPool, PROVIDER)) return [];
@@ -37237,7 +37243,16 @@ import { readFileSync as readFileSync5 } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 var WASM_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "qoder-auth-wasm.wasm");
-var COSY_VERSION = "1.1.49";
+/**
+ * 客户端自称的版本（同时进 `Cosy-Version` 与签名载荷）。
+ *
+ * 2026-11-25 由 1.1.49 抬到 **1.1.79**（对齐 hub 的真机取证：本机 IDE 0.5.6 的
+ * `manifest.json.cli_version` 恒为 `1.1.79-hotfix.18`；省略预发布后缀保持 semver
+ * 单调）。目录的 `minimal_version` 闸门 `{app:1.1.66, cli:1.1.70}` 只有抬到
+ * 1.1.70+ 才会下发 `fast`。hub 在 1.1.79 下对 `lmodel` / `dfmodel` 各发一次推理
+ * 均 200 + 正文正常（2026-11-07），故本次同步抬版；改这个常量必须重测推理。
+ */
+var COSY_VERSION = "1.1.79";
 var IMPORT_MODULE = "./qoder_auth_wasm_bg.js";
 function buildQoderInferPayload(ask, requestId = crypto.randomUUID()) {
   const isReasoning = ask.isReasoning ?? false;
@@ -37927,65 +37942,32 @@ var QODER = {
   fallbackModels: QODER_FALLBACK_MODELS
 };
 var QODER_CN_FALLBACK_MODELS = [
-  // ⚠️ 全部数值逐条对照本机 CN catalog-v6 的 chat 场景实解值（2026-09-27）。
-  // 国际版曾因为「手工估值 + 单测只断言 id 列表」让价格漂移长期未被发现
-  // （14 个模型有偏差，用户报障）。改本表必须重新跑探针对照。
-  //
-  // ⚠️ **`contextWindow` 取官方档位表 `context_config` 的最大档，不是 `max_input_tokens`。**
-  //
-  // 两个字段经常自相矛盾（CN `dmodel`：`max_input_tokens: 96000`，档位表却是
-  // `{200K, 400K, 1M}`），而**官方客户端只认后者**：`isContextWindowSupportedByModel()`
-  // 把值换算成整数后交给 `zX()`，`zX()` 一旦发现档位表存在就**只检查「是否为表内成员」**，
-  // 那条 `max_input_tokens` 兜底分支（`t <= n`）根本不会执行
-  // （asar 证据：`function zX(A,e){…let i=Yai(A);if(i)return i.includes(t);…}`）。
-  // 故照 `max_input_tokens` 填（180K / 96K）会让 DSH 远早于官方能力就触发压缩。
-  //
-  // 实测（2026-09-27，CN 网关加密端点，`scripts/probe-qoder-context-needle.mjs`）：
-  // `max_input_tokens` 与 `parameters.context_length` **都不构成**服务端约束 ——
-  // 同一份 400K 提示在声明 180K / 200K / 1M / 不发该字段时**全部完整送达**
-  // （`prompt_tokens` 一致）；声明 96K 的 `dmodel` 也照收 852K。
-  //
-  // ⚠️ **上限因模型而异，不是网关统一值**（这是被实测推翻的早期结论）。
-  // 逐模型实测的最大通过量（针埋在提示正中间，命中即证明未被截断）：
-  //
-  // | 模型 | 实测通过最大 | 服务端实际计入 | 越界点 | 越界错误形态 |
-  // |---|---|---|---|---|
-  // | `dfmodel` | 938,000 目标 | **999,991** | ≈1,002,000 | `Internal Server Error` |
-  // | `qfmodel` | 984,000 目标 | **983,490** | 990,000 | 参数错误 + `Range … [1, 983616]` |
-  // | `dmodel` | 800,000 目标 | **852,951** | 985,000 | `Internal Server Error` |
-  //
-  // ⚠️ **`983,616`（`1M − 16K`）只对报了它的那个模型成立，不能推广成全局上限** ——
-  // `dfmodel` 实测通过到 999,991，已超过该数。
-  //
-  // ⇒ **取值口径（用户 2026-09-27 定）**：**档位表有 1M 档就填 1M**。
-  // - `qfmodel` / `dfmodel` / `dmodel` 及以下各条：**填 1M**。
-  //   `qfmodel` 与 `dfmodel` 的实测已逼近 1M（983,490 / 999,991）；
-  //   `dmodel` 的实测只到 852,951（985,000 越界），但它是**档位表成员 1M**
-  //   —— 采信官方档位表，且 1M × 0.8 = 800K 的压缩阈值低于 852,951 这个
-  //   已知安全点，故填 1M 在 DSH 侧安全。
-  // - `mmodel`：档位表**只有 200K 一档**，故填 200K。
-  // - `auto`：无档位表，沿用 200K。
-  //
-  // ⚠️ **思考档位**（`efforts` / `defaultEffort` / `supportsDisable`）逐条对照
-  // 客户端算法复刻结果（`scripts/probe-qoder-effort-fields.mjs`）。三条口径：
-  // - `efforts` 取自目录 `thinking_config.enabled.efforts` 的**键**（目录原序）；
-  // - `defaultEffort` 取该对象里 `is_default: true` 的键；
-  // - `supportsDisable` = 目录存在 `thinking_config.disabled` 分支。
-  // ⚠️ **`qmodel` / `qmodel_latest` 只有「关闭思考」**：目录里它们的 `enabled`
-  // **没有 `efforts` 键**，只有 `disabled` + `enabled.is_default` ——
-  // 即官方就只提供「关」这一个选项（用户 2026-09-28 确认：
-  // 「上面两个没有思考档位就是关闭的意思」）。不要给它们补默认档位。
-  // ⚠️ `q37fmodel` / `mmodel` / `auto` **连 `thinking_config` 都没有** →
-  // 完全不可选（界面显示「当前模型未提供推理等级」，与 IDE 的「不支持」一致）。
-  { id: "auto", name: "Auto", contextWindow: 2e5, supportsImage: true, supportsThinking: true, priceFactor: 0.5 },
-  // 免费额度模型（isFree=true）：e2e 探针默认用它们，以免消耗积分。
+  // ⚠️ 2026-11-25 整表换成「远端实拉」的新版（用户要求：拉到新表就把旧的静态表换掉）。
+  // 数据来自 CN 账号真机 GET {gateway}/algo/api/v2/model/list?Encode=1，
+  // 并 chat ∪ app 场景、按 id 去重（原始响应存 ~/.dsh/our-free-model/qoder-catalog-qodercn.json）。
+  // 旧表（2026-09-27 快照）里的 q37fmodel / gm51model 已被上游下架；
+  // 新增 gmodel_latest（GLM-5.4）与 jmodel（Step-5-Preview）。
+  // 运行时仍以远端为准：缓存每次成功拉取后覆写，静态表只在从未联网的机器上才用到。
+  { id: "auto", name: "Auto", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.3 },
+  // 版本闸门 {app:1.1.66, cli:1.1.70}：COSY_VERSION 抬到 1.1.79 后才会下发。
+  { id: "fast", name: "Fast", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.6 },
+  {
+    id: "qmodel_latest",
+    name: "Qwen4-Max",
+    contextWindow: 1e6,
+    supportsImage: true,
+    supportsThinking: true,
+    priceFactor: 0.4,
+    efforts: ["xhigh", "high", "low"],
+    defaultEffort: "high",
+    supportsDisable: true
+  },
   {
     id: "qmodel_38max",
     name: "Qwen3.8-Max",
     contextWindow: 1e6,
     supportsImage: true,
     supportsThinking: true,
-    isFree: true,
     priceFactor: 0.2,
     efforts: ["xhigh", "low", "medium"],
     defaultEffort: "medium",
@@ -37993,62 +37975,31 @@ var QODER_CN_FALLBACK_MODELS = [
     promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.5, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 4 \u6298" }
   },
   {
-    // ⚠️ 2026-11-25 加回：同国际版，`qmodel_latest` = Qwen4-Max（官方文档 0.4×）。
-    // 本机 CN 客户端 11-21 的模型选择器里它是 "new"；偏好表 ctx=1M。
-    id: "qmodel_latest",
-    name: "Qwen4-Max",
-    contextWindow: 1e6,
-    supportsImage: true,
-    supportsThinking: true,
-    priceFactor: 0.4,
-    efforts: ["xhigh", "low", "medium"],
-    defaultEffort: "xhigh",
-    supportsDisable: true
-  },
-  {
-    // ⚠️ `priceFactor: 0` 是**免费**，不是缺失 —— 0 是合法值，不能用 `> 0` 过滤。
-    // 实测最大窗口：984,000 目标 → 服务端计入 **983,490**（越界点 990,000，
-    // 越界时服务端回 `Range of input length should be [1, 983616]`）。填 1M。
+    // priceFactor 0.04 是**采集时刻的生效价**（错峰 4 折），原价 0.1。
     id: "qfmodel",
     name: "Qwen3.8-Flash",
     contextWindow: 1e6,
     supportsImage: true,
     supportsThinking: true,
-    isFree: true,
-    priceFactor: 0,
-    originalPriceFactor: 0.1,
+    priceFactor: 0.04,
     efforts: ["xhigh", "low", "medium"],
     defaultEffort: "medium",
-    supportsDisable: true
+    supportsDisable: true,
+    promotion: { active: true, discountFactor: 0.4, beforePromotionPriceFactor: 0.1, windowStart: "22:00", windowEnd: "08:00", badgeZh: "\u9519\u5CF0 4 \u6298" }
   },
-
-
-  // CN 独有：Qwen3.7-Flash（国际版目录无此 key）
-  // ⚠️ 目录里**完全没有 `thinking_config`** → 不可选档位（IDE 显示「不支持」）。
-  { id: "q37fmodel", name: "Qwen3.7-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1 },
-  // ⚠️ CN 的 `max_input_tokens` 是 96000，但档位表与其它模型一样有 1M 档；
-  // 官方客户端只认档位表 → **填 1M**（用户 2026-09-27 定：档位表有 1M 就填 1M）。
-  // 实测只探到 800,000 目标 → 服务端计入 **852,951** 通过，985,000 时越界且
-  // **只回 `Internal Server Error`（未给出区间）**，故它的真实天花板未探明；
-  // 但 1M × 0.8 = 800K 的压缩阈值低于 852,951 这个已证安全点，故 1M 在 DSH 侧安全。
   { id: "dmodel", name: "DeepSeek-V4-Pro", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.5, efforts: ["high", "max"], defaultEffort: "max", supportsDisable: true },
-  // ⚠️ CN 的 `is_reasoning` 为 false（国际版为 true），故不声明 supportsThinking。
-  // 实测最大窗口：938,000 目标 → 服务端计入 **999,991** 通过（连续 3 次可复现），
-  // 939,000 时越界（`Internal Server Error`）→ 真实上限≈1,000,000。填 1M。
-  { id: "dfmodel", name: "DeepSeek-Flash", contextWindow: 1e6, supportsImage: true, priceFactor: 0.1, efforts: ["high", "max", "low"], defaultEffort: "max", supportsDisable: true },
-  // ⚠️ `gmodel` / `gfmodel` / `kmodel*` 有档位但**无 `disabled` 分支** → 不能关闭。
-  { id: "gmodel", name: "GLM-5.3", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "max" },
+  // ⚠️ CN 的 is_reasoning 为 false（国际版为 true），故不声明 supportsThinking。
+  { id: "dfmodel", name: "DeepSeek-Flash", contextWindow: 1e6, supportsImage: true, priceFactor: 0.1, efforts: ["high", "max", "low"], defaultEffort: "high", supportsDisable: true },
+  // CN 独有（旧表没有）：GLM-5.4。
+  { id: "gmodel_latest", name: "GLM-5.4", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "high" },
+  // ⚠️ gmodel / gfmodel / kmodel* 有档位但**无 disabled 分支** → 不能关闭。
+  { id: "gmodel", name: "GLM-5.3", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "high" },
   { id: "gfmodel", name: "GLM-5.3-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1, efforts: ["high", "max"], defaultEffort: "max" },
-  // CN 独有：GLM-5.2（国际版目录无此 key）
-  { id: "gm51model", name: "GLM-5.2", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.6, efforts: ["high", "max"], defaultEffort: "max", supportsDisable: true },
-  { id: "kmodel_latest", name: "Kimi-K3.1-Pro", contextWindow: 1e6, supportsImage: true, priceFactor: 1, efforts: ["high", "low", "max"], defaultEffort: "max" },
-  { id: "kmodel", name: "Kimi-K2.8-Preview", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "max" },
-  // ⚠️ 版本是 **M2.7**（国际版 M3），且 CN 的 `is_vl` 为 false，故两个标记都不写。
-  // ⚠️ 唯一档位表只有 200K 一档的 CN 模型 —— 不要跟着其它条改成 1M。
-  // ⚠️ 目录里也**没有 `thinking_config`** → 不可选档位（与 IDE「不支持」一致）。
-    // 上游 CN 实测有、pack 两版兜底表都漏了（dsh-connect-qoder 2026-11-02，0.8 倍）。
-  { id: "fast", name: "Fast", contextWindow: 2e5, supportsImage: true, supportsThinking: false, priceFactor: 0.8 },
-{ id: "mmodel", name: "MiniMax-M3.1-Flash", contextWindow: 1e6, supportsImage: true, priceFactor: 0.1 }
+  { id: "kmodel_latest", name: "Kimi-K3.1-Pro", contextWindow: 1e6, supportsImage: true, priceFactor: 1, efforts: ["high", "low", "max"], defaultEffort: "high" },
+  { id: "kmodel", name: "Kimi-K2.8-Preview", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.8, efforts: ["high", "low", "max"], defaultEffort: "high" },
+  // jmodel = Step-5-Preview（旧表完全没有；客户端 chatModelUpdates 里标 "new"）。
+  { id: "jmodel", name: "Step-5-Preview", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.3, efforts: ["high", "low", "medium"], defaultEffort: "high", supportsDisable: true },
+  { id: "mmodel", name: "MiniMax-M3.1-Flash", contextWindow: 1e6, supportsImage: true, supportsThinking: true, priceFactor: 0.1, efforts: ["xhigh", "high", "low", "max", "medium"], defaultEffort: "xhigh" }
 ];
 var QODER_CN = {
   // ⚠️ id 不带连字符：它同时是 cordis 服务名（`qodercnAuth`）、LLM 路由名
@@ -38708,16 +38659,30 @@ var QoderAdapter = class extends LlmAdapter4 {
     this.fallbackIndex = new Map(
       (this.product.fallbackModels ?? []).map((model) => [model.id, model])
     );
+    // 上一次成功拉到的远端目录（磁盘）。启动时先用它当兜底，比编译期静态表新。
+    this.cachedModels = loadQoderCatalogCache(this.product);
   }
   product;
   fetchImpl;
   /** 产品级兜底模型索引（`product.fallbackModels` 的 id → 条目）。 */
   fallbackIndex;
-  /** 远端目录（首次成功拉取后填充；`undefined` = 还没拿到，用兜底表）。 */
+  /** 上次成功拉取的远端目录（磁盘缓存；`undefined` = 没有）。 */
+  cachedModels;
+  /** 远端目录（本次进程内成功拉取后填充）。 */
   remoteModels;
   remoteModelsAt = 0;
   /** 目录加载闸门：并发去重 + 失败冷却（与 CodeArts 同一实现）。 */
   catalogGate = new RemoteCatalogGate({ cooldownMs: 5 * 6e4 });
+  /**
+   * 当前可用的目录：进程内远端 > 磁盘缓存（上次远端） > 编译期静态表。
+   *
+   * ⚠ 「拉到新表就把旧静态表换掉」的落点就在这里：缓存文件由
+   * {@link saveQoderCatalogCache} 在每次拉取成功后覆写，静态表只在**从未联网**
+   * 的机器上才会被用到。
+   */
+  catalogFallback() {
+    return this.remoteModels ?? this.cachedModels ?? this.product.fallbackModels;
+  }
   /**
    * 某个模型 id 的权威条目：**远端优先，兜底表回落**。
    *
@@ -38725,11 +38690,9 @@ var QoderAdapter = class extends LlmAdapter4 {
    * —— 两处各查一份表就会出现「菜单显示远端新价、发请求却按旧表的 is_vl」。
    */
   modelOf(model) {
-    if (this.remoteModels !== void 0) {
-      const hit = this.remoteModels.find((entry) => entry.id === model);
-      if (hit !== void 0) return hit;
-    }
-    return this.fallbackIndex.get(model);
+    const source = this.catalogFallback();
+    const hit = source.find((entry) => entry.id === model);
+    return hit ?? this.fallbackIndex.get(model);
   }
   /**
    * 懒加载远端目录（30 分钟 TTL；失败进入 5 分钟冷却并保持兜底表）。
@@ -38752,6 +38715,9 @@ var QoderAdapter = class extends LlmAdapter4 {
         if (models.length === 0) return false;
         this.remoteModels = models;
         this.remoteModelsAt = Date.now();
+        // 拉到新表 ⇒ 落盘并**顶替旧静态表**（下次启动即使离线也用这份新的）。
+        this.cachedModels = models;
+        saveQoderCatalogCache(this.product, models);
         return true;
       } catch (error) {
         // 留痕（脱敏：不含凭据）：目录挂掉 ⇒ 选择器退回兜底表，而**不是**变空。
@@ -38823,7 +38789,7 @@ var QoderAdapter = class extends LlmAdapter4 {
    * （用户报障：「关闭的就没有显示倍率」）。详见 `model.list` 端点的注释。
    */
   listAllModels() {
-    const source = this.remoteModels ?? this.product.fallbackModels;
+    const source = this.catalogFallback();
     // 同步契约（RPC 用）⇒ 首次读取时在后台拉一次，下一次调用就能拿到远端目录。
     if (this.remoteModels === void 0) void this.ensureRemoteModels();
     return source.map((model) => ({ id: model.id, name: qoderDisplayName(model) }));
@@ -38832,7 +38798,7 @@ var QoderAdapter = class extends LlmAdapter4 {
     if (!await providerCatalogVisible(this.options.accountPool, this.product.id)) return [];
     await this.ensureRemoteModels();
     const disabled = this.options.accountPool?.disabledModelsFor(this.product.id);
-    const source = this.remoteModels ?? this.product.fallbackModels;
+    const source = this.catalogFallback();
     const listed = disabled === void 0 || disabled.size === 0 ? source : source.filter((model) => !disabled.has(model.id));
     return listed.map((model) => ({
       provider: this.product.id,
@@ -39252,6 +39218,43 @@ async function fetchQoderRemoteCatalog(credential, product, fetcher) {
       client?.dispose();
     } catch {
     }
+  }
+}
+/**
+ * Qoder 远端目录的磁盘缓存（「拉到新表就顶替旧静态表」的落点）。
+ *
+ * 路径：`~/.dsh/our-free-model/qoder-catalog-<provider>.json`（CN / 国际版各一份，
+ * provider 分别是 `qodercn` / `qoder`）。与 `~/.cache/deveco` 那类**跨插件共享**
+ * 的缓存分开：这是本插件自己的启动兜底，格式随解析器演进，不能被别的插件读到。
+ */
+function qoderCatalogCachePath(product) {
+  const home = process.env.USERPROFILE ?? process.env.HOME;
+  if (!home) return void 0;
+  return `${home}/.dsh/our-free-model/qoder-catalog-${product.id}.json`;
+}
+function loadQoderCatalogCache(product) {
+  const path2 = qoderCatalogCachePath(product);
+  if (path2 === void 0 || !existsSync3(path2)) return void 0;
+  try {
+    const rows = JSON.parse(readFileSync3(path2, "utf-8"));
+    if (!Array.isArray(rows)) return void 0;
+    // 只收「形状可信」的行：缓存可能来自旧版本解析器，坏行直接丢弃（不阻塞启动）。
+    const models = rows.filter((row) => typeof row === "object" && row !== null && typeof row.id === "string" && row.id.length > 0 && typeof row.name === "string" && row.name.length > 0);
+    return models.length > 0 ? models : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function saveQoderCatalogCache(product, models) {
+  const path2 = qoderCatalogCachePath(product);
+  if (path2 === void 0) return;
+  const dir = path2.slice(0, path2.lastIndexOf("/"));
+  try {
+    mkdirSync3(dir, { recursive: true });
+    const tmp = path2 + ".tmp";
+    writeFileSync3(tmp, JSON.stringify(models), "utf-8");
+    renameSync3(tmp, path2);
+  } catch {
   }
 }
 function registerQoderLlm(ctx, options) {

@@ -169,10 +169,13 @@ minimaxintl 4、marvis 1、**accio 0**（modelCode 按账号下发、刻意为�
   `QoderEncryptedInfer.prepareRequest`（WASM 通用签名）+ `decrypt_server_response`，
   按 `GET {encryptedInferBase}/api/v2/model/list?Encode=1` 拉取，响应并 `chat` ∪ `app`
   场景、按 id 去重（解析在 `src/channels/qoder-catalog.js`，测试 `tests/qoder-catalog.mjs`）。
-  真机验证：选择器 13 条，含 **Qwen4-Max · x0.4**、GLM-5.4 · x0.8、Step-5-Preview · x0.3、
-  `Qwen3.8-Max · x0.5→x0.2` 等 —— 全是上游实时数据，静态表只作拉不到时的回退。
-  仍缺：`COSY_VERSION` 仍是 1.1.49（hub 用 1.1.79），`fast` 等受版本门控的条目不出现；
-  抬版本会同时改推理签名，未实测前不动。
+  真机验证：选择器 **14 条**，含 **Qwen4-Max · x0.4**、**Fast · x0.6**、GLM-5.4 · x0.8、
+  Step-5-Preview · x0.3、`Qwen3.8-Max · x0.5→x0.2` 等 —— 全是上游实时数据。
+  拉到新表即**落盘顶替旧静态表**（`~/.dsh/our-free-model/qoder-catalog-<provider>.json`，
+  每次成功拉取覆写），CN 静态表也已按 2026-11-25 远端实拉整表重写；
+  国际版共用同一适配器，登录后自动走同一流程（本机暂无国际版账号，未实拉）。
+  `COSY_VERSION` 已由 1.1.49 抬到 **1.1.79**（对齐本机 IDE 0.5.6 的 `cli_version`），
+  `fast` 因此可见；已用 CN 真机发一条消息验证推理正常（2 秒回「收到」）。
 - **AgnesCode**：解析已支持 `points_cost_multiplier`，但本机账号 `/models` 响应
   **没有该字段**（9 条实测），故选择器不显示倍率；上游发了就会自动显示。
 - **raccoon 扫码链**：上游扫码页本身 404，代码侧修不了。

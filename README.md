@@ -351,7 +351,8 @@ node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲�
 
 | 能力 | 上游做法 | 本插件现状 |
 | --- | --- | --- |
-| Qoder 真目录 | WASM `prepareRequest` 打 `/api/v2/model/list?Encode=1`，响应并 `chat` ∪ `app` 场景 | ✅ 已实现（`src/channels/qoder-catalog.js` + 渠道包）；真机选择器 13 条，含 Qwen4-Max / GLM-5.4 / Step-5-Preview |
+| Qoder 真目录 | WASM `prepareRequest` 打 `/api/v2/model/list?Encode=1`，响应并 `chat` ∪ `app` 场景 | ✅ 已实现（`src/channels/qoder-catalog.js` + 渠道包）；真机选择器 14 条，含 Qwen4-Max / Fast / GLM-5.4 / Step-5-Preview |
+| Qoder 目录缓存 | 拉到的表落盘，下次离线直接用新表 | ✅ `~/.dsh/our-free-model/qoder-catalog-<provider>.json`，每次成功覆写；CN 静态表也按 11-25 远端实拉重写 |
 | Qoder 倍率 | `price_factor` + `promotion` 时段 | ✅ 名称带 ` · x0.4` / `x0.5→x0.2` |
 | CodeArts 倍率 | `credit[].ratio_display`（按时段选生效档） | ✅ 选择器名称带 ` · x0.08`；面板与选择器共用 `src/channels/codearts-catalog.js` |
 | CodeArts 窗口 | AgentCenter 动态值 > builtin `context` > 静态表 | ✅ 两层远端已接（builtin `context` + AgentCenter 两步签名） |
@@ -362,7 +363,6 @@ node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲�
 
 - **CodeArts 图片输入**：适配器仍只声明 `text` —— 它的 stream 会把图片投影成文本，声明 `image` 会让图**静默丢失**；要补的是 wire 形态与逐模型模态（hub 已做）。
 - **CodeArts 仅 AgentCenter 出现的模型**：只作窗口源、不进目录（与 hub 同取舍）。
-- **Qoder 版本闸门**：`COSY_VERSION` 仍是 1.1.49（hub 用 1.1.79），`fast` 等受版本门控的条目不会下发；抬版本会同时改变推理签名，未实测前不动。
 - **OfficeAce 倍率**：需要 `/v1/model-token-rates` 的 V11 签名，未接。
 - **AgnesCode 倍率**：解析已支持 `points_cost_multiplier`，但本机账号的 `/models` 响应里**没有该字段**（2026-11-25 实测 9 条，键全集不含倍率），上游不发就不显示（不臆造）。
 - **每日自动签到默认开启**：默认值来自渠道包（`enabled: true`），不是本插件的选择；页面上已加提示，需要关闭请用「每日自动签到」开关。

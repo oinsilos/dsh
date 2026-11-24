@@ -283,10 +283,18 @@ WorkBuddy 国际版、Qoder 国际全部消失。
 - 适配器：`ensureRemoteModels()` 30 分钟 TTL + 失败 5 分钟冷却；
   `listModels`/`resolveModel`/`inputModalitiesFor`/`stream` 统一走 `modelOf()`
   （远端优先、兜底表回落），展示名带倍率、`resolveModel` 用裸名。
-- **真机验证**（重启 DSH 后选择器）：Qoder (中国版) 13 条 —— `Auto · x0.3`、
-  `Qwen4-Max · x0.4`、`Qwen3.8-Max · x0.5→x0.2`、`Qwen3.8-Flash · x0.1→x0.04`、
-  `GLM-5.4 · x0.8`、`Step-5-Preview · x0.3`、`MiniMax-M3.1-Flash · x0.1` ……
-  这些条目（GLM-5.4 / Step-5-Preview）静态表里根本没有 ⇒ 证明走的是远端。
+- **真机验证**（重启 DSH 后选择器）：Qoder (中国版) **14 条** —— `Auto · x0.3`、
+  `Fast · x0.6`、`Qwen4-Max · x0.4`、`Qwen3.8-Max · x0.5→x0.2`、
+  `Qwen3.8-Flash · x0.1→x0.04`、`GLM-5.4 · x0.8`、`Step-5-Preview · x0.3`、
+  `MiniMax-M3.1-Flash · x0.1` …… 这些条目（GLM-5.4 / Fast / Step-5-Preview）
+  静态旧表里根本没有 ⇒ 证明走的是远端。
+- **拉到新表就顶替旧静态表**：每次成功拉取写
+  `~/.dsh/our-free-model/qoder-catalog-<provider>.json`（CN / 国际版各一份），
+  下次启动先读它当兜底；CN 的 `QODER_CN_FALLBACK_MODELS` 也已按 11-25 远端实拉
+  整表重写（删掉已下架的 q37fmodel/gm51model，新增 gmodel_latest / jmodel）。
+- **`COSY_VERSION` 1.1.49 → 1.1.79**（对齐 hub 的取证：本机 IDE 0.5.6 的
+  `cli_version` 恒为 `1.1.79-hotfix.18`）⇒ `fast` 通过版本闸门进目录。
+  已用 CN 账号真机发一条消息验证推理：2 秒回「收到」（选择器 chip `x0.1`）。
 
 ### CodeArts：倍率 / 窗口 / 介绍 / 原始 id（用户报障「CodeArts 没有倍率」）
 
@@ -308,6 +316,5 @@ WorkBuddy 国际版、Qoder 国际全部消失。
 
 - CodeArts 图片输入（wire + 逐模型模态；现在只声明 text，避免图被静默投影成文本）。
 - CodeArts 仅 AgentCenter 出现的模型：只作窗口源、不进目录（与 hub 同取舍）。
-- Qoder `COSY_VERSION` 仍 1.1.49（hub 1.1.79）⇒ `fast` 等受版本门控的条目不出现。
 - OfficeAce 倍率（`/v1/model-token-rates` V11 签名）未接。
 - AgnesCode 倍率：解析已支持，但本机 `/models` 响应没有 `points_cost_multiplier`。
