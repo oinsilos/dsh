@@ -21,6 +21,7 @@
 
 import { exchangeCode, fetchNickname, pollDeviceLogin, startDeviceLogin } from './codely.js'
 import { MINIMAX_PRODUCTS, pollDeviceTokenOnce, startDeviceAuthorization } from './minimax.js'
+import { bindAstudioWechatSession, completeAstudioLogin, inlineWechatQr, pollAstudioWechatScan, startAstudioWechatQr } from './astudio.js'
 
 /**
  * 一家渠道的设备码流程。
@@ -100,6 +101,47 @@ const FLOWS = {
       }
     },
   },
+  /**
+   * AStudio：**微信扫码**（SSO），没有用户码 —— 面板显示二维码图片。
+   *
+   * 三段式：`qrcode` 拿码 → `uids` 轮询扫码状态 → `bind` 确认 → 控制面换凭据。
+   * 状态映射：`code:-1` 继续等；`infoList` 为空 = 该微信没开通 AStudio（重扫同一号
+   * 仍然是空，必须去客户端绑定手机号）⇒ 当场报清楚，别让用户反复扫。
+   */
+  astudio: {
+    async start({ fetch: fetchImpl }) {
+      const qr = await startAstudioWechatQr({ fetch: fetchImpl })
+      if (qr.error !== undefined) return qr
+      // 二维码内联成 data URL（外链图片在 `dsh-app://` 渲染进程里可能被策略挡掉）；
+      // 取不到就退回原始地址 —— 登录不该因为「图片没下下来」而失败。
+      const inlined = await inlineWechatQr(qr.qrUrl, { fetch: fetchImpl })
+      return {
+        state: { fd: qr.fd },
+        userCode: '',
+        verificationUri: inlined.dataUrl ?? qr.qrUrl,
+        // 扫码没有「打开授权页」这个动作，故 complete 留空（面板据此不渲染链接）。
+        verificationUriComplete: '',
+        intervalMs: 2000,
+        expiresIn: 300,
+        qr: true,
+      }
+    },
+    async poll(state, { fetch: fetchImpl }) {
+      const scanned = await pollAstudioWechatScan(state.fd, { fetch: fetchImpl })
+      if (scanned.status === 'pending') return { status: 'pending' }
+      // 「没开通账号」不是可重试的失败：换一张二维码也一样，必须去客户端开户。
+      if (scanned.status === 'unbound') return { status: 'denied', error: scanned.message }
+      if (scanned.status !== 'scanned') return { status: 'error', error: scanned.message }
+      await bindAstudioWechatSession(state.fd, scanned.account, { fetch: fetchImpl })
+      const completed = await completeAstudioLogin(scanned.account, { fetch: fetchImpl })
+      if (completed.error !== undefined) return { status: 'error', error: completed.error }
+      return {
+        status: 'authorized',
+        credential: completed.credential,
+        ...completed.nickname === undefined ? {} : { nickname: completed.nickname },
+      }
+    },
+  },
 }
 
 export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
@@ -133,6 +175,8 @@ export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
         verificationUriComplete: started.verificationUriComplete,
         intervalMs: started.intervalMs,
         expiresIn: started.expiresIn,
+        // 扫码型渠道（AStudio）：没有用户码，面板要画**二维码图片**而不是一行验证码。
+        ...started.qr === true ? { qr: true } : {},
       }
     },
 

@@ -43,6 +43,8 @@ import { MONKEYCODE_PRODUCTS, createMonkeycodeExtras } from './monkeycode.js'
 import { createBaizhiExtras } from './baizhi.js'
 import { createOfficeaceExtras } from './officeace.js'
 import { createAstudioExtras } from './astudio.js'
+import { createDoubaoExtras } from './doubao.js'
+import { AGNESCODE_PRODUCTS, createAgnescodeExtras } from './agnescode.js'
 import { OWN_PROVIDERS } from './accounts.js'
 
 /** 已实现的扩展渠道 → 工厂。加新渠道就是加一行。 */
@@ -71,8 +73,53 @@ const PROVIDERS = {
   baizhi: createBaizhiExtras,
   // OfficeAce：目录内置，没有签到端点（只有额度读数）。
   officeace: createOfficeaceExtras,
-  // AStudio：Cookie→Bearer，目录远端；签到端点尚未取证。
+  // AStudio：Cookie→Bearer，目录远端，签到是**弹窗**语义（pending → complete）。
   astudio: createAstudioExtras,
+  // 豆包：cookie 会话 + 页面签名的每日签到，额度走 commerce 腿；
+  // 推理/目录走 `/chat/completion` 与 `brief_list` 两条自己的协议。
+  doubao: createDoubaoExtras,
+  // AgnesCode：登录态只存在于桌面客户端（Chromium v10 + DPAPI），
+  // 由 `/channels/own/import` 读出来；目录账号级下发，无静态兜底。
+  agnescode: shared => createAgnescodeExtras({ ...shared, product: AGNESCODE_PRODUCTS.agnescode }),
+  agnescodeintl: shared => createAgnescodeExtras({ ...shared, product: AGNESCODE_PRODUCTS.agnescodeintl }),
+}
+
+/**
+ * 把「每日签到」补成一条**活动行**。
+ *
+ * 多数自有渠道的 `statusOf` 只回 `checkin` 读数（`canCheckIn` / `claimable` /
+ * `todayCheckedIn`），没有 `activities`；面板的「活动」折叠因此永远空白，用户
+ * 只能靠卡片上的「一键领取」猜。这里统一翻译成活动行（与豆包/AStudio 已有的
+ * 形状一致），领取仍然走 `/channels/extra/claim`。
+ *
+ * - `stateless` 两家（AutoClaw / 超级麦吉）没有签到状态端点，但领取本身按天
+ *   幂等，给一个可执行入口比不给好；
+ * - 读不到布尔位的账号**不伪造状态**：没有可判定的字段就不产生活动行。
+ */
+export function withDailyCheckinActivity(provider, row) {
+  if (row === null || typeof row !== 'object') return row
+  if (Array.isArray(row.activities) && row.activities.length > 0) return row
+  const state = row.checkin !== null && typeof row.checkin === 'object' ? row.checkin : null
+  const stateless = provider === 'autoclaw' || provider === 'autoclawintl'
+    || provider === 'magicrew' || provider === 'magicrewintl'
+  const claimable = state === null
+    ? (stateless ? true : undefined)
+    : typeof state.claimable === 'boolean' ? state.claimable
+      : typeof state.canCheckIn === 'boolean' ? state.canCheckIn
+        : state.todayCheckedIn === false ? true
+          : state.todayCheckedIn === true ? false : undefined
+  if (claimable === undefined) return row
+  return {
+    ...row,
+    activities: [{
+      campaignId: `${provider}:daily`,
+      type: 'checkin',
+      title: '每日签到',
+      claimable,
+      status: claimable ? '' : '今天已签',
+      amount: Number(state?.todayCredit ?? state?.reward) || 0,
+    }],
+  }
 }
 
 /** 一个什么都不做的空实现：宿主没挂渠道包时页照常渲染。 */
@@ -154,7 +201,22 @@ export function createChannelExtras({ pool, resolve, ownAccounts, fetch: fetchIm
       const rows = []
       for (const account of accountsOf(provider)) {
         try {
-          rows.push(await handler.statusOf({ ...account, provider }))
+          /**
+           * ⚠️ **没有凭据的账号 = 待登录，不是「查询失败」**。
+           *
+           * 「添加账号」会先建一个占位账号，凭据要等用户在浏览器/扫码那边登完才写进来；
+           * 用户中途关掉窗口就会留下一条永远没有凭据的行。以前这里照样去问上游，
+           * 拿到「凭据不可用」画成红字 —— 面板上表现为「都没登账号还提示余额查询失败」。
+           * 判据放在**入口这一处**：凭据为空就只回 `pending`，不惊动任何上游。
+           */
+          const credential = ownAccounts !== undefined && OWN_PROVIDERS.includes(provider)
+            ? await shared.credentialOf(account)
+            : undefined
+          if (credential === null) {
+            rows.push({ accountId: account?.id ?? '', nickname: account?.nickname ?? '', pending: true })
+            continue
+          }
+          rows.push(withDailyCheckinActivity(provider, await handler.statusOf({ ...account, provider })))
         } catch (error) {
           logger?.warn?.(`our-free-model: ${provider} 权益查询失败（${account?.id ?? '?'}）：${error instanceof Error ? error.message : String(error)}`)
           rows.push({ accountId: account?.id ?? '', nickname: account?.nickname ?? '', error: '权益查询失败' })
@@ -189,5 +251,13 @@ export function createChannelExtras({ pool, resolve, ownAccounts, fetch: fetchIm
     },
     /** 渠道的账号清单（含停用），供面板渲染「本插件自己的渠道」那一组。 */
     accounts: provider => allAccountsOf(provider),
+    /**
+     * 清掉没有凭据的占位账号（登录流程是内存态，进程重启后那些行永远等不到凭据）。
+     * 返回 `{provider, id}[]`；宿主启动时调一次，面板上就不再有一片「待登录」。
+     */
+    prunePending: async () => {
+      if (ownAccounts === undefined || typeof ownAccounts.prunePending !== 'function') return []
+      return ownAccounts.prunePending()
+    },
   }
 }

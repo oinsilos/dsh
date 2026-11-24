@@ -240,12 +240,47 @@ globalThis.fetch = async (input, init = {}) => {
   if (url === `${API_PREFIX}/channels/own/login/start` && (init.method ?? '') === 'POST') {
     return jsonResponse({ accountId: 'codely-1', userCode: 'ABCD-EFGH', verificationUri: 'https://codely/device', verificationUriComplete: 'https://codely/device?c=ABCD', intervalMs: 2000 })
   }
+  // 宿主清单对账：故意**少报一个**（astudio）—— 面板必须把「宿主是旧代码」画出来，
+  // 而不是让用户对着「按钮没反应」猜（2026-11-24 真实报障形态）。
+  if (url.startsWith(`${API_PREFIX}/channels/manifest`)) {
+    const expect = new URL(url, 'http://127.0.0.1').searchParams.get('expect') ?? ''
+    const ids = expect.split(',').map(id => id.trim()).filter(Boolean)
+    const known = ids.filter(id => id !== 'astudio')
+    return jsonResponse({
+      buildId: 'smoke',
+      pack: [],
+      own: known.map(id => ({ id, login: 'device', qr: false, browser: false, extras: true, models: 0 })),
+      totals: { pack: 13, own: known.length, all: 13 + known.length },
+      missing: ids.filter(id => id === 'astudio'),
+    })
+  }
+  if (url.startsWith(`${API_PREFIX}/channels/own/models?`)) {
+    const provider = new URL(url, 'http://127.0.0.1').searchParams.get('provider')
+    return jsonResponse({
+      provider,
+      models: [
+        { id: `${provider}-a`, modelId: `${provider}-a`, name: `${provider} A`, disabled: false, ratio: 'x0.5' },
+        { id: `${provider}-b`, modelId: `${provider}-b`, name: `${provider} B`, disabled: true },
+      ],
+      counts: { total: 2, disabled: 1, closed: false },
+      // 取不到最新列表：面板必须显示「预制目录」并把原因放进悬停。
+      catalog: { source: 'preset', at: 0, error: '上游目录超时' },
+    })
+  }
   if (url.startsWith(`${API_PREFIX}/channels/own?`)) {
     const provider = new URL(url, 'http://127.0.0.1').searchParams.get('provider')
-    const own = provider === 'codely' ? [{ id: 'codely-1', nickname: 'unity', credentialRef: 'OFM_CODELY_ACCOUNT_AAAA', enabled: true, createdAt: 1 }]
-      : provider === 'autoclaw' ? [{ id: 'autoclaw-1', nickname: '138****8000', credentialRef: 'OFM_AUTOCLAW_ACCOUNT_BBBB', enabled: true, createdAt: 2 }]
+    const own = provider === 'codely' ? [{ id: 'codely-1', nickname: 'unity', credentialRef: 'OFM_CODELY_ACCOUNT_AAAA', enabled: true, createdAt: 1, refreshable: true }]
+      : provider === 'autoclaw' ? [{ id: 'autoclaw-1', nickname: '138****8000', credentialRef: 'OFM_AUTOCLAW_ACCOUNT_BBBB', enabled: true, createdAt: 2, refreshable: false }]
         : []
-    return jsonResponse({ provider, supported: provider === 'codely' || provider === 'autoclaw', accounts: own })
+    return jsonResponse({
+      provider,
+      supported: provider === 'codely' || provider === 'autoclaw',
+      accounts: own,
+      // 卡片上的模型计数来自这里（以前写死 0 ⇒ 永远「模型 —」）。
+      models: provider === 'codely' ? { total: 4, disabled: 1, closed: false } : { total: 0, disabled: 0, closed: false },
+      closed: false,
+      refreshable: provider === 'codely',
+    })
   }
   if (url.startsWith(`${API_PREFIX}/channels/own/login/poll?`)) {
     return jsonResponse({ done: true, success: true, nickname: 'unity-user' })
@@ -321,6 +356,8 @@ const t = key => ({
   'chan.task.none': '没有可领取的任务。',
   'chan.provider.doneOff': '已关闭「{name}」：{models} 个模型、{accounts} 个账号',
   'chan.quota.window': '{type} 已用 {percent}%',
+  'chan.manifest.stale': '宿主旧代码，缺 {missing}',
+  'chan.manifest.staleHint': '重启或热重载',
 }[key] ?? key)
 
 let tree = null
@@ -400,7 +437,10 @@ assert.ok(opened[0] >= 12, `账号折叠只点开了 ${opened[0]} 张卡片`)
 assert.ok(opened[1] >= 2, `任务折叠只点开了 ${opened[1]} 张卡片`)
 assert.ok(opened[2] >= 1, '订阅额度折叠没有点开')
 assert.ok(opened[3] >= 1, '活动折叠没有点开')
-await settle()
+// 自有渠道的余额/模型走了额外的 HTTP 路由，折叠里的串行 await 链比之前长；
+// 多跑几个渲染回合，让 `tree` 落在数据落地之后（否则后面点不到「任务领取」）。
+await settle(20)
+assert.ok(flat.includes('3/4'), '自有渠道卡片没有显示真实的模型计数（3/4）')
 
 // ── 契约断言 ───────────────────────────────────────────────────────────────
 // 折叠内容的渲染依赖「点击 → await → setState → 再渲染」这条链；替身 React 对
@@ -424,7 +464,14 @@ assert.ok(issued('provider.status').length >= 1)
 // 权益扩展走本插件自己的 HTTP 路由（不是渠道包 RPC）
 const extraGets = httpCalls.filter(row => row.url.includes('/channels/extra?'))
 assert.ok(extraGets.length >= 1, '活动查询没有打到 /channels/extra')
-assert.ok(extraGets[0].url.includes('provider=codearts'), '活动查询没带 provider')
+assert.ok(extraGets.some(row => row.url.includes('provider=codearts')), '活动查询没带 provider')
+// 自有渠道的**余额读数**也走这条自己的路由（以前会问渠道包的 credits.balances，
+// 换回 unsupported provider，于是「都没登账号的卡片也报余额查询失败」）。
+const OWN_IDS = ['codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'doubao', 'astudio']
+assert.ok(extraGets.some(row => OWN_IDS.some(id => row.url.includes('provider=' + id))),
+  '自有渠道的余额没有走自己的 /channels/extra')
+assert.ok(!issued('credits.balances').some(row => OWN_IDS.includes(row.payload.provider)),
+  `自有渠道仍然在向渠道包要余额：${issued('credits.balances').map(row => row.payload.provider).filter(id => OWN_IDS.includes(id)).join(',')}`)
 
 // 任务领取：载荷要带 provider/accountId
 assert.ok(clickByText('chan.task.claim'), '任务领取按钮不可点')
@@ -465,7 +512,7 @@ const ownStarts = httpCalls
   .map(row => JSON.parse(row.body).provider)
 assert.ok(!ownStarts.includes('qoder') && !ownStarts.includes('qodercn'),
   `qoder/qodercn 的登录被路由到自己的设备码端点：\${ownStarts.join(',')}（应走渠道包）`)
-assert.ok(ownStarts.every(p => ['codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl'].includes(p)),
+assert.ok(ownStarts.every(p => ['codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'astudio'].includes(p)),
   `own/login/start 只该被自有渠道调用，实际：\${ownStarts.join(',')}`)
 
 // 回归钉死：qoder/qodercn 在 CHANNEL_EXTRAS 里（倍率折叠用），但它们的登录
@@ -473,6 +520,27 @@ assert.ok(ownStarts.every(p => ['codely', 'autoclaw', 'autoclawintl', 'accio', '
 // 「添加账号」路由到只认识 Codely 的设备码端点，登录整个坏了。
 assert.ok(!httpCalls.some(row => row.url.includes('/channels/own/login/start') && JSON.parse(row.body).provider === 'qoder'),
   'qoder 的登录被路由到了自己的设备码端点（应走渠道包）')
+
+// 自有渠道的「模型」折叠必须读**自己的**路由（渠道包的 model.list 不认识这些 id）。
+// 这一步放在最后：打开它会关掉每张卡片上先前展开的其它折叠（`open` 是单值状态）。
+const modelFolds = clickAll(t('chan.fold.models'))
+assert.ok(modelFolds >= 29, `模型折叠只点开了 ${modelFolds} 张卡片`)
+await new Promise(resolve => setTimeout(resolve, 150))
+await settle(10)
+assert.ok(httpCalls.some(row => row.url.includes('/channels/own/models?') && row.url.includes('provider=codely')),
+  'codely 的模型没有从自己的路由读')
+assert.ok(!payloads.some(row => row.method === 'model.list' && OWN_IDS.includes(row.payload.provider)),
+  `自有渠道仍向渠道包要模型：${payloads.filter(row => row.method === 'model.list' && OWN_IDS.includes(row.payload.provider)).map(row => row.payload.provider).join(',')}`)
+// 预制/实时提示 + 倍率都在模型行里（不再要求先展开「活动」折叠）。
+const modelFlat = JSON.stringify(tree)
+assert.ok(modelFlat.includes('chan.catalog.preset'), '模型列表旁没有「预制目录」提示')
+assert.ok(modelFlat.includes('x0.5'), '模型行里没有倍率')
+
+// 宿主清单对账：替身**故意少报 astudio** ⇒ 面板必须画出「宿主是旧代码」并点名缺谁。
+// 这条断言放在最后：`manifest` 是异步取的，前面的 `flat` 是首次渲染的快照。
+const finalFlat = JSON.stringify(tree)
+assert.ok(httpCalls.some(row => row.url.includes('/channels/manifest?expect=')), '面板没有向宿主对账清单')
+assert.ok(finalFlat.includes('宿主旧代码，缺 astudio'), `提示里没有点名缺的渠道：${finalFlat.slice(0, 0)}`)
 
 console.log('channels smoke OK — rpc calls:', [...new Set(calls)].join(', '))
 // client.js 里挂了 45s/60s 的轮询定时器，替身渲染不会清理它们；

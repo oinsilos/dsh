@@ -318,9 +318,16 @@ window.__ModuleLoader__.load({
         'chan.meta.models': '模型',
         'chan.act.add': '添加账号',
         'chan.act.refresh': '续期',
+        'chan.act.refreshed': '已续期「{name}」：{state}',
+        'chan.act.refreshedYes': '拿到新凭据',
+        'chan.act.refreshedNo': '凭据仍在有效期内',
         'chan.act.test': '测试',
         'chan.act.delete': '移除',
         'chan.act.claim': '一键领取',
+        'chan.catalog.live': '实时目录',
+        'chan.catalog.preset': '预制目录',
+        'chan.catalog.liveHint': '已从上游取到最新模型列表（{time}）',
+        'chan.catalog.presetHint': '暂时取不到最新列表，先显示预制表；取到后会自动替换',
         'chan.fold.accounts': '账号',
         'chan.fold.models': '模型',
         'chan.noAccount': '还没有账号——点「添加账号」开始登录。',
@@ -330,6 +337,14 @@ window.__ModuleLoader__.load({
         'chan.login.title': '登录 {name}',
         'chan.login.step1': '在浏览器中完成登录（若没有自动打开，点下面的按钮）。',
         'chan.login.step2': '登录成功后本页会自动完成，无需复制任何东西。',
+        'chan.login.stepScan': '用微信扇扫下面的二维码完成登录。',
+        'chan.login.qrAlt': '微信扫码登录二维码',
+        'chan.manifest.stale': '宿主侧插件还是旧代码：它不认识 {missing} —— 这些卡片的「添加账号」点了不会有反应。',
+        'chan.manifest.staleHint': '重启 DSH（或重载插件）后这几张卡片才会生效；面板每次打开都读磁盘上的新界面，宿主进程不会。',
+        'chan.manifest.missing': '宿主侧插件是旧代码：它连「渠道清单」这条接口都没有 —— 这个面板比它新。',
+        'chan.reload.done': '已请求热重载：宿主正在加载磁盘上的新代码。',
+        'chan.reload.refresh': '页面会在几秒后自动刷新；没刷新就手动刷新一次。',
+        'chan.reload.failed': '热重载失败：{reason}',
         'chan.login.open': '打开登录页',
         'chan.login.cancel': '取消',
         'chan.login.waiting': '已打开登录页，等待授权…（最长等待 10 分钟）',
@@ -365,6 +380,8 @@ window.__ModuleLoader__.load({
         'chan.task.claim': '领取任务奖励',
         'chan.task.claimed': '已领取：{list}',
         'chan.task.skipped': '{count} 项此前已领',
+        'chan.task.ownDone': '{count} 项新人任务',
+        'chan.task.ownFailed': '{count} 项暂不可领（需在客户端手动完成）',
         'chan.task.none': '没有可领取的任务。',
         'chan.lock.on': '已锁定永久积分',
         'chan.lock.off': '锁定永久积分',
@@ -396,6 +413,7 @@ window.__ModuleLoader__.load({
         'chan.auto.defaultOn': '渠道包默认开启每日自动签到（每次启动时执行一次，可在上面关闭）。',
         'chan.credit.today': '今日已领 {credit}',
         'chan.model.free': '免费额度',
+        'chan.model.accountScoped': '该渠道的模型随账号下发，登录后自动获取',
         'chan.model.needsLogin': '登录后可用',
         'chan.diag.host': '宿主目录：{rows}',
         'chan.diag.own': '自有渠道 {count} 条',
@@ -506,6 +524,7 @@ window.__ModuleLoader__.load({
         'chan.credits.failed': '余额查询失败：{reason}',
         'chan.credits.partial': '{count} 个账号未能查询余额，请展开账号查看原因并重试。',
         'chan.credits.unavailable': '未返回余额数据',
+        'chan.credits.pending': '待登录',
         'chan.claim.failed': '领取失败：{reason}',
         'chan.auto.title': '每日自动签到',
         'chan.auto.running': '签到进行中…',
@@ -966,9 +985,16 @@ window.__ModuleLoader__.load({
         'chan.meta.models': 'Models',
         'chan.act.add': 'Add account',
         'chan.act.refresh': 'Refresh',
+        'chan.act.refreshed': 'Refreshed "{name}": {state}',
+        'chan.act.refreshedYes': 'new credential stored',
+        'chan.act.refreshedNo': 'credential still valid',
         'chan.act.test': 'Test',
         'chan.act.delete': 'Remove',
         'chan.act.claim': 'Claim daily',
+        'chan.catalog.live': 'Live catalog',
+        'chan.catalog.preset': 'Preset list',
+        'chan.catalog.liveHint': 'Latest model list fetched from upstream ({time})',
+        'chan.catalog.presetHint': 'Latest list unavailable; showing the preset list and will replace it automatically',
         'chan.fold.accounts': 'Accounts',
         'chan.fold.models': 'Models',
         'chan.noAccount': 'No account yet — press “Add account” to sign in.',
@@ -978,6 +1004,14 @@ window.__ModuleLoader__.load({
         'chan.login.title': 'Sign in to {name}',
         'chan.login.step1': 'Finish the sign-in in your browser (if it did not open, use the button below).',
         'chan.login.step2': 'This page completes by itself once the browser flow does — nothing to copy.',
+        'chan.login.stepScan': 'Scan the QR code below with WeChat to finish signing in.',
+        'chan.login.qrAlt': 'WeChat sign-in QR code',
+        'chan.manifest.stale': 'The host still runs older plugin code: it does not know {missing}, so “add account” on those cards does nothing.',
+        'chan.manifest.staleHint': 'Restart DSH (or reload the plugin) to load the new host code; this page always reads the new UI from disk, the host process does not.',
+        'chan.manifest.missing': 'The host runs older plugin code: it does not even expose the channel manifest — this page is newer than the host.',
+        'chan.reload.done': 'Hot reload requested: the host is loading the code on disk.',
+        'chan.reload.refresh': 'This page refreshes itself in a few seconds; refresh manually if it does not.',
+        'chan.reload.failed': 'Hot reload failed: {reason}',
         'chan.login.open': 'Open sign-in page',
         'chan.login.cancel': 'Cancel',
         'chan.login.waiting': 'Sign-in page opened; waiting for authorization… (up to 10 minutes)',
@@ -1013,6 +1047,8 @@ window.__ModuleLoader__.load({
         'chan.task.claim': 'Claim task rewards',
         'chan.task.claimed': 'Claimed: {list}',
         'chan.task.skipped': '{count} already claimed',
+        'chan.task.ownDone': '{count} onboarding task(s)',
+        'chan.task.ownFailed': '{count} need manual completion in the client',
         'chan.task.none': 'No task rewards to claim.',
         'chan.lock.on': 'Permanent credits locked',
         'chan.lock.off': 'Lock permanent credits',
@@ -1044,6 +1080,7 @@ window.__ModuleLoader__.load({
         'chan.auto.defaultOn': 'The channel pack enables daily auto check-in by default (runs once per launch; switch it off above).',
         'chan.credit.today': '{credit} claimed today',
         'chan.model.free': 'Free quota',
+        'chan.model.accountScoped': 'Models are issued per account; sign in to discover them',
         'chan.model.needsLogin': 'Sign in to use',
         'chan.diag.host': 'Host catalog: {rows}',
         'chan.diag.own': '{count} own-channel rows',
@@ -1154,6 +1191,7 @@ window.__ModuleLoader__.load({
         'chan.credits.failed': 'Balance query failed: {reason}',
         'chan.credits.partial': 'Could not query {count} accounts. Expand accounts to see the reasons and retry.',
         'chan.credits.unavailable': 'No balance data returned',
+        'chan.credits.pending': 'Not signed in yet',
         'chan.claim.failed': 'Claim failed: {reason}',
         'chan.auto.title': 'Daily auto check-in',
         'chan.auto.running': 'Check-in running…',
@@ -3425,7 +3463,24 @@ window.__ModuleLoader__.load({
       { id: 'baizhi', name: '百智云', org: 'baizhi.cloud', accent: '#10B981', note: '浏览器登录（控制台），每日领 100 积分', login: 'device', own: true },
       // OfficeAce：PKCE + DPoP，回调在上游主机（由宿主浏览器截停）。
       { id: 'officeace', name: 'OfficeAce', org: '华为云 AgentArts', accent: '#C7000B', note: '浏览器登录（OAuth + DPoP），无签到', login: 'device', own: true },
+      // 豆包：登录是页面内的二维码模态框；签到要页面里的 `bdms` 签名 ⇒ 浏览器由宿主起。
+      { id: 'doubao', name: '豆包', org: '字节跳动 · doubao.com', accent: '#3370FF', note: '浏览器登录（页面扫码），每日签到 + 活动额度', login: 'device', own: true },
+      // AStudio：微信扫码（SSO 三段，无需浏览器），凭据是四字段 Cookie，推理走 Responses 线。
+      { id: 'astudio', name: 'AStudio', org: '讯飞 · AstronStudio', accent: '#1F6FEB', note: '微信扫码登录，每日登录积分（推理走 Responses）', login: 'device', own: true },
+      // AgnesCode：登录只存在于桌面客户端（Chromium v10 + DPAPI）⇒「添加账号」=
+      // 读一次客户端会话；目录按订阅档下发，没有静态兜底。
+      { id: 'agnescode', name: 'AgnesCode', org: 'Agnes AI · 桌面客户端', accent: '#6E56CF', note: '读取客户端登录态（免二次登录），目录按订阅档下发', login: 'import', own: true, noCredits: true },
+      { id: 'agnescodeintl', name: 'AgnesCode 国际版', org: 'Agnes AI · 国际站', accent: '#8B5CF6', note: '读取国际版客户端登录态，目录按订阅档下发', login: 'import', own: true, noCredits: true },
     ]
+
+    /**
+     * 走「宿主起浏览器」那条腿的渠道（CDP 会话）。
+     *
+     * ⚠️ **起点与轮询必须读同一份集合**：上一版是两处手写数组，起点那份有百智云/
+     * MonkeyCode/OfficeAce、轮询那份没有 ⇒ 浏览器起来了，面板却一直在问设备码端点
+     * （`/channels/own/login/poll`），表现为「扫完码一直转圈」。
+     */
+    const BROWSER_CDP = new Set(['marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'doubao'])
 
     /**
      * 每个渠道的积分能力，逐条对准渠道包 RPC 的真实分支
@@ -3463,12 +3518,33 @@ window.__ModuleLoader__.load({
       monkeycodeintl: { claim: true, unit: 'credit' },
       baizhi: { claim: true, unit: 'credit' },
       officeace: { unit: 'credit' },
+      // ⚠️ 豆包**刻意不在这张表里**：它的额度读数走本插件自己的 `/channels/extra`
+      //（活动折叠里的「积分 x / y」+ 每日签到入口）。渠道包的 `credits.balances`
+      // 不认识这个 provider（回 `unsupported provider: doubao`），挂上去只会在
+      // 卡片上留一行红字，而那一行读不到任何真数字。
       zcode: { claim: true, unit: 'tokens' },
       gemini: { unit: 'quota', quota: true },
     }
 
-    /** 新手任务 / 一次性奖励（`onboarding.*`）：渠道包只实现了这两家。 */
-    const CHANNEL_TASKS = { loomy: true, raccoon: true }
+    /**
+     * 自有渠道里**真的有签到/领取端点**的那些。
+     *
+     * 以前用 `CHANNEL_EXTRAS` 当判据，于是 Marvis / OfficeAce / Accio 也渲染
+     * 「一键领取」，点了只回「没有签到接口」。这三个不该出现在领取入口里。
+     */
+    const OWN_CLAIMABLE = new Set([
+      'codely', 'autoclaw', 'autoclawintl', 'minimaxintl',
+      'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl',
+      'baizhi', 'astudio', 'doubao',
+    ])
+
+    /**
+     * 新手任务 / 一次性奖励：
+     * - `pack`：渠道包的 `onboarding.status` / `onboarding.claim`（loomy / raccoon）；
+     * - `own`：本插件自己的 `/channels/extra`（超级麦吉的 8 项新人任务；
+     *   任务状态随 `statusOf` 的 `tasks` 一起回来，领取走 `campaignId=task:<code>`）。
+     */
+    const CHANNEL_TASKS = { loomy: 'pack', raccoon: 'pack', magicrew: 'own', magicrewintl: 'own' }
 
     /** 「锁定永久积分」（`credits.permanentLock`）：三家支持，语义相同、判据不同。 */
     const CHANNEL_LOCK = new Set(['buddy', 'workbuddy', 'loomy'])
@@ -3483,7 +3559,7 @@ window.__ModuleLoader__.load({
      * 与渠道包的关系：账号池与凭据都来自宿主，两边读同一份；渠道包没有出口的
      * 那几项在这里补。加一个渠道 = `src/channels/index.js` 注册一行 + 这里加一个 id。
      */
-    const CHANNEL_EXTRAS = new Set(['codearts', 'qoder', 'qodercn', 'codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace'])
+    const CHANNEL_EXTRAS = new Set(['codearts', 'qoder', 'qodercn', 'codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'doubao', 'astudio', 'agnescode', 'agnescodeintl'])
 
     /**
      * 一个数按它的量纲写出来。
@@ -3580,6 +3656,8 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = useState(null)
       const [accounts, setAccounts] = useState(undefined)
       const [models, setModels] = useState(undefined)
+      // 目录来源：`live` = 已取到最新列表；`preset` = 正在显示预制表。
+      const [modelMeta, setModelMeta] = useState(undefined)
       const [credits, setCredits] = useState(undefined)
       // 实时积分：每个账号的剩余余额（credits.balances），卡片汇总 + 账号行
       // 逐条展示；随账号列表与领积分动作刷新，另有一个慢轮询兜底。
@@ -3610,9 +3688,23 @@ window.__ModuleLoader__.load({
       const balanceGeneration = useRef(0)
       const balanceFetchedAt = useRef(0)
       const claimPending = useRef(false)
+      /**
+       * 这个渠道的「积分读数」从哪来。
+       *
+       * ⚠️ 渠道包的 `credits.balances` / `credits.claimAll` **只认识它自己那 13 家**：
+       * 对自有渠道它会回 `unsupported provider: xxx`，以前这行红字会直接画在没有账号的
+       * 卡片上（「都没登账号还提示余额查询失败」）。所以自有渠道改走本插件自己的
+       * `/channels/extra`，渠道包那套原样留给 pack 渠道（qoder/qodercn 虽然也在
+       * `CHANNEL_EXTRAS` 里，但它们**是** pack 渠道，必须继续走 RPC）。
+       */
+      const ownCredited = channel.own === true && CHANNEL_EXTRAS.has(channel.id)
       const creditCapability = CHANNEL_CREDITS[channel.id]
-      const balanceLabel = creditCapability?.unit === 'tokens' ? t('chan.credits.tokens')
-        : creditCapability?.unit === 'dollars' ? t('chan.credits.dollars')
+      // 自有渠道没有 `CHANNEL_CREDITS` 条目时，用 extras 回报的单位（marvis 是 token）。
+      const creditUnit = creditCapability?.unit ?? 'credit'
+      // AgnesCode 没有余额/用量端点：整列隐藏，而不是给一个「未返回余额数据」的红字。
+      const showCredits = (creditCapability !== undefined || ownCredited) && channel.noCredits !== true
+      const balanceLabel = creditUnit === 'tokens' ? t('chan.credits.tokens')
+        : creditUnit === 'dollars' ? t('chan.credits.dollars')
           : creditCapability?.quota ? t('chan.credits.quota') : t('chan.credits.left')
 
       const accountsCount = status?.accounts?.total ?? 0
@@ -3625,29 +3717,54 @@ window.__ModuleLoader__.load({
 
       const loadAccounts = useCallback(async () => {
         try {
-          const value = await rpc('account.list', { provider: channel.id })
+          // 自有渠道的账号表在**本插件自己的** `channels.json` 里（渠道包的 account.list
+          // 不认识这些 provider ⇒ 回空数组，于是账号折叠永远「没有账号」）。
+          const value = channel.own === true
+            ? await api(`/channels/own?provider=${encodeURIComponent(channel.id)}`, { timeout: 15_000 })
+            : await rpc('account.list', { provider: channel.id })
           setAccounts(value?.accounts ?? [])
         } catch (error) { setAccounts([]); onError(channel, error) }
-      }, [rpc, channel.id, onError])
+      }, [rpc, channel.id, onError, api, channel.own])
       const loadModels = useCallback(async () => {
         try {
           // 自有渠道：渠道包的 model.list 不认识这些 provider id，读自己的路由。
-          // 两处读的是同一份 catalog（喂给选择器的那一份），所以永远一致。
-          const value = CHANNEL_EXTRAS.has(channel.id) && channel.own === true
+          // 两边读的是同一份目录；面板这份**包含被关掉的行**（否则关掉后无处点回来）。
+          const value = channel.own === true
             ? await api(`/channels/own/models?provider=${encodeURIComponent(channel.id)}`, { timeout: 15_000 })
             : await rpc('model.list', { provider: channel.id })
           setModels(value?.models ?? [])
-        } catch (error) { setModels([]); onError(channel, error) }
+          // 渠道包没有「实时/预制」概念；自有渠道由宿主给。
+          setModelMeta(channel.own === true ? (value?.catalog ?? { source: 'preset' }) : null)
+        } catch (error) { setModels([]); setModelMeta(null); onError(channel, error) }
       }, [rpc, channel.id, onError])
       const loadCredits = useCallback(async () => {
-        if (!CHANNEL_CREDITS[channel.id]?.status) return
+        if (channel.own === true || !CHANNEL_CREDITS[channel.id]?.status) return
         try {
           const value = await rpc('credits.status', { provider: channel.id })
           setCredits(value?.accounts ?? [])
         } catch { setCredits([]) }
       }, [rpc, channel.id])
+      /** `/channels/extra` 的一行 → 渠道包 `credits.balances` 的行形状（面板只认这一种）。 */
+      const balanceRowOf = row => {
+        // `pending` = 账号建好了但还没登录（凭据库为空）⇒ 既不是 0，也不是错误。
+        if (row?.pending === true) {
+          return { accountId: typeof row.accountId === 'string' ? row.accountId : '', nickname: row?.nickname ?? '', balance: null, pending: true }
+        }
+        const total = Number.isFinite(row?.balance?.total) ? row.balance.total
+          : Number.isFinite(row?.info?.total?.remain) ? row.info.total.remain
+            : undefined
+        return {
+          accountId: typeof row?.accountId === 'string' ? row.accountId : '',
+          nickname: typeof row?.nickname === 'string' ? row.nickname : '',
+          balance: Number.isFinite(total) ? { total, unit: row?.balance?.unit ?? 'credit' } : null,
+          error: row?.error ?? row?.balanceError ?? row?.infoError ?? undefined,
+        }
+      }
       const loadBalances = useCallback((afterWrite = false) => {
-        if (!CHANNEL_CREDITS[channel.id] || !rpc) return Promise.resolve()
+        // 自有渠道没有账号时**不发任何请求**（以前会去打 pack 的 `credits.balances`，
+        // 换回 `unsupported provider` 并在空卡片上画一行红字）。
+        // 自有渠道读自己的 HTTP 路由，不依赖渠道包的 RPC（`rpc` 可能为 null）。
+        if (!showCredits || (!ownCredited && !rpc)) return Promise.resolve()
         const pending = balancePending.current
         if (!afterWrite && pending?.provider === channel.id && pending.rpc === rpc) return pending.promise
         // 前端 TTL：渠道包对 buddy/loomy/gemini 有 60 秒缓存，但 codearts 没有，
@@ -3661,6 +3778,18 @@ window.__ModuleLoader__.load({
         setBalanceLoading(true); setBalanceError('')
         request.promise = (async () => {
           try {
+            if (ownCredited) {
+              // 自有渠道：本插件自己的权益路由（余额/额度/签到状态都在那一份里）。
+              const value = await api(`/channels/extra?provider=${encodeURIComponent(channel.id)}`, { timeout: 30_000 })
+              if (generation === balanceGeneration.current) {
+                setExtra(value ?? undefined)
+                setBalances((value?.accounts ?? []).map(balanceRowOf))
+                balanceFetchedAt.current = Date.now()
+                // 「没有账号」不是错误：extras 对空账号池回的是空数组。
+                setBalanceError(value?.supported === false ? String(value?.reason ?? value?.error ?? '') : '')
+              }
+              return
+            }
             const value = await rpc('credits.balances', { provider: channel.id, ...afterWrite ? { force: true } : {} }, 90_000)
             if (generation === balanceGeneration.current) {
               setBalances(value?.accounts ?? [])
@@ -3677,7 +3806,7 @@ window.__ModuleLoader__.load({
           }
         })()
         return request.promise
-      }, [rpc, channel.id])
+      }, [rpc, channel.id, ownCredited, showCredits, api])
 
       /**
        * 新手任务状态（`onboarding.status`，**只读**）。
@@ -3686,9 +3815,40 @@ window.__ModuleLoader__.load({
        * 它明确要求面板挂载时不得触发 claim —— 这里只在展开折叠时调用。
        */
       const loadTasks = useCallback(async () => {
-        if (!CHANNEL_TASKS[channel.id] || !rpc) return
+        const kind = CHANNEL_TASKS[channel.id]
+        if (kind === undefined) return
+        // `own` 的任务状态随 `/channels/extra` 一起回来，不需要渠道包 RPC。
+        if (kind === 'pack' && !rpc) return
         setTasksLoading(true)
         try {
+          if (kind === 'own') {
+            const value = await api(`/channels/extra?provider=${encodeURIComponent(channel.id)}`, { timeout: 30_000 })
+            const out = {}
+            for (const row of Array.isArray(value?.accounts) ? value.accounts : []) {
+              const list = Array.isArray(row.tasks) ? row.tasks : []
+              const map = {}
+              const titles = {}
+              const points = {}
+              let earned = 0
+              let total = 0
+              for (const task of list) {
+                const code = String(task?.code ?? '')
+                if (code === '') continue
+                // 上游两个判据是**独立**字段：实测存在 COMPLETED 但 reward_status
+                // 为空的样本 ⇒ 任一成立都算完成。
+                const done = task?.status === 'COMPLETED' || task?.rewardStatus === 'GRANTED'
+                const point = Number(task?.points) || 0
+                map[code] = done
+                titles[code] = typeof task?.title === 'string' && task.title !== '' ? task.title : code
+                points[code] = point
+                total += point
+                if (done) earned += point
+              }
+              out[row?.accountId ?? ''] = { tasks: map, titles, points, earned, total }
+            }
+            setTasks(out)
+            return
+          }
           const list = accounts ?? await rpc('account.list', { provider: channel.id }).then(value => value?.accounts ?? [])
           const out = {}
           for (const row of list) {
@@ -3700,10 +3860,12 @@ window.__ModuleLoader__.load({
             }
           }
           setTasks(out)
+        } catch (error) {
+          setTasks({ '': { error: String(error?.message ?? error) } })
         } finally {
           setTasksLoading(false)
         }
-      }, [rpc, channel.id, accounts])
+      }, [rpc, channel.id, accounts, api])
 
       /** 锁定永久积分：省略 `locked` 即只读，给出布尔值才写入。 */
       const loadLock = useCallback(async () => {
@@ -3748,6 +3910,9 @@ window.__ModuleLoader__.load({
       // 任务折叠后刚拿到的状态被这里的 setTasks({}) 当场抹掉）。
       useEffect(() => {
         setBalances(undefined); setBalanceError(''); balanceFetchedAt.current = 0
+        // `models` 不在这里清：卡片按 channel.id 挂载，换渠道本来就是新实例；
+        // 清它会在「点击模型折叠 → 数据落地」之间与 loadModels 抢时序（替身
+        // 渲染里表现为刚拿到的 2 条又被清成 skeleton）。
         setTasks({}); setSubscription(undefined); setLock(undefined)
         setExtra(undefined); setExtraNotice('')
         return () => { balanceGeneration.current++; balancePending.current = null }
@@ -3761,7 +3926,7 @@ window.__ModuleLoader__.load({
       // count reads as "I have more quota than I do". 后台标签页里不发请求：
       // 这一页一次就是十几个渠道的串联请求。
       useEffect(() => {
-        if (!CHANNEL_CREDITS[channel.id]) return undefined
+        if (!CHANNEL_CREDITS[channel.id] && !(channel.own === true && CHANNEL_EXTRAS.has(channel.id))) return undefined
         const period = channel.id === 'codearts' ? 180_000 : 60_000
         const timer = setInterval(() => {
           if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
@@ -3776,6 +3941,15 @@ window.__ModuleLoader__.load({
       const balancesTotal = (balances ?? []).reduce((sum, row) => sum + (Number.isFinite(row.balance?.total) ? row.balance.total : 0), 0)
       const balancesKnown = (balances ?? []).some(row => Number.isFinite(row.balance?.total))
       const balanceFailures = (balances ?? []).filter(row => row.error || !Number.isFinite(row.balance?.total)).length
+      /**
+       * 目录提示：`live` = 已用上游最新列表；`preset` = 正在显示预制表（附原因）。
+       * 用户要求「取到最新就换最新，否则在模型列表旁提示」——这就是那句提示。
+       */
+      const catalogHint = modelMeta === undefined || modelMeta === null
+        ? ''
+        : modelMeta.source === 'live'
+          ? t('chan.catalog.liveHint').replace('{time}', modelMeta.at > 0 ? new Date(modelMeta.at).toLocaleString(t.locale) : '—')
+          : (modelMeta.error ?? modelMeta.note ?? t('chan.catalog.presetHint'))
 
       // Refetch what is on screen whenever the pack reports a change for this
       // channel: an account added in another tab, a completed background login,
@@ -3817,6 +3991,24 @@ window.__ModuleLoader__.load({
           // 倍率折叠加的），但它们的登录在**渠道包**里 —— 只判 CHANNEL_EXTRAS
           // 会把 Qoder 的「添加账号」路由到只认识 Codely 的设备码端点，登录整个
           // 坏掉（用户 2026-11-24 报障「qoder 还不能登录了，咋还退化了」）。
+          if (channel.login === 'import') {
+            // AgnesCode：没有登录端点，服务端读客户端加密会话并落凭据。
+            const value = await post('/channels/own/import', { provider: channel.id }, 60_000)
+            if (value?.error !== undefined) throw new Error(value.error)
+            setNotice(t('chan.login.done').replace('{login}', value?.nickname !== undefined && value.nickname !== '' ? value.nickname : channel.name))
+            onChanged()
+            void loadExtra()
+            void loadAccounts()
+            void loadBalances()
+            // 目录是**异步重编**的（导入 → 写凭据 → 拉 /models → 喂运行时），
+            // 立即回读只会拿到空目录；1.5 秒后再补一次，卡片才会出现「模型 9/9」。
+            setTimeout(() => {
+              void loadAccounts()
+              void loadBalances()
+              void loadExtra()
+            }, 1500)
+            return
+          }
           if (CHANNEL_EXTRAS.has(channel.id) && channel.own === true) {
             // 短信验证码渠道（AutoClaw）：先发码，用户在弹窗里填码，再登录。
             // 与设备码不同，这里没有「等浏览器授权」那一段，所以是单步的。
@@ -3830,7 +4022,7 @@ window.__ModuleLoader__.load({
             // 不是设备码的 login/start（那条回的是用户码）。
             // Marvis 是 CDP 拦截回调：起点 browser/start，浏览器由**宿主**起，
             // 这里不能再 window.open（会多开一个没有调试端口的窗口）。
-            const isBrowserCdp = ['marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace'].includes(channel.id)
+            const isBrowserCdp = BROWSER_CDP.has(channel.id)
             const started = await post(
               channel.id === 'accio'
                 ? '/channels/own/oauth/start'
@@ -3852,6 +4044,7 @@ window.__ModuleLoader__.load({
               accountId,
               url,
               code: typeof started?.userCode === 'string' ? started.userCode : '',
+              qr: started?.qr === true,
               startedAt: Date.now(),
               own: true,
             })
@@ -3932,7 +4125,7 @@ window.__ModuleLoader__.load({
             // 其余是设备码（等上游）。
             const pollPath = channel.id === 'accio'
               ? '/channels/own/oauth/poll'
-              : ['marvis', 'magicrew', 'magicrewintl'].includes(channel.id)
+              : BROWSER_CDP.has(channel.id)
                 ? '/channels/own/browser/poll'
                 : '/channels/own/login/poll'
             const value = login.own === true
@@ -3973,11 +4166,15 @@ window.__ModuleLoader__.load({
       }
 
       const setAllModels = async disabled => {
-        if (busy !== '' || modelBatchPending.current || !rpc || !models?.length) return
+        // 自有渠道：渠道包的 `model.setAllDisabled` 不认识这些 id（回
+        // `unsupported provider`），走自己的路由。
+        if (busy !== '' || modelBatchPending.current || !models?.length) return
+        if (channel.own !== true && !rpc) return
         modelBatchPending.current = true
         try {
           await accountAction(disabled ? 'models:hide' : 'models:show', '', async () => {
-            await rpc('model.setAllDisabled', { provider: channel.id, disabled })
+            if (channel.own === true) await post('/channels/own/models/update', { provider: channel.id, disabled }, 30_000)
+            else await rpc('model.setAllDisabled', { provider: channel.id, disabled })
             await loadModels()
             onChanged()
           })
@@ -3989,16 +4186,72 @@ window.__ModuleLoader__.load({
         if (typeof window !== 'undefined' && typeof window.confirm === 'function'
           && !window.confirm(t('chan.confirm.delete').replace('{name}', entry?.nickname ?? accountId))) return
         await accountAction('del:' + accountId, accountId, async () => {
-          await rpc('account.delete', { accountId })
+          // 自有渠道走自己的路由（同理：`account.delete` 是渠道包的账号池，删不到我们的表）。
+          if (channel.own === true) await post('/channels/own/remove', { accountId }, 20_000)
+          else await rpc('account.delete', { accountId })
           onChanged(); await loadAccounts(); void loadBalances(true)
         })
       }
 
+      /** 启用/停用：自有渠道走 `/channels/own/update`，渠道包走 `account.update`。 */
+      const toggleAccount = async row => {
+        if (channel.own === true) {
+          await post('/channels/own/update', { accountId: row.id, enabled: row.enabled === false }, 20_000)
+        } else {
+          await rpc('account.update', { accountId: row.id, patch: { enabled: row.enabled === false } })
+        }
+        onChanged(); await loadAccounts()
+      }
+
+      /**
+       * 这个渠道的「领取」走哪条腿。
+       *
+       * - 渠道包渠道：`credits.claimAll`（按 provider 一次领完所有账号）；
+       * - **自有渠道**：渠道包不认识它们（回 `unsupported provider`），改走本插件自己的
+       *   `/channels/extra/claim`，**逐账号**领。以前自有渠道的「领取」按钮点了只会
+       *   弹一句 `unsupported provider` —— 与「余额查询失败」同一个根因。
+       */
+      const ownClaimable = ownCredited && OWN_CLAIMABLE.has(channel.id)
+      const claimSupported = creditCapability?.claim === true || ownClaimable
       const claim = async () => {
-        if (!creditCapability?.claim || busy !== '' || claimPending.current) return
+        if (!claimSupported || busy !== '' || claimPending.current) return
         claimPending.current = true
         setBusy('claim'); setNotice('')
         try {
+          if (ownClaimable) {
+            const rows = await api(`/channels/own?provider=${encodeURIComponent(channel.id)}`, { timeout: 20_000 })
+            const list = (Array.isArray(rows?.accounts) ? rows.accounts : []).filter(row => row.enabled !== false)
+            if (list.length === 0) { setNotice(t('chan.claim.none')); return }
+            let claimed = 0
+            let already = 0
+            let inactive = 0
+            const failures = []
+            let amount = 0
+            for (const row of list) {
+              try {
+                const value = await post('/channels/extra/claim', { provider: channel.id, accountId: row.id }, 180_000)
+                if (value?.kind === 'claimed') { claimed += 1; amount += Number(value.credit ?? 0) || 0 }
+                else if (value?.kind === 'already-claimed') already += 1
+                else if (value?.kind === 'inactive') inactive += 1
+                else failures.push(value?.message ?? '—')
+              } catch (error) {
+                failures.push(String(error?.message ?? error))
+              }
+            }
+            const amounts = amount > 0 ? `+${amountText(amount, creditUnit)} ${unitLabel(creditUnit, t)}` : ''
+            let text = claimed > 0
+              ? t('chan.claim.result').replace('{count}', String(claimed)).replace('{amounts}', amounts)
+              : already > 0 && failures.length === 0 ? t('chan.claim.alreadyOnly').replace('{already}', String(already))
+                : failures.length === 0 ? t('chan.claim.none') : ''
+            if (inactive > 0) text += t('chan.claim.inactive').replace('{count}', String(inactive))
+            if (failures.length > 0) {
+              const failure = t('chan.claim.failed').replace('{reason}', failures.join('；'))
+              text = text === '' ? failure : `${text}；${failure}`
+            }
+            setNotice(text)
+            void loadBalances(true); void loadExtra(); onChanged()
+            return
+          }
           const value = await rpc('credits.claimAll', { provider: channel.id }, 180_000)
           // `credits.claimAll` 的返回是 `{results, summary}`，summary 里除
           // `claimed/totalCredit` 还有 `totalByUnit`、`alreadyClaimed`、
@@ -4010,7 +4263,7 @@ window.__ModuleLoader__.load({
           const already = Number(summary?.alreadyClaimed ?? 0)
           const inactive = Number(summary?.inactive ?? 0)
           const failed = results.filter(row => row.outcome?.kind === 'failed')
-          const amounts = claimAmountText(summary, creditCapability.unit, t)
+          const amounts = claimAmountText(summary, creditUnit, t)
           let text = ''
           if (claimed > 0) {
             text = already > 0
@@ -4039,14 +4292,42 @@ window.__ModuleLoader__.load({
        * Raccoon 的桌面端登录奖励走这条路径。
        */
       const claimTask = async accountId => {
-        if (!rpc || busy !== '' || !CHANNEL_TASKS[channel.id]) return
+        const kind = CHANNEL_TASKS[channel.id]
+        if (busy !== '' || kind === undefined) return
+        if (kind === 'pack' && !rpc) return
         await accountAction('task:' + accountId, accountId, async () => {
-          const value = await rpc('onboarding.claim', { provider: channel.id, accountId }, 120_000)
-          const claimed = Array.isArray(value?.claimed) ? value.claimed : []
-          const skipped = Array.isArray(value?.skipped) ? value.skipped : []
           const parts = []
-          if (claimed.length > 0) parts.push(t('chan.task.claimed').replace('{list}', claimed.map(row => `${row.title} +${amountText(row.points)}`).join('、')))
-          if (skipped.length > 0) parts.push(t('chan.task.skipped').replace('{count}', String(skipped.length)))
+          if (kind === 'own') {
+            // 自有渠道（超级麦吉）：逐项 `task:<code>` 领取；已完成/不可手动的
+            // 项由上游如实回 `inactive`，不再拿 `skipped` 冒充成功。
+            const known = tasks[accountId]?.tasks ?? {}
+            const codes = Object.keys(known).filter(code => known[code] !== true)
+            if (codes.length === 0) {
+              setNotice(t('chan.task.none'))
+              void loadTasks(); return
+            }
+            let claimed = 0
+            let failed = 0
+            for (const code of codes) {
+              try {
+                const value = await post('/channels/extra/claim', {
+                  provider: channel.id,
+                  accountId,
+                  campaignId: 'task:' + code,
+                }, 120_000)
+                if (value?.kind === 'claimed') claimed += 1
+                else if (value?.kind !== 'already-claimed') failed += 1
+              } catch { failed += 1 }
+            }
+            if (claimed > 0) parts.push(t('chan.task.claimed').replace('{list}', t('chan.task.ownDone').replace('{count}', String(claimed))))
+            if (failed > 0) parts.push(t('chan.task.ownFailed').replace('{count}', String(failed)))
+          } else {
+            const value = await rpc('onboarding.claim', { provider: channel.id, accountId }, 120_000)
+            const claimed = Array.isArray(value?.claimed) ? value.claimed : []
+            const skipped = Array.isArray(value?.skipped) ? value.skipped : []
+            if (claimed.length > 0) parts.push(t('chan.task.claimed').replace('{list}', claimed.map(row => `${row.title} +${amountText(row.points)}`).join('、')))
+            if (skipped.length > 0) parts.push(t('chan.task.skipped').replace('{count}', String(skipped.length)))
+          }
           if (parts.length === 0) parts.push(t('chan.task.none'))
           setNotice(parts.join('；'))
           void loadTasks(); void loadBalances(true); onChanged()
@@ -4099,13 +4380,23 @@ window.__ModuleLoader__.load({
         const close = status?.closed !== true
         if (typeof window !== 'undefined' && typeof window.confirm === 'function'
           && close && !window.confirm(t('chan.provider.confirm').replace('{name}', channel.name))) return
+        if (channel.own !== true && !rpc) return
         await accountAction(close ? 'provider:off' : 'provider:on', '', async () => {
-          const value = await rpc('provider.setEnabled', { provider: channel.id, enabled: !close }, 90_000)
+          // 自有渠道走自己的路由（渠道包的 `provider.setEnabled` 不认识这些 id）。
+          const value = channel.own === true
+            ? await post('/channels/own/provider/update', { provider: channel.id, enabled: !close }, 90_000)
+            : await rpc('provider.setEnabled', { provider: channel.id, enabled: !close }, 90_000)
+          const modelsCount = Number(value?.models?.total ?? value?.models ?? 0)
+          const accountsCount = Number(value?.accounts?.total ?? value?.accounts ?? 0)
           setNotice(t(close ? 'chan.provider.doneOff' : 'chan.provider.doneOn')
             .replace('{name}', channel.name)
-            .replace('{models}', String(value?.models ?? 0))
-            .replace('{accounts}', String(value?.accounts ?? 0)))
+            .replace('{models}', String(modelsCount))
+            .replace('{accounts}', String(accountsCount)))
           if (open === 'models') await loadModels()
+          if (channel.own === true) {
+            await loadAccounts()
+            void loadBalances(true)
+          }
           onChanged()
         })
       }
@@ -4133,12 +4424,18 @@ window.__ModuleLoader__.load({
                     const label = claimable
                       ? t('chan.extra.claimable')
                       : (activity.status === '' ? t('chan.extra.notClaimable') : activity.status)
+                    // 奖励额度**可以未知**：豆包的签到奖励只有领完才从响应里读到
+                    //（活动侧不下发预告），此时不画「+0 积分」——0 在积分语境里
+                    // 是「用光了」，不是「还不知道」。
+                    const reward = Number(activity.amount)
+                    const title = Number.isFinite(reward) && reward > 0
+                      ? `${activity.title || activity.type} · +${amountText(reward, 'credit')}`
+                      : (activity.title || activity.type)
                     return h('div', {
                       className: 'ofm_modelrow' + (claimable ? '' : ' off'),
                       key: `${activity.campaignId}|${activity.type}`,
                     },
-                      h('span', { className: 'ofm_id', title: activity.campaignId },
-                        `${activity.title || activity.type} · +${amountText(activity.amount, 'credit')}`),
+                      h('span', { className: 'ofm_id', title: activity.campaignId }, title),
                       h('span', { className: 'ofm_tagpill' + (claimable ? ' free' : '') }, label),
                       claimable && activity.campaignId !== ''
                         ? h('button', {
@@ -4184,30 +4481,40 @@ window.__ModuleLoader__.load({
         h('div', { className: 'ofm_chanmeta' },
           h('span', null, `${t('chan.meta.accounts')} `, h('b', null, `${enabledCount}/${accountsCount}`)),
           h('span', null, `${t('chan.meta.models')} `, h('b', null, modelsTotal === 0 ? '—' : `${modelsTotal - modelsOff}/${modelsTotal}`)),
-          creditCapability ? h('span', { className: 'ofm_credittotal' },
+          showCredits ? h('span', { className: 'ofm_credittotal' },
             `${balanceLabel} `,
             h('b', null, balanceLoading ? '…' : balancesKnown
-              ? creditCapability.quota
+              ? creditCapability?.quota === true
                 ? t('chan.credits.loaded').replace('{count}', String((balances ?? []).filter(row => Number.isFinite(row.balance?.total)).length))
-                : amountText(balancesTotal, creditCapability.unit)
+                : amountText(balancesTotal, creditUnit)
               : balances === undefined ? '…' : '—')) : null),
         h('div', { className: 'ofm_chanacts' },
-          h('button', { type: 'button', className: 'ofm_btn', disabled: busy !== '' || !rpc, 'aria-busy': busy === 'add' ? 'true' : undefined, onClick: startLogin }, busy === 'add' ? '…' : t('chan.act.add')),
-          accountsCount > 0 ? h('button', {
-            type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc, 'aria-busy': busy === 'refreshAll' ? 'true' : undefined,
+          h('button', { type: 'button', className: 'ofm_btn', disabled: busy !== '' || (channel.own !== true && !rpc), 'aria-busy': busy === 'add' ? 'true' : undefined, onClick: startLogin }, busy === 'add' ? '…' : t('chan.act.add')),
+          // 自有渠道只有登记了续期实现的才给按钮（`status.refreshable` 来自宿主）。
+          accountsCount > 0 && (channel.own !== true || status?.refreshable === true) ? h('button', {
+            type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || (channel.own !== true && !rpc), 'aria-busy': busy === 'refreshAll' ? 'true' : undefined,
             onClick: () => accountAction('refreshAll', '', async () => {
-              for (const row of accounts ?? await rpc('account.list', { provider: channel.id }).then(v => v?.accounts ?? [])) {
-                try { await rpc('account.refresh', { accountId: row.id }, 90_000) } catch (error) { onError(channel, error) }
+              // 自有渠道：`account.refresh` 是渠道包的账号池；自己的账号改走
+              // `/channels/own/refresh`（逐账号串行，与「领取」同款）。
+              const rows = channel.own === true
+                ? ((await api(`/channels/own?provider=${encodeURIComponent(channel.id)}`, { timeout: 20_000 }))?.accounts ?? [])
+                  .filter(row => row.refreshable === true)
+                : (accounts ?? await rpc('account.list', { provider: channel.id }).then(v => v?.accounts ?? []))
+              for (const row of rows) {
+                try {
+                  if (channel.own === true) await post('/channels/own/refresh', { accountId: row.id }, 90_000)
+                  else await rpc('account.refresh', { accountId: row.id }, 90_000)
+                } catch (error) { onError(channel, error) }
               }
               onChanged(); await loadAccounts(); void loadBalances(true)
             }),
           }, busy === 'refreshAll' ? '…' : t('chan.act.refresh')) : null,
-          creditCapability ? h('button', {
-            type: 'button', className: 'ofm_btn ghost', disabled: balanceLoading || busy !== '' || !rpc,
+          showCredits ? h('button', {
+            type: 'button', className: 'ofm_btn ghost', disabled: balanceLoading || busy !== '',
             'aria-busy': balanceLoading ? 'true' : undefined, onClick: () => void loadBalances(true),
           }, balanceLoading ? t('chan.credits.loading') : t('chan.credits.refresh')) : null,
-          creditCapability?.claim ? h('button', {
-            type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc, 'aria-busy': busy === 'claim' ? 'true' : undefined,
+          claimSupported ? h('button', {
+            type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || (channel.own !== true && !rpc), 'aria-busy': busy === 'claim' ? 'true' : undefined,
             onClick: claim,
           }, busy === 'claim' ? '…' : t('chan.act.claim')) : null,
           // 锁定永久积分：两档语义（锁/不锁）用同一个按钮，状态写在标签上。
@@ -4233,26 +4540,38 @@ window.__ModuleLoader__.load({
             h('svg', { viewBox: '0 0 12 12', 'aria-hidden': 'true' }, h('path', { d: 'M3 1.5l6 4.5-6 4.5z' })),
             t('chan.fold.models'), models === undefined ? null : ` (${models.length})`)),
         notice !== '' ? h('p', { className: 'ofm_note' }, notice) : null,
-        balanceError !== '' ? h('p', { className: 'ofm_balanceerror', role: 'alert' },
+        // 没有启用账号时**不显示任何余额错误**：这不是「查询失败」，而是「还没登录」。
+        // 旧宿主缺路由 / 旧渠道包不认识 provider 时，这里以前会画一行红字
+        //（用户报障「都没登账号还提示余额查询失败」）。
+        enabledCount > 0 && balanceError !== '' ? h('p', { className: 'ofm_balanceerror', role: 'alert' },
           t('chan.credits.failed').replace('{reason}', balanceError))
-          : balanceFailures > 0 ? h('p', { className: 'ofm_balanceerror', role: 'status' },
+          : enabledCount > 0 && balanceFailures > 0 ? h('p', { className: 'ofm_balanceerror', role: 'status' },
             t('chan.credits.partial').replace('{count}', String(balanceFailures))) : null,
         open === 'accounts' ? h('div', { className: 'ofm_chanfold' },
           accounts === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 44 } })
             : accounts.length === 0 ? h('p', { className: 'ofm_note' }, t('chan.noAccount'))
               : h('div', { className: 'ofm_acctlist' }, accounts.map(row => {
                 const credit = creditFor(row.id)
-                const pending = row.refreshable !== true && !Number.isFinite(row.expiresAt)
+                // 「待登录」的判据：
+                // - 渠道包账号：没有续期材料、也没有到期时间（占位行）；
+                // - 自有渠道：看权益查询回的 `pending`（账号表里的行 + 凭据库里没有
+                //   本体）。上一版对自有账号恒为 true —— 已登录的号也画成虚线。
+                const balanceRow = (balances ?? []).find(entry => entry.accountId === row.id)
+                const pending = channel.own === true
+                  ? balanceRow?.pending === true
+                  : row.refreshable !== true && !Number.isFinite(row.expiresAt)
                 return h('div', { className: 'ofm_acct' + (pending ? ' pending' : ''), key: row.id },
                   h('span', { className: 'ofm_acctname', title: row.nickname ?? row.id }, row.nickname ?? row.id),
                   h('span', { className: 'ofm_acctmeta' }, row.enabled === false ? t('chan.disabled') : t('chan.enabled'), ' · ', expiryText(row, t)),
                   credit?.todayCheckedIn === true && Number.isFinite(credit.todayCredit) ? h('span', { className: 'ofm_creditbadge' },
-                    t('chan.credit.today').replace('{credit}', amountText(credit.todayCredit, creditCapability?.unit))) : null,
+                    t('chan.credit.today').replace('{credit}', amountText(credit.todayCredit, creditUnit))) : null,
                   (() => {
                     const balance = balanceOf(row.id)
-                    if (!creditCapability) return null
+                    if (!showCredits) return null
                     if (balanceLoading) return h('span', { className: 'ofm_note' }, t('chan.credits.loading'))
                     const result = (balances ?? []).find(entry => entry.accountId === row.id)
+                    // 待登录（建了账号但没登完）：既不是「余额 0」也不是「查询失败」。
+                    if (result?.pending === true) return h('span', { className: 'ofm_note' }, t('chan.credits.pending'))
                     if (balance === null || !Number.isFinite(balance.total)) return h('span', { className: 'ofm_balanceerror' },
                       balanceError ? t('chan.credits.failed').replace('{reason}', balanceError)
                         : result?.error || t('chan.credits.unavailable'))
@@ -4262,7 +4581,7 @@ window.__ModuleLoader__.load({
                       ? h('span', { className: 'ofm_note' }, t('chan.credits.tier').replace('{tier}', result.extra.accountTier.title))
                       : null
                     // 配额渠道的 total 是百分比均值，真正要看的是两个窗口各自剩多少。
-                    if (creditCapability.quota) {
+                    if (creditCapability?.quota === true) {
                       const windows = (balance.packages ?? []).map(pkg => `${pkg.name} ${amountText(pkg.remaining, 'quota')}`)
                       return h(Fragment, null,
                         h('span', { className: 'ofm_creditbadge strong', title: balanceLabel },
@@ -4274,19 +4593,21 @@ window.__ModuleLoader__.load({
                     // 全都看不见，而 pack 已经把这些算好了。
                     const packages = Array.isArray(balance.packages) ? balance.packages.filter(pkg => pkg.active !== false) : []
                     const detail = packages.length > 1
-                      ? packages.map(pkg => `${pkg.name} ${amountText(pkg.remaining, creditCapability.unit)}`).join(' · ')
+                      ? packages.map(pkg => `${pkg.name} ${amountText(pkg.remaining, creditUnit)}`).join(' · ')
                       : null
                     return h(Fragment, null,
                       h('span', { className: 'ofm_creditbadge strong', title: balanceLabel },
-                        `${balanceLabel} ${amountText(balance.total, creditCapability.unit)}`),
+                        `${balanceLabel} ${amountText(balance.total, creditUnit)}`),
                       detail === null ? null : h('span', { className: 'ofm_note', title: detail }, detail),
                       Number.isFinite(balance.expiredTotal) && balance.expiredTotal > 0
-                        ? h('span', { className: 'ofm_note' }, t('chan.credits.expired').replace('{amount}', amountText(balance.expiredTotal, creditCapability.unit)))
+                        ? h('span', { className: 'ofm_note' }, t('chan.credits.expired').replace('{amount}', amountText(balance.expiredTotal, creditUnit)))
                         : null,
                       tier)
                   })(),
                   h('span', { className: 'ofm_acctacts' },
-                    h('button', {
+                    // 「测速 / 刷新凭据」是渠道包账号池的能力（它读自己的凭据引用）；
+                    // 自有渠道没有这两条腿 ⇒ 不渲染按钮，而不是给一个点了没反应的。
+                    channel.own === true ? null : h('button', {
                       type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
                       onClick: () => accountAction('test:' + row.id, row.id, async () => {
                         const value = await rpc('account.test', { accountId: row.id }, 90_000)
@@ -4295,77 +4616,107 @@ window.__ModuleLoader__.load({
                           : t('chan.test.ok').replace('{ms}', String(value?.ms ?? value?.latencyMs ?? '—')))
                       }),
                     }, t('chan.act.test')),
+                    // 自有渠道只有登记了续期实现、且凭据本体存在时才给按钮
+                    // （`refreshable` 由宿主按凭据材料算，不是面板猜的）。
+                    channel.own === true
+                      ? (row.refreshable === true ? h('button', {
+                        type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                        onClick: () => accountAction('refresh:' + row.id, row.id, async () => {
+                          const value = await post('/channels/own/refresh', { accountId: row.id }, 90_000)
+                          setNotice(t('chan.act.refreshed').replace('{name}', row.nickname ?? row.id)
+                            .replace('{state}', value?.refreshed === true ? t('chan.act.refreshedYes') : t('chan.act.refreshedNo')))
+                          onChanged(); await loadAccounts(); void loadBalances(true)
+                        }),
+                      }, t('chan.act.refresh')) : null)
+                      : h('button', {
+                        type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
+                        onClick: () => accountAction('refresh:' + row.id, row.id, async () => {
+                          await rpc('account.refresh', { accountId: row.id }, 90_000)
+                          onChanged(); await loadAccounts(); void loadBalances(true)
+                        }),
+                      }, t('chan.act.refresh')),
                     h('button', {
-                      type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
-                      onClick: () => accountAction('refresh:' + row.id, row.id, async () => {
-                        await rpc('account.refresh', { accountId: row.id }, 90_000)
-                        onChanged(); await loadAccounts(); void loadBalances(true)
-                      }),
-                    }, t('chan.act.refresh')),
-                    h('button', {
-                      type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
-                      onClick: () => accountAction('toggle:' + row.id, row.id, async () => {
-                        await rpc('account.update', { accountId: row.id, patch: { enabled: row.enabled === false } })
-                        onChanged(); await loadAccounts()
-                      }),
+                      type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                      onClick: () => accountAction('toggle:' + row.id, row.id, async () => { await toggleAccount(row) }),
                     }, row.enabled === false ? t('chan.enabled') : t('chan.disabled')),
                     h('button', {
-                      type: 'button', className: 'ofm_minibtn danger', disabled: busy !== '' || !rpc,
+                      type: 'button', className: 'ofm_minibtn danger', disabled: busy !== '',
                       onClick: () => void removeAccount(row.id),
                     }, t('chan.act.delete'))))
               }))) : null,
         extraFold,
         open === 'models' ? h('div', { className: 'ofm_chanfold' },
           models === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 44 } })
-            : models.length === 0 ? h('p', { className: 'ofm_note' }, '—')
-              : h(Fragment, null,
-                h('div', { className: 'ofm_row' },
-                  h('span', { className: 'ofm_note' }, t('chan.model.enabledCount')
-                    .replace('{enabled}', String(models.filter(model => model.disabled !== true).length))
-                    .replace('{total}', String(models.length))),
-                  h('button', {
-                    type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc,
-                    title: t('chan.model.allScope'), 'aria-busy': busy === 'models:show' ? 'true' : undefined,
-                    onClick: () => void setAllModels(false),
-                  }, t('chan.model.enableAll')),
-                  h('button', {
-                    type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc,
-                    title: t('chan.model.allScope'), 'aria-busy': busy === 'models:hide' ? 'true' : undefined,
-                    onClick: () => void setAllModels(true),
-                  }, t('chan.model.disableAll'))),
-                h('div', { className: 'ofm_modellist' }, models.map(model => h('div', {
-                className: 'ofm_modelrow' + (model.disabled === true ? ' off' : ''),
-                key: model.id,
-              },
-                h('span', { className: 'ofm_id', title: model.id }, model.name ?? model.id),
-                // 倍率：渠道包把 CodeArts 的 `credit[]` 丢了，所以它的模型名里没有
-                // ` · x0.18`；这里的数字来自本插件自己的发现（`/channels/extra`）。
-                // ⚠️ 只在名字里**没有**倍率时补标签：Qoder 的渠道包展示名已经带
-                // ` · x0.5`，再挂一个 pill 就是同一行两个倍率（两个来源还可能不一致）。
-                // 只在名字里没有倍率时补标签：Qoder 的渠道包展示名已经带 ` · x0.5`，
-                // 再挂一个 pill 就是同一行两个倍率（两个来源还可能算出不同的数）。
-                extra?.ratios?.[model.id] !== undefined && !/[·]\s*x\d/i.test(model.name ?? '')
-                  ? h('span', { className: 'ofm_tagpill', title: t('chan.extra.ratioTitle') }, extra.ratios[model.id])
-                  : null,
-                model.needsLogin === true ? h('span', { className: 'ofm_tagpill' }, t('chan.model.needsLogin')) : null,
-                model.isFree === true ? h('span', { className: 'ofm_tagpill free' }, t('chan.model.free')) : null,
-                model.dead === true ? h('span', { className: 'ofm_tagpill dead' }, t('chan.model.dead')) : null,
+            : h(Fragment, null,
+              models.length === 0
+                ? h('p', { className: 'ofm_note' }, channel.id === 'accio' ? t('chan.model.accountScoped') : '—')
+                : h(Fragment, null,
+                  h('div', { className: 'ofm_row' },
+                    h('span', { className: 'ofm_note' }, t('chan.model.enabledCount')
+                      .replace('{enabled}', String(models.filter(model => model.disabled !== true).length))
+                      .replace('{total}', String(models.length))),
+                    // 「实时 / 预制」：取到最新列表就写实时；否则写预制并把原因写在悬停里。
+                    modelMeta === undefined || modelMeta === null ? null : h('span', {
+                      className: 'ofm_tagpill' + (modelMeta.source === 'live' ? ' free' : ''),
+                      title: catalogHint,
+                    }, modelMeta.source === 'live' ? t('chan.catalog.live') : t('chan.catalog.preset')),
+                    h('button', {
+                      type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || status?.closed === true || (channel.own !== true && !rpc),
+                      title: t('chan.model.allScope'), 'aria-busy': busy === 'models:show' ? 'true' : undefined,
+                      onClick: () => void setAllModels(false),
+                    }, t('chan.model.enableAll')),
+                    h('button', {
+                      type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || status?.closed === true || (channel.own !== true && !rpc),
+                      title: t('chan.model.allScope'), 'aria-busy': busy === 'models:hide' ? 'true' : undefined,
+                      onClick: () => void setAllModels(true),
+                    }, t('chan.model.disableAll'))),
+                  h('div', { className: 'ofm_modellist' }, models.map(model => h('div', {
+                    className: 'ofm_modelrow' + (model.disabled === true ? ' off' : ''),
+                    key: model.id,
+                  },
+                    h('span', { className: 'ofm_id', title: model.id }, model.name ?? model.id),
+                    // 倍率：渠道包把 CodeArts 的 `credit[]` 丢了，所以它的模型名里没有
+                    // ` · x0.18`；这里的数字来自本插件自己的发现（`/channels/extra`）。
+                    // ⚠️ 只在名字里**没有**倍率时补标签：Qoder 的渠道包展示名已经带
+                    // ` · x0.5`，再挂一个 pill 就是同一行两个倍率（两个来源还可能不一致）。
+                    (() => {
+                      // 倍率**就在模型行里**：宿主把 `statusOf` 的 ratios 随目录一起
+                      // 回给面板（`model.ratio`），不再要求用户先展开「活动」折叠。
+                      const ratio = model.ratio ?? model.rate ?? extra?.ratios?.[model.id]
+                      if (ratio === undefined || ratio === null || String(ratio) === '') return null
+                      // 展示名里已经带了同一个倍率（豆包/ Qoder 的 `· 0.65x`）就不重复挂。
+                      if (String(model.name ?? '').includes(String(ratio))) return null
+                      return h('span', { className: 'ofm_tagpill', title: t('chan.extra.ratioTitle') }, ratio)
+                    })(),
+                    model.needsLogin === true ? h('span', { className: 'ofm_tagpill' }, t('chan.model.needsLogin')) : null,
+                    model.isFree === true ? h('span', { className: 'ofm_tagpill free' }, t('chan.model.free')) : null,
+                    model.dead === true ? h('span', { className: 'ofm_tagpill dead' }, t('chan.model.dead')) : null,
+                    h('button', {
+                      type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || status?.closed === true || (channel.own !== true && !rpc),
+                      onClick: () => accountAction('model:' + model.id, '', async () => {
+                        if (channel.own === true) {
+                          // 自有渠道的模型开关：宿主设置（选择器/网关下一次 sync 生效）。
+                          await post('/channels/own/models/update', {
+                            provider: channel.id,
+                            modelId: model.modelId ?? model.id,
+                            disabled: model.disabled !== true,
+                          }, 30_000)
+                        } else {
+                          await rpc('model.setDisabled', { provider: channel.id, modelId: model.id, disabled: model.disabled !== true })
+                        }
+                        await loadModels(); onChanged()
+                      }),
+                    }, model.disabled === true ? t('chan.model.on') : t('chan.model.off')))))),
+              // 渠道级总开关：语义是「模型全关 + 账号全停」，与逐模型开关不同。
+              // ⚠️ 必须放在 `models.length === 0` 之外：关掉整个渠道后模型列表为空，
+              // 若按钮也在那个分支里，用户就再也点不到「打开整个渠道」。
+              h('div', { className: 'ofm_row' },
+                h('span', { className: 'ofm_note' }, t('chan.provider.hint')),
                 h('button', {
-                  type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || !rpc,
-                  onClick: () => accountAction('model:' + model.id, '', async () => {
-                    await rpc('model.setDisabled', { provider: channel.id, modelId: model.id, disabled: model.disabled !== true })
-                    await loadModels(); onChanged()
-                  }),
-                }, model.disabled === true ? t('chan.model.on') : t('chan.model.off'))))),
-                // 渠道级总开关：语义是「模型全关 + 账号全停」，与逐模型开关不同，
-                // 故放在模型折叠里并写清后果（关闭会同时停用账号）。
-                h('div', { className: 'ofm_row' },
-                  h('span', { className: 'ofm_note' }, t('chan.provider.hint')),
-                  h('button', {
-                    type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || !rpc,
-                    'aria-busy': busy === 'provider:off' || busy === 'provider:on' ? 'true' : undefined,
-                    onClick: () => void toggleProvider(),
-                  }, status?.closed === true ? t('chan.provider.on') : t('chan.provider.off'))))) : null,
+                  type: 'button', className: 'ofm_btn ghost', disabled: busy !== '' || (channel.own !== true && !rpc),
+                  'aria-busy': busy === 'provider:off' || busy === 'provider:on' ? 'true' : undefined,
+                  onClick: () => void toggleProvider(),
+                }, status?.closed === true ? t('chan.provider.on') : t('chan.provider.off'))))) : null,
         open === 'tasks' && CHANNEL_TASKS[channel.id] ? h('div', { className: 'ofm_chanfold' },
           tasksLoading ? h('div', { className: 'ofm_skel', style: { minHeight: 44 } })
             : (accounts ?? []).length === 0 ? h('p', { className: 'ofm_note' }, t('chan.noAccount'))
@@ -4380,8 +4731,8 @@ window.__ModuleLoader__.load({
                   state === undefined ? h('span', { className: 'ofm_note' }, t('chan.task.loading'))
                     : state?.error !== undefined ? h('span', { className: 'ofm_balanceerror' }, state.error)
                       : h('span', { className: 'ofm_acctmeta' }, t('chan.task.earned')
-                        .replace('{earned}', amountText(state?.earned ?? 0, creditCapability?.unit))
-                        .replace('{total}', amountText(state?.total ?? 0, creditCapability?.unit))),
+                        .replace('{earned}', amountText(state?.earned ?? 0, creditUnit))
+                        .replace('{total}', amountText(state?.total ?? 0, creditUnit))),
                   taskKeys.length === 0 ? null : h('span', { className: 'ofm_note', title: taskKeys.map(key => `${titles[key] ?? key} +${amountText(points[key] ?? 0)}`).join('、') },
                     done.length === taskKeys.length ? t('chan.task.all') : `${done.length}/${taskKeys.length}`),
                   h('span', { className: 'ofm_acctacts' },
@@ -4426,15 +4777,27 @@ window.__ModuleLoader__.load({
           placeholder: t('chan.login.smsCodePlaceholder'),
           onChange: event => setSmsCode(event.target.value.replace(/\D/g, '').slice(0, 8)),
         }))
+      // 第 1 步的文案按登录形状分叉：扫码渠道（AStudio）是「用微信扫这个码」，
+      // 其余是「在浏览器里完成登录」。**先算成变量**：`t()` 里放三元会让
+      // `tests/i18n-keys.mjs` 的静态扫描看不到 `stepScan`（键漏定义也不报警）。
+      const stepOneText = login?.qr === true ? t('chan.login.stepScan') : t('chan.login.step1')
       const deviceStep = h(Fragment, null,
-        h('div', { className: 'ofm_loginstep' }, h('b', null, '1'), h('span', null, t('chan.login.step1'))),
+        // 扫码型渠道（AStudio）：URL 本身是二维码图片，画出来比给一串链接有用得多。
+        login?.qr === true && typeof login?.url === 'string' && login.url !== ''
+          ? h('img', {
+            src: login.url, alt: t('chan.login.qrAlt'), width: 180, height: 180,
+            style: { display: 'block', margin: '4px auto 8px', background: '#fff', borderRadius: 8 },
+          })
+          : null,
+        h('div', { className: 'ofm_loginstep' }, h('b', null, '1'), h('span', null, stepOneText)),
         h('div', { className: 'ofm_loginstep' }, h('b', null, '2'), h('span', null, t('chan.login.step2'))),
         // 设备码类渠道：用户码要**看得见**，用户拿它去浏览器里确认。
         typeof login?.code === 'string' && login.code !== ''
           ? h('div', { className: 'ofm_loginstep' }, h('b', null, '3'),
             h('span', null, t('chan.login.code').replace('{code}', login.code)))
           : null,
-        login?.url === '' || login?.url === undefined
+        // 扫码型渠道的 URL 已经画成图片，再贴一遍长链接是噪音。
+        login?.url === '' || login?.url === undefined || login.qr === true
           ? null
           : h('code', { className: 'ofm_mono', style: { wordBreak: 'break-all', whiteSpace: 'pre-wrap' } }, login.url),
         h('p', { className: 'ofm_note ofm_scanline' }, t('chan.login.waiting')))
@@ -4450,7 +4813,7 @@ window.__ModuleLoader__.load({
             'aria-busy': busy === 'sms' || busy === 'sms:send' ? 'true' : undefined,
             onClick: () => void (login.stage === 'phone' ? sendSmsCode() : submitSmsLogin()),
           }, busy === 'sms' || busy === 'sms:send' ? '…' : t(login.stage === 'phone' ? 'chan.login.smsSend' : 'chan.login.smsSubmit'))
-          : login.url === '' ? null : h('a', { className: 'ofm_btn primary', href: login.url, target: '_blank', rel: 'noreferrer noopener' }, t('chan.login.open'))
+          : login.url === '' || login.qr === true ? null : h('a', { className: 'ofm_btn primary', href: login.url, target: '_blank', rel: 'noreferrer noopener' }, t('chan.login.open'))
       const modal = login === null ? null : h('div', { className: 'ofm_scrim' },
         h('div', { className: 'ofm_modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('chan.login.title').replace('{name}', channel.name) },
           h('div', { className: 'ofm_modalhead' }, t('chan.login.title').replace('{name}', channel.name)),
@@ -4504,11 +4867,13 @@ window.__ModuleLoader__.load({
               const accounts = Array.isArray(own?.accounts) ? own.accounts : []
               statuses[row.id] = {
                 accounts: { total: accounts.length, enabled: accounts.filter(entry => entry.enabled !== false).length },
-                // 模型数量由 `/channels/extra` 的目录决定；这里只报账号维度，
-                // 模型数留给卡片自己的「模型」折叠（那里才真的去拉目录）。
-                models: { total: 0, disabled: 0 },
-                closed: false,
+                // 模型数由宿主按**同一份目录**算好（含被关掉的行）；以前这里写死
+                // 0，卡片上永远是「模型 —」，用户以为没模型。
+                models: own?.models ?? { total: 0, disabled: 0 },
+                closed: own?.closed === true,
                 own: true,
+                // 有续期实现的渠道才渲染「刷新凭据」。
+                refreshable: own?.refreshable === true,
               }
             } catch {
               statuses[row.id] = { accounts: { total: 0, enabled: 0 }, models: { total: 0, disabled: 0 }, closed: false, own: true }
@@ -4560,10 +4925,32 @@ window.__ModuleLoader__.load({
         const totals = { providers: 0, claimed: 0, already: 0, inactive: 0, failed: 0, byUnit: { credit: 0, token: 0 }, errors: [] }
         try {
           for (const channel of CHANNEL_PROVIDERS) {
+            const own = channel.own === true
             const capability = CHANNEL_CREDITS[channel.id]
-            if (!capability?.claim) continue
+            // 自有渠道不走渠道包的 `credits.claimAll`（它不认识这些 id），改逐账号打自己的路由。
+            const ownClaimable = own && OWN_CLAIMABLE.has(channel.id)
+            if (!capability?.claim && !ownClaimable) continue
             totals.providers += 1
             try {
+              if (ownClaimable) {
+                const rows = await api(`/channels/own?provider=${encodeURIComponent(channel.id)}`, { timeout: 20_000 })
+                const list = (Array.isArray(rows?.accounts) ? rows.accounts : []).filter(row => row.enabled !== false)
+                for (const row of list) {
+                  try {
+                    const value = await post('/channels/extra/claim', { provider: channel.id, accountId: row.id }, 240_000)
+                    if (value?.kind === 'claimed') {
+                      totals.claimed += 1
+                      totals.byUnit.credit += Number(value.credit ?? 0) || 0
+                    } else if (value?.kind === 'already-claimed') totals.already += 1
+                    else if (value?.kind === 'inactive') totals.inactive += 1
+                    else { totals.failed += 1; totals.errors.push(`${channel.name}: ${value?.message ?? '—'}`) }
+                  } catch (failure) {
+                    totals.failed += 1
+                    totals.errors.push(`${channel.name}: ${String(failure?.message ?? failure)}`)
+                  }
+                }
+                continue
+              }
               const value = await rpc('credits.claimAll', { provider: channel.id }, 240_000)
               const summary = value?.summary ?? {}
               totals.claimed += Number(summary.claimed ?? 0) || 0
@@ -4581,7 +4968,7 @@ window.__ModuleLoader__.load({
           setBulkClaim(totals)
           void loadStatus()
         } finally { setBulkBusy(false) }
-      }, [available, bulkBusy, rpc, loadStatus])
+      }, [available, bulkBusy, rpc, loadStatus, api])
       const bulkText = useMemo(() => {
         if (bulkClaim === undefined) return ''
         const parts = []
@@ -4606,7 +4993,77 @@ window.__ModuleLoader__.load({
         showToast({ title: t('chan.error').replace('{reason}', reason).slice(0, 120), body: channel.name, tone: 'warn' })
       }, [t])
 
+      /**
+       * 宿主清单对账：**这个面板渲染的卡片，宿主到底认不认**。
+       *
+       * 插件更新后没重启时，面板是新的（client.js 每次加载都从磁盘读）、宿主进程却
+       * 还是旧的 —— 表现就是「新加的卡片点添加账号没反应」。判据由宿主算
+       * （`/channels/manifest?expect=…` 回 `missing`），面板只负责显示，不自己抄一遍规则。
+       */
+      const [manifest, setManifest] = useState(undefined)
+      // 取不到清单本身就是证据：**旧代码没有这条路由**（`GET /channels/manifest` 是本次
+      // 新增的）。所以「请求失败」也要走同一条提示 —— 否则最需要它的那台机器恰好
+      // 看不到提示（正是「宿主是旧代码」把提示藏了）。
+      const [manifestMissingRoute, setManifestMissingRoute] = useState(false)
+      useEffect(() => {
+        if (!available) return undefined
+        let alive = true
+        const expect = CHANNEL_PROVIDERS.filter(row => row.own === true).map(row => row.id).join(',')
+        void (async () => {
+          try {
+            const value = await api(`/channels/manifest?expect=${encodeURIComponent(expect)}`, { timeout: 15_000 })
+            if (alive) { setManifest(value ?? null); setManifestMissingRoute(false) }
+          } catch {
+            if (alive) { setManifest(null); setManifestMissingRoute(true) }
+          }
+        })()
+        return () => { alive = false }
+      }, [available])
+      const staleChannels = Array.isArray(manifest?.missing) ? manifest.missing : []
+
+      /**
+       * 热重载宿主（`POST /reload`）。
+       *
+       * 为什么放在这个页面上：插件更新后**宿主进程仍是旧代码**，而面板每次打开都
+       * 从磁盘读新界面 —— 症状就是「新加的卡片点添加账号没反应」。这里给一次
+       * 自助重载的机会（不用关掉整个 DSH），重载完自动刷新页面。
+       */
+      const [reloading, setReloading] = useState(false)
+      const reloadHost = useCallback(async () => {
+        if (reloading) return
+        setReloading(true)
+        try {
+          await post('/reload', {}, 30_000)
+          showToast({ title: t('chan.reload.done'), body: t('chan.reload.refresh'), tone: 'ok' })
+          setTimeout(() => {
+            try {
+              if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') window.location.reload()
+            } catch { /* 没有 location 的宿主就靠用户自己刷新 */ }
+          }, 2500)
+        } catch (error) {
+          showToast({ title: t('chan.reload.failed').replace('{reason}', String(error?.message ?? error)), tone: 'warn' })
+        } finally {
+          setReloading(false)
+        }
+      }, [reloading, t, showToast])
+
       const connected = statuses === undefined ? 0 : CHANNEL_PROVIDERS.filter(row => (statuses[row.id]?.accounts?.enabled ?? 0) > 0).length
+      /**
+       * 已登录账号的渠道排前面（用户 2026-11-24 要求）。
+       *
+       * 只影响渲染顺序：状态来自同一份 `statuses`，未登录渠道保持原有相对顺序
+       * （稳定排序 + 下标兜底），路由、账号与计数一概不动。
+       */
+      const orderedChannels = statuses === undefined
+        ? CHANNEL_PROVIDERS
+        : CHANNEL_PROVIDERS
+          .map((channel, index) => ({
+            channel,
+            index,
+            rank: (statuses[channel.id]?.accounts?.enabled ?? 0) > 0 ? 0 : 1,
+          }))
+          .sort((left, right) => left.rank - right.rank || left.index - right.index)
+          .map(entry => entry.channel)
       const failed = !ready && pack.state === 'failed'
 
       return h('div', { className: 'ofm_page' },
@@ -4633,12 +5090,26 @@ window.__ModuleLoader__.load({
               onClick: () => void claimEveryChannel(),
             }, bulkBusy ? t('chan.claim.all.running') : t('chan.claim.all')))),
         bulkText !== '' ? h('p', { className: 'ofm_note', role: 'status' }, bulkText) : null,
+        // 宿主是旧代码：面板渲染的渠道它不认识。**说清动作**（重启 DSH），
+        // 而不是让用户对着「按钮没反应」猜。
+        // 宿主是旧代码：面板渲染的渠道它不认识（或它连清单接口都没有）。**说清动作**
+        // （热重载 / 重启），而不是让用户对着「按钮没反应」猜。
+        staleChannels.length === 0 && manifestMissingRoute === false ? null : h('div', { className: 'ofm_callout ofm_error', role: 'alert' },
+          h('div', null,
+            manifestMissingRoute
+              ? t('chan.manifest.missing')
+              : t('chan.manifest.stale').replace('{missing}', staleChannels.join('、')),
+            h('div', { className: 'ofm_note' }, t('chan.manifest.staleHint')),
+            h('button', {
+              type: 'button', className: 'ofm_btn primary', disabled: reloading || !available,
+              'aria-busy': reloading ? 'true' : undefined, onClick: () => void reloadHost(),
+            }, reloading ? t('reload.reloading') : t('reload.now')))),
         failed ? h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, t('chan.pack.failed').replace('{reason}', pack.error ?? ''), h('div', { className: 'ofm_note' }, t('chan.pack.hint')))) : null,
         !available ? h('div', { className: 'ofm_callout' }, h('div', null, t('chan.rpc.unavailable'))) : null,
         !ready ? h('div', { className: 'ofm_chanwrap' },
           [0, 1, 2].map(index => h('div', { className: 'ofm_skel', key: index, style: { minHeight: 168 } }))) : null,
-        ready ? h('div', { className: 'ofm_chanwrap' }, CHANNEL_PROVIDERS.map(channel => h(ChannelCard, {
+        ready ? h('div', { className: 'ofm_chanwrap' }, orderedChannels.map(channel => h(ChannelCard, {
           key: channel.id,
           channel,
           status: statuses?.[channel.id],

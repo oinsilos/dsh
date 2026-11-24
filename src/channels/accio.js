@@ -183,14 +183,19 @@ export function buildAuthUrl({ region = 'cn', redirectUri, state, challenge }) {
  * `rundll32` 不经过 shell，参数原样交给系统 URL 处理器。
  *
  * 永不抛出：`execFile` 的失败是异步 `'error'` 事件，第三个参数的回调就是它的消费者。
+ *
+ * `exec` / `platform` 可注入 —— 离线测试据此断言「参数是一个整体、且没有经过 shell」，
+ * 而**不需要真的弹出浏览器**。
  */
-export function openBrowser(url) {
+export function openBrowser(url, { platform = process.platform, exec = execFile } = {}) {
   try {
-    if (process.platform === 'win32') {
-      execFile('rundll32.exe', ['url.dll,FileProtocolHandler', url], () => {})
+    if (platform === 'win32') {
+      // ⚠️ 只传两个参数：`url.dll,FileProtocolHandler` 与 URL。URL 必须是一个整体，
+      // 这也是「不用 cmd /c start」的全部理由。
+      exec('rundll32.exe', ['url.dll,FileProtocolHandler', String(url)], () => {})
       return
     }
-    execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], () => {})
+    exec(platform === 'darwin' ? 'open' : 'xdg-open', [String(url)], () => {})
   } catch { /* 打开失败不影响流程：调用方会把地址显示给用户 */ }
 }
 
@@ -290,6 +295,84 @@ export async function exchangeCode({ code, codeVerifier, redirectUri, fetch: fet
   const expiresAt = rawExpiry === undefined ? undefined : rawExpiry > 1e12 ? Math.round(rawExpiry) : Math.round(rawExpiry * 1000)
   if (accessToken === '' || refreshToken === '') return { error: '令牌交换响应缺少 accessToken / refreshToken' }
   return { credential: { access_token: accessToken, refresh_token: refreshToken, ...expiresAt === undefined ? {} : { expires_at: expiresAt } }, region: 'cn' }
+}
+
+/**
+ * 账号身份：`POST /api/auth/userinfo`（token 在 **body**，GET 会 405）。
+ *
+ * 兑换响应**不含任何身份字段**，所以登录后必须补这一次；否则账号列表只能显示
+ * 账号 id，用户没法区分自己登的是哪个号。返回的 `routeRegion` 同时用于记住
+ * 区域（续期/推理按它选域）。
+ */
+export async function fetchAccioUserInfo(accessToken, { fetch: fetchImpl = fetch } = {}) {
+  const token = typeof accessToken === 'string' ? accessToken.trim() : ''
+  if (token === '') return { error: '没有 access_token' }
+  let result
+  try {
+    result = await call(fetchImpl, { path: USERINFO_PATH, method: 'POST', token, tokenIn: 'body', body: { accessToken: token } })
+  } catch (error) {
+    return { error: `身份查询失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  if (!result.envelope.ok) return { error: `身份查询失败：${result.envelope.message}` }
+  const data = result.envelope.data ?? {}
+  return {
+    info: {
+      ...typeof data.userId === 'string' && data.userId !== '' ? { userId: data.userId } : {},
+      ...typeof data.userName === 'string' && data.userName !== '' ? { userName: data.userName } : {},
+      ...typeof data.maskedMobile === 'string' && data.maskedMobile !== '' ? { maskedMobile: data.maskedMobile } : {},
+      ...typeof data.routeRegion === 'string' && data.routeRegion !== '' ? { routeRegion: data.routeRegion } : {},
+      ...typeof data.userLevel === 'string' && data.userLevel !== '' ? { userLevel: data.userLevel } : {},
+    },
+  }
+}
+
+/** 距到期不足 5 分钟才续期（`refresh_token` 会被轮换，绝不能每个请求都刷）。 */
+export function shouldRefreshAccio(credential, now = Date.now()) {
+  const expiresAt = readNumber(credential?.expires_at)
+  if (expiresAt === undefined || expiresAt <= 0) return false
+  return expiresAt - 5 * 60_000 <= now
+}
+
+/**
+ * 续期：`POST /api/auth/refresh_token` `{accessToken, refreshToken}`。
+ *
+ * ⚠️ 参考实现记录「续期会**轮换** refresh_token」，而该端点本身仍未实测 ⇒
+ * 调用方必须**串行**（同进程内按账号排队），成功后立刻落盘；失败不判终态，
+ * 让用户还能手动重新登录。
+ */
+export async function refreshAccioCredential(credential, { fetch: fetchImpl = fetch } = {}) {
+  const accessToken = typeof credential?.access_token === 'string' ? credential.access_token : ''
+  const refreshToken = typeof credential?.refresh_token === 'string' ? credential.refresh_token : ''
+  if (accessToken === '' || refreshToken === '') return { error: '凭据里没有 access_token / refresh_token（需要重新登录）' }
+  let result
+  try {
+    result = await call(fetchImpl, {
+      path: REFRESH_PATH,
+      method: 'POST',
+      token: accessToken,
+      tokenIn: 'body',
+      body: { accessToken, refreshToken },
+    })
+  } catch (error) {
+    return { error: `续期失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  if (!result.envelope.ok) return { error: `续期失败：${result.envelope.message}`, terminal: result.envelope.authFailed === true }
+  const data = result.envelope.data ?? {}
+  const nextAccess = typeof data.accessToken === 'string' ? data.accessToken : ''
+  const nextRefresh = typeof data.refreshToken === 'string' && data.refreshToken !== '' ? data.refreshToken : refreshToken
+  const rawExpiry = readNumber(data.expiresAt)
+  const expiresAt = rawExpiry === undefined ? undefined : rawExpiry > 1e12 ? Math.round(rawExpiry) : Math.round(rawExpiry * 1000)
+  if (nextAccess === '') return { error: '续期响应缺少 accessToken' }
+  return {
+    credential: {
+      ...credential,
+      access_token: nextAccess,
+      refresh_token: nextRefresh,
+      ...expiresAt === undefined ? {} : { expires_at: expiresAt },
+      ...typeof data.sgcookie === 'string' && data.sgcookie !== '' ? { sgcookie: data.sgcookie } : {},
+    },
+    refreshed: true,
+  }
 }
 
 /* ── 权益 ────────────────────────────────────────────────────────────────── */

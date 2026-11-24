@@ -35,6 +35,7 @@ export const CODELY_USER_AGENT = 'codely-vscode/4.3.0'
 const INITIATE_PATH = '/auth/device/initiate'
 const POLL_PATH = '/auth/device/poll'
 const EXCHANGE_PATH = '/auth/device/exchange'
+const REFRESH_PATH = '/auth/refresh'
 const ME_PATH = '/auth/external/me'
 const MODEL_STATUS_PATH = '/api/model-status'
 const USAGE_SUMMARY_PATH = '/api/user/usage/summary'
@@ -275,6 +276,41 @@ export async function exchangeCode(code, { fetch: fetchImpl = fetch, signal } = 
       ...expiresAt === undefined ? {} : { expires_at: new Date(expiresAt).toISOString() },
     },
     expiresAt,
+  }
+}
+
+/**
+ * 续期：`POST /auth/refresh {refresh_token}` → `{access_token, refresh_token}`。
+ *
+ * 参考实现实测（2026-10-20）：**不需要 Bearer**，`refresh_token` **不轮换**；
+ * `access_token` 是约 365 天的 JWT，所以这条腿很少被触发，但没有它就只能
+ * 重新登录。`cli_api_key` 是每次推理现换的派生品，这里不碰。
+ */
+export async function refreshCodelyToken(credential, { fetch: fetchImpl = fetch, signal } = {}) {
+  const refreshToken = typeof credential?.refresh_token === 'string' ? credential.refresh_token.trim() : ''
+  if (refreshToken === '') return { error: '凭据里没有 refresh_token（需要重新登录）' }
+  let result
+  try {
+    result = await postJson(fetchImpl, `${CODELY_API_BASE}${REFRESH_PATH}`, { refresh_token: refreshToken }, '', signal)
+  } catch (error) {
+    return { error: `续期网络失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+  if (!result.ok) return { error: `续期失败（HTTP ${result.status}）${result.text.slice(0, 120)}` }
+  const payload = result.payload ?? {}
+  const accessToken = typeof payload.access_token === 'string' ? payload.access_token : ''
+  if (accessToken === '') return { error: '续期响应缺少 access_token' }
+  const nextRefresh = typeof payload.refresh_token === 'string' && payload.refresh_token !== '' ? payload.refresh_token : refreshToken
+  const expiresAt = decodeJwtExpMs(accessToken)
+  return {
+    credential: {
+      ...credential,
+      access_token: accessToken,
+      refresh_token: nextRefresh,
+      obtained_at: Date.now(),
+      ...expiresAt === undefined ? {} : { expires_at: new Date(expiresAt).toISOString() },
+    },
+    refreshed: true,
+    ...expiresAt === undefined ? {} : { expiresAt },
   }
 }
 

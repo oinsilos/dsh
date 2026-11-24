@@ -246,7 +246,12 @@ export function createModelRuntime({
     // (whether a key is configured). A combo is excluded because it has no
     // endpoint of its own: probing one would send the chain's own id to the free
     // lane as a model name, spending quota to collect a verdict about nothing.
-    const probeable = catalog.filter(entry => !isEacEntry(entry) && !isKiloEntry(entry) && !isAggregateEntry(entry) && !isComboEntry(entry))
+    // 自有渠道不参与免费车道探活：它们的「模型 id」是 `provider/model` 形式，
+    // 打到免费网关只会拿回 404，然后被 availability 记成 unavailable —— 结果是
+    // 自有分组整组从 membership 消失（选择器空白）。它们是否有模型由目录/账号
+    // 状态决定，见 `setOwnCatalog()`。
+    const probeable = catalog.filter(entry => !isOwnRow(entry)
+      && !isEacEntry(entry) && !isKiloEntry(entry) && !isAggregateEntry(entry) && !isComboEntry(entry))
     const results = await probeCatalog(probeable, { attributionUserAgent, signal: lifetime.signal }, (id, result) => {
       if (disposed) return
       availability.edit(value => ({
@@ -344,23 +349,53 @@ function materializeCatalog(ids) {
   return rebuilt.length > 0 ? rebuilt : FALLBACK_CATALOG
 }
 
+/**
+ * 自有渠道行（`channel: 'own'` + `provider`）。
+ *
+ * 它们有各自的 adapter 路由与账号状态，**不属于免费车道**：既不能拿免费网关
+ * 探活，也不能被免费车道的 availability 结论过滤（探活必然 404 → 整组消失）。
+ */
+function isOwnRow(entry) {
+  return entry?.channel === 'own' && typeof entry.provider === 'string' && entry.provider !== ''
+}
+
 export function computeMembership(catalog, availabilitySnapshot, settings) {
   const results = availabilitySnapshot?.results ?? {}
   const expose = settings?.exposeRegionModels !== false
   const verdictOf = entry => results[entry.id]?.state
   const probeable = catalog.filter(entry => !entry.channel)
   const refusedAll = probeable.length > 0 && probeable.every(entry => verdictOf(entry) === STATE.unavailable)
-  let usable = catalog.filter(entry => verdictOf(entry) !== STATE.unavailable)
-  if (refusedAll) usable = catalog
+  // 自有行永远进视图：availability.json 里可能还留着它们被误探活时写下的
+  // `unavailable`，照单全收就会让 14 个分组一起从选择器里消失。
+  const usable = refusedAll
+    ? catalog
+    : catalog.filter(entry => isOwnRow(entry) || verdictOf(entry) !== STATE.unavailable)
   const main = []
   const region = []
+  /**
+   * 自有渠道按**渠道**分组。
+   *
+   * 宿主的选择器是按 adapter 路由分组的（`listProviders()` → 每组一个标题），
+   * 把 14 家自有渠道全塞进 `our-free-model` 这一个路由，结果是 80 个模型与免费
+   * 车道混在同一组里 —— 用户分不清哪个模型来自哪个渠道，也没法整组收起。
+   * 这里给每家一条路由（`provider` 字段就是路由名），标题由
+   * `FreeModelAdapter.providerInfo()` 从 `OWN_LABELS` 取。
+   */
+  const own = {}
   for (const entry of usable) {
-    const verdict = verdictOf(entry)
-    if (verdict !== STATE.regionBlocked) main.push(entry.id)
-    else if (expose) region.push(entry.id)
+    if (isOwnRow(entry)) {
+      ;(own[entry.provider] ??= []).push(entry.id)
+      continue
+    }
+    if (verdictOf(entry) === STATE.regionBlocked) {
+      if (expose) region.push(entry.id)
+      continue
+    }
+    main.push(entry.id)
   }
   const membership = {}
   if (main.length > 0) membership[ROUTE_MAIN] = main
   if (region.length > 0) membership[ROUTE_REGION] = region
+  for (const [provider, ids] of Object.entries(own)) membership[provider] = ids
   return membership
 }

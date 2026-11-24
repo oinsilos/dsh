@@ -23,7 +23,7 @@ import { CODE, UpstreamError, postStreamed } from './http.js'
 import { postSealedStreamed } from './eac.js'
 import { postKiloStreamed } from './kilo.js'
 import { postOwnChannelStreamed } from './channels/inference.js'
-import { isOwnEntry } from './channels/catalog.js'
+import { OWN_LABELS, isOwnEntry } from './channels/catalog.js'
 import { postAggregateStreamed, isAggregateEntry } from './aggregate.js'
 import { finishReason, readStream, windowTokens } from './stream.js'
 import { DEFAULT_LEVEL, MIN_BUDGET, budgetFor, defaultEffortFor, effortPatchFor, effortsFor, resolveLevel } from './effort.js'
@@ -60,7 +60,9 @@ export class FreeModelAdapter {
   }
 
   providerInfo(provider) {
-    return { id: provider, name: ROUTE_LABELS[provider] ?? provider }
+    // 自有渠道各自占一条路由：选择器把每个路由画成一个分组，标题就是这里
+    // 的 `name`。没有它，把渠道 id 原样当标题（`doubao` / `autoclawintl`）。
+    return { id: provider, name: ROUTE_LABELS[provider] ?? OWN_LABELS[provider] ?? provider }
   }
 
   /**

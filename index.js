@@ -49,22 +49,31 @@ import { selfReload, watchPackage, isReloading } from './src/reload.js'
 import { installChannelCatalogVisibility } from './src/channel-visibility.js'
 import { createChannelExtras } from './src/channels/index.js'
 import { createChannelAccounts, OWN_PROVIDERS } from './src/channels/accounts.js'
-import { buildOwnCatalog } from './src/channels/catalog.js'
+import { refreshAutoclawToken } from './src/channels/autoclaw.js'
+import { refreshCodelyToken } from './src/channels/codely.js'
+import { createOwnAccountPicker } from './src/channels/select.js'
+import { PACK_CHANNEL_IDS, buildChannelManifest, missingFromHost } from './src/channels/manifest.js'
+import { buildOwnCatalog, ownDisabledModelsOf, ownModelStats, ownProviderClosed } from './src/channels/catalog.js'
 import { createDeviceLogin } from './src/channels/device-login.js'
 import { createSmsLogin } from './src/channels/sms-login.js'
-import { exchangeCode, startBrowserLogin } from './src/channels/accio.js'
-import { MINIMAX_PRODUCTS, ensureMinimaxCredential } from './src/channels/minimax.js'
-import { ensureMarvisCredential, exchangeMarvisCode, isMarvisCallbackUrl, marvisAuthorizeUrl } from './src/channels/marvis.js'
+import { exchangeCode, fetchAccioUserInfo, openBrowser, refreshAccioCredential, shouldRefreshAccio, startBrowserLogin } from './src/channels/accio.js'
+import { MINIMAX_PRODUCTS, ensureMinimaxCredential, refreshMinimaxToken } from './src/channels/minimax.js'
+import { ensureMarvisCredential, exchangeMarvisCode, isMarvisCallbackUrl, marvisAuthorizeUrl, refreshMarvisCredential } from './src/channels/marvis.js'
 import {
   MAGICREW_HARVEST_EXPRESSION,
+  MAGICREW_PRODUCTS,
   completeMagicrewLogin,
   magicrewProductOf,
   parseMagicrewHarvest,
+  refreshGatewayKey,
+  shouldRefreshKey,
 } from './src/channels/magicrew.js'
 import { issueMonkeycodeKey, monkeycodeProductOf, sessionCookieOf } from './src/channels/monkeycode.js'
 import { BAIZHI, exchangeBaizhiKey } from './src/channels/baizhi.js'
-import { authorizeUrl as officeaceAuthorizeUrl, exchangeOfficeaceCode, generateDpopKey, pkcePair } from './src/channels/officeace-auth.js'
+import { authorizeUrl as officeaceAuthorizeUrl, exchangeOfficeaceCode, generateDpopKey, isOfficeaceCallbackUrl, pkcePair, refreshOfficeaceToken } from './src/channels/officeace-auth.js'
 import { OFFICEACE } from './src/channels/officeace.js'
+import { DOUBAO, DOUBAO_SIGN_EXPRESSION, doubaoCookieHeaderFromList, sessionIdFromCookie } from './src/channels/doubao.js'
+import { AGNESCODE_PRODUCTS, readAgnescodeSession } from './src/channels/agnescode.js'
 import { interceptCallback, startChromiumSession } from './src/channels/browser/chromium.js'
 import { createPushHub } from './src/push.js'
 import { rejectionFor, isLoopbackHost, connectionAdmissionView } from './src/trust.js'
@@ -445,31 +454,147 @@ export function apply(ctx, config) {
    * 于是自有渠道的请求永远以「凭据不可用」结束 —— 目录看得见、模型选得中、
    * 一发就失败，正是「自己加的渠道用不了」的形状。
    *
-   * 续期按渠道分派：只登记**有 refresh 语义**的那几家（MiniMax 国际版）；
-   * 没有登记的原样返回，缺 access_token 时交给推理腿判 `CODE.credential`。
+   * 续期按渠道分派：登记**有 refresh 语义**的那几家。没有登记的原样返回，
+   * 缺 access_token 时交给推理腿判 `CODE.credential`。
    */
-  const OWN_REFRESH = {
-    minimaxintl: credential => ensureMinimaxCredential(credential, { product: MINIMAX_PRODUCTS.minimaxintl }),
-    marvis: credential => ensureMarvisCredential(credential),
+  const magicrewRefresher = product => async (credential, { force = false } = {}) => {
+    if (!force && !shouldRefreshKey(credential)) return { credential, refreshed: false }
+    const refreshed = await refreshGatewayKey(product, { refreshToken: credential?.refreshToken })
+    if (refreshed.error !== undefined) return { error: refreshed.error }
+    return { credential: { ...credential, ...refreshed.key }, refreshed: true }
   }
+  const autoclawRefresher = product => async (credential, { force = false } = {}) => {
+    const expiresAt = Number(credential?.expires_at)
+    const due = Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt - 5 * 60_000 <= Date.now()
+    if (!force && !due) return { credential, refreshed: false }
+    return refreshAutoclawToken(credential, { product })
+  }
+  const codelyRefresher = async (credential, { force = false } = {}) => {
+    // `expires_at` 在 Codely 凭据里是 JWT 的 ISO 字符串（账号表里才是毫秒）。
+    const raw = credential?.expires_at
+    const expiresAt = typeof raw === 'number' ? raw : Date.parse(String(raw ?? ''))
+    const due = Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt - 5 * 60_000 <= Date.now()
+    if (!force && !due) return { credential, refreshed: false }
+    return refreshCodelyToken(credential)
+  }
+  /** provider → AgnesCode 产品表（两个站点各自的会话文件）。 */
+  const AGNES_PRODUCTS_BY_PROVIDER = {
+    agnescode: AGNESCODE_PRODUCTS.agnescode,
+    agnescodeintl: AGNESCODE_PRODUCTS.agnescodeintl,
+  }
+  /**
+   * 从 AgnesCode 桌面客户端导入登录态。
+   *
+   * 登录发生在客户端里（微信/OAuth），插件只读它的加密会话；读不到就给**可执行**
+   * 的原因（文件路径、客户端版本、域名白名单），不编造凭据。
+   */
+  async function importAgnesAccount(provider) {
+    const product = AGNES_PRODUCTS_BY_PROVIDER[provider]
+    if (product === undefined) return { error: `该渠道不支持从客户端导入：${provider}` }
+    try {
+      const result = await readAgnescodeSession({ product })
+      return { credential: result.credential, sessionPath: result.sessionPath }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
+    }
+  }
+  const OWN_REFRESH = {
+    codely: codelyRefresher,
+    autoclaw: autoclawRefresher('cn'),
+    autoclawintl: autoclawRefresher('intl'),
+    minimaxintl: (credential, { force = false } = {}) => force
+      ? refreshMinimaxToken(credential, { product: MINIMAX_PRODUCTS.minimaxintl }).then(result => result.error === undefined ? { ...result, refreshed: true } : result)
+      : ensureMinimaxCredential(credential, { product: MINIMAX_PRODUCTS.minimaxintl }),
+    marvis: (credential, { force = false } = {}) => force
+      ? refreshMarvisCredential(credential)
+      : ensureMarvisCredential(credential),
+    // OfficeAce：refresh_token **一次性** ⇒ 只在「确实快过期」或用户点刷新时续。
+    officeace: async (credential, { force = false } = {}) => {
+      const expiresAt = Number(credential?.expires_at)
+      const due = Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt - 5 * 60_000 <= Date.now()
+      if (!force && !due) return { credential, refreshed: false }
+      const refreshed = await refreshOfficeaceToken({ refreshToken: credential?.refresh_token, privateJwk: credential?.privateJwk })
+      if (refreshed.error !== undefined) return { error: refreshed.error, terminal: refreshed.terminal === true }
+      return { credential: { ...credential, ...refreshed.credential }, refreshed: true }
+    },
+    // 超级麦吉：网关密钥 2 小时，`apiKeyExpiresAt` 是现成闸门。
+    magicrew: magicrewRefresher(MAGICREW_PRODUCTS.magicrew),
+    magicrewintl: magicrewRefresher(MAGICREW_PRODUCTS.magicrewintl),
+    // Accio：端点未实测，但 `expires_at` 是现成的闸门；只在快过期或手动刷新时调。
+    accio: async (credential, { force = false } = {}) => {
+      if (!force && !shouldRefreshAccio(credential)) return { credential, refreshed: false }
+      return refreshAccioCredential(credential)
+    },
+    // AgnesCode：令牌由桌面客户端续，插件没有 refresh 端点 ⇒ 「续期」= 再读一次
+    // 客户端会话（客户端开着就会拿到新 token）。
+    agnescode: async (credential, { force = false } = {}) => {
+      const imported = await importAgnesAccount('agnescode')
+      if (imported.error !== undefined) return { error: imported.error }
+      if (!force && imported.credential.access_token === credential?.access_token) {
+        return { credential, refreshed: false }
+      }
+      return { credential: imported.credential, refreshed: true }
+    },
+    agnescodeintl: async (credential, { force = false } = {}) => {
+      const imported = await importAgnesAccount('agnescodeintl')
+      if (imported.error !== undefined) return { error: imported.error }
+      if (!force && imported.credential.access_token === credential?.access_token) {
+        return { credential, refreshed: false }
+      }
+      return { credential: imported.credential, refreshed: true }
+    },
+  }
+  /**
+   * 凭据里有没有续期材料。面板据此决定是否渲染「刷新凭据」——有续期实现但
+   * 这份凭据没有 refresh_token 时，按钮点了只会报错。
+   */
+  function hasRefreshMaterial(provider, credential) {
+    if (credential === null || typeof credential !== 'object') return false
+    // AgnesCode 的「续期」是重新读客户端会话，材料就是那份会话本身。
+    if (provider === 'agnescode' || provider === 'agnescodeintl') {
+      return typeof credential.access_token === 'string' && credential.access_token !== ''
+        && typeof credential.bff_base === 'string' && credential.bff_base !== ''
+    }
+    if (provider === 'magicrew' || provider === 'magicrewintl') {
+      return typeof credential.refreshToken === 'string' && credential.refreshToken !== ''
+    }
+    return typeof credential.refresh_token === 'string' && credential.refresh_token !== ''
+  }
+  /**
+   * 推理取号：**轮换** + 跳过无凭据的占位行 + 取号时就地续期。
+   *
+   * 以前永远取 `enabled(provider)[0]`：第二个账号永远用不上，第一个账号的令牌
+   * 坏了整条渠道就不可用。取号器是本进程内的（游标不落盘），与渠道包账号池的
+   * 「轮转」同一取向。
+   */
+  const ownPicker = createOwnAccountPicker({
+    accounts: () => ownAccounts,
+    refreshers: OWN_REFRESH,
+    logger,
+  })
   async function ownCredentialFor(provider) {
-    let list = []
-    try { list = ownAccounts.enabled(provider) } catch { return null }
-    const account = list[0]
-    if (account === undefined) return null
+    const picked = await ownPicker.pick(provider)
+    return picked?.credential ?? null
+  }
+  /**
+   * 面板「刷新凭据」：对**指定账号**强制续期一次（不参与轮换）。
+   * 续期成功把新凭据（含新的到期时间）写回账号表。
+   */
+  async function refreshOwnAccount(accountId) {
+    const account = ownAccounts.find(accountId)
+    if (account === undefined) return { error: '账号不存在' }
+    const refresher = OWN_REFRESH[account.provider]
+    if (typeof refresher !== 'function') return { error: '该渠道没有续期接口' }
     const credential = await ownAccounts.credentialOf(account)
-    if (credential === null) return null
-    const refresh = OWN_REFRESH[provider]
-    if (refresh === undefined) return credential
-    const ensured = await refresh(credential)
-    if (ensured.error !== undefined) {
-      // 续期失败但手上还有令牌：照旧发出去，让上游判 —— 本地判「过期」比上游准。
-      return typeof credential.access_token === 'string' && credential.access_token !== '' ? credential : null
-    }
-    if (ensured.refreshed === true) {
-      try { await ownAccounts.attach(account.id, ensured.credential) } catch { /* 落盘失败不影响本回合 */ }
-    }
-    return ensured.credential
+    if (credential === null) return { error: '凭据不可用（需要重新登录）' }
+    const refreshed = await refresher(credential, { force: true })
+    if (refreshed.error !== undefined) return { error: refreshed.error, terminal: refreshed.terminal === true }
+    // `expiresAt` 是续期器显式交回的毫秒值（Codely 的凭据字段是 ISO 字符串，
+    // 不能直接 Number()）；其余渠道读凭据里的毫秒字段。
+    const expiresAt = Number(refreshed.expiresAt ?? refreshed.credential?.expires_at ?? refreshed.credential?.apiKeyExpiresAt)
+    await ownAccounts.attach(account.id, refreshed.credential, Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {})
+    void syncOwnCatalog({ refresh: true })
+    return { ok: true, refreshed: refreshed.refreshed === true, ...Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {} }
   }
 
   const modelRuntime = createModelRuntime({
@@ -485,9 +610,69 @@ export function apply(ctx, config) {
   const { state, adapter, refreshCatalog, refreshAvailability, watchEgress, fetchListing, publicModelRows, syncAggregateCatalog } = modelRuntime
   const runForwarded = modelRuntime.complete
 
+  /**
+   * 链路诊断日志：写文件而不是 logger —— 桌面版没有可持续读取的宿主日志，
+   * 「新渠道看不到模型」这类问题没有落点就只能猜（2026-11-24 排查实录）。
+   * 每行一个 JSON 事件，追加写；文件在数据目录里，用户能直接发回来。
+   *
+   * ⚠️ 必须定义在下面的注册段**之前**：它是 `const`，在初始化前调用会抛
+   * `ReferenceError`（TDZ）。上一版把它留在 apply 尾部，`own-route` 日志第一次
+   * 落笔就把整个 apply 抛崩，插件被标成「异常」、连主路由一起回滚 ——
+   * 表现就是「模型列表整组不显示」。
+   */
+  const diagLog = event => {
+    try {
+      const line = JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n'
+      fs.appendFileSync(path.join(dataDir, 'own-catalog.log'), line)
+    } catch { /* 诊断日志绝不影响主流程 */ }
+  }
   // ── registration ────────────────────────────────────────────────────────────
-  const routes = () => Object.keys(state().membership)
+  /**
+   * 主路由（免费车道 + 地域）与自有渠道的路由**分开注册**。
+   *
+   * 自有渠道各自一条路由：选择器按路由分组，所以 `doubao` / `codely` /
+   * `astudio` 等会是各自独立的分组（标题来自 `OWN_LABELS`）。
+   *
+   * ⚠️ 为什么不是一次 `registerAdapter([...14 个 id])`：
+   * 1. 宿主的热重载会**先加载新 fiber、再异步 dispose 旧 fiber**。旧 fiber 的
+   *    provider 还挂在注册表里时，一次全量注册会撞 `DUPLICATE_ADAPTER`（全有或
+   *    全无）⇒ 新代码一个自有路由都没注册；旧 fiber 随后被清掉 ⇒ **模型整组消失**。
+   *    这正是「重载后还是看不到模型」的形状。
+   * 2. dsh-providers-hub 同机时也会占同名 provider。
+   *
+   * 故逐条注册、撞了就稍后重试：旧 fiber 一释放，下一次尝试就成功。
+   */
   const registration = ctx.llm.registerAdapter([ROUTE_MAIN, ROUTE_REGION], adapter)
+  const ownRouteHandles = new Set()
+  let ownRouteAttempt = 0
+  function registerOwnProviderRoutes() {
+    if (disposed) return
+    for (const provider of OWN_PROVIDERS) {
+      if (ownRouteHandles.has(provider)) continue
+      try {
+        ctx.llm.registerAdapter([provider], adapter)
+        ownRouteHandles.add(provider)
+        diagLog({ kind: 'own-route', provider, ok: true })
+      } catch (error) {
+        // 旧 generation 还占着 / 别的插件占着：下一轮再试。日志留证据 ——
+        // 这个分支曾经是静默的，结果「选择器里整组不见」只能靠猜。
+        diagLog({ kind: 'own-route', provider, ok: false, error: String(error?.message ?? error) })
+      }
+    }
+    if (ownRouteHandles.size < OWN_PROVIDERS.length && ownRouteAttempt < 12) {
+      ownRouteAttempt += 1
+      const timer = setTimeout(registerOwnProviderRoutes, Math.min(500 * ownRouteAttempt, 5000))
+      timer.unref?.()
+    } else if (ownRouteHandles.size === OWN_PROVIDERS.length && ownRouteAttempt < 100) {
+      // 只在首次全集成功时记一条，避免每轮重复写日志。
+      ownRouteAttempt = 100
+      diagLog({ kind: 'own-routes-ready', count: ownRouteHandles.size })
+    }
+  }
+  registerOwnProviderRoutes()
+  /** 主路由只换主路由的两条 id；自有路由的生命周期在各自的 handle 里。 */
+  const routes = () => Object.keys(state().membership)
+    .filter(route => route === ROUTE_MAIN || route === ROUTE_REGION)
   ctx.llm.registerConfigurableProviders?.([
     { provider: ROUTE_MAIN, displayName: ROUTE_LABELS[ROUTE_MAIN], settingsNs: ctx.fiber?.entry?.options?.id ?? name, settingsPath: [] },
   ])
@@ -1142,6 +1327,14 @@ export function apply(ctx, config) {
       },
       ref => scoped.credentials.resolve(ref),
     )
+    // 占位账号清理：登录流程是**内存态**的（浏览器/扫码等回调），进程一重启就没了。
+    // 那些「点了添加账号但没登完」的行永远等不到凭据，只会在面板上显示一片「待登录」，
+    // 并在权益查询里变成「凭据不可用」的红字（用户报障「都没登账号还提示余额查询失败」）。
+    void ownAccounts.prunePending().then(dropped => {
+      if (Array.isArray(dropped) && dropped.length > 0) {
+        logger.info?.(`our-free-model: dropped ${dropped.length} placeholder channel account(s) with no credential: ${dropped.join(', ')}`)
+      }
+    }).catch(error => logger.warn?.(`our-free-model: placeholder cleanup failed (${error?.message ?? error})`))
     // 诊断用：宿主 llm 服务（`listModels` 是「宿主过滤后」的真实答案）。
     hostLlm = scoped.llm
     deviceLogin = createDeviceLogin({ accounts: ownAccounts })
@@ -1176,7 +1369,7 @@ export function apply(ctx, config) {
         logger,
       })
       // 自有渠道进模型选择器：目录同步可读，由这里喂一次（账号表 + 权益缓存）。
-      void syncOwnCatalog()
+      void syncOwnCatalog({ refresh: true })
       /*
        * 自动诊断：启动后延迟跑一次宿主 `llm.listModels()`，把每个渠道的真实条数
        * 写进 `own-catalog.log`。
@@ -1187,7 +1380,7 @@ export function apply(ctx, config) {
        */
       const autoDiagnose = async () => {
         try {
-          const packs = ['codearts', 'buddy', 'workbuddy', 'lobsterai', 'qoder', 'qodercn', 'trae', 'cline', 'loomy', 'raccoon', 'minimax', 'zcode', 'gemini']
+          const packs = PACK_CHANNEL_IDS
           const counts = []
           const problems = []
           for (const provider of packs) {
@@ -1208,6 +1401,28 @@ export function apply(ctx, config) {
             }
           }
           const ownRows = modelRuntime.catalog.filter(entry => entry.channel === 'own')
+          // state() 是选择器真正读的那份视图；`ownRows` 只是内部目录。两者对不上
+          // 就说明「行进了 catalog 但没进 membership」——分组逻辑/字段在这中间丢了。
+          const view = state()
+          const ownWithProvider = ownRows.filter(entry => typeof entry.provider === 'string' && entry.provider !== '').length
+          // 自有渠道分组是否真的进了选择器：宿主 `listProviders()` 里有没有这些
+          // 路由、`listModels(provider)` 又给出几条。没有这两列就只能看到
+          // 「注册成功」和「选择器空白」同时成立，无从判断断在哪一层。
+          const ownCounts = []
+          const ownRoutes = hostLlm === null || typeof hostLlm.listProviders !== 'function'
+            ? []
+            : hostLlm.listProviders().map(provider => provider.id ?? provider.name)
+          for (const provider of OWN_PROVIDERS) {
+            try {
+              const models = hostLlm === null ? [] : await hostLlm.listModels(provider)
+              const direct = await adapter.listModels(provider)
+              // `宿主条数/适配器直读条数`：两者不相等就说明「注册的路由不是这个
+              // 适配器实例」或宿主侧过滤；相等且为 0 才是目录没进 state。
+              ownCounts.push(`${provider}:${Array.isArray(models) ? models.length : 0}/${direct.length}`)
+            } catch (failure) {
+              ownCounts.push(`${provider}:ERR(${String(failure?.message ?? failure).slice(0, 40)})`)
+            }
+          }
           diagLog({
             kind: 'auto-diag',
             hostLlm: hostLlm !== null,
@@ -1216,6 +1431,14 @@ export function apply(ctx, config) {
             counts: counts.join(' '),
             empty: problems.join(' ') || 'none',
             ownRows: ownRows.length,
+            ownWithProvider,
+            memKeys: Object.keys(view.membership).length,
+            memOwnKeys: Object.keys(view.membership).filter(key => key !== ROUTE_MAIN && key !== ROUTE_REGION).join(','),
+            memDoubao: (view.membership['doubao'] ?? []).length,
+            viewCatalog: view.catalog.length,
+            ownCatalog: (view.catalog.filter(entry => entry.channel === 'own') ?? []).length,
+            ownCounts: ownCounts.join(' '),
+            routes: ownRoutes.join(' '),
           })
         } catch (failure) {
           diagLog({ kind: 'auto-diag-failed', error: String(failure?.message ?? failure) })
@@ -1239,18 +1462,49 @@ export function apply(ctx, config) {
    * 的兜底表 —— 与渠道包那 13 家同一取向：宁可显示少一点，也不要整组消失。
    */
   /**
-   * 链路诊断日志：写文件而不是 logger —— 桌面版没有可持续读取的宿主日志，
-   * 「新渠道看不到模型」这类问题没有落点就只能猜（2026-11-24 排查实录）。
-   * 每行一个 JSON 事件，追加写；文件在数据目录里，用户能直接发回来。
+   * 自有渠道的目录缓存：`provider → {rows, at, error}`。
+   *
+   * ⚠️ 以前只在「进程里第一次看到这个 provider 有账号」时抓一次目录，且抓失败
+   * 也把空数组记成「已抓过」——一次网络抖动就让这家渠道整个进程生命周期都用
+   * 兜底表（用户看到的是「模型少了」，但重启又好了）。现在：
+   * - 抓失败不覆盖已有行，并允许下一轮重试；
+   * - 超过 10 分钟重新抓（远端目录会随账号/活动变化）；
+   * - 登录成功、领取成功、账号增删这些**明确的变化点**传 `refresh: true` 立即抓。
    */
-  const diagLog = event => {
-    try {
-      const line = JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n'
-      fs.appendFileSync(path.join(dataDir, 'own-catalog.log'), line)
-    } catch { /* 诊断日志绝不影响主流程 */ }
-  }
   const ownCatalogs = new Map()
-  const syncOwnCatalog = async () => {
+  const OWN_CATALOG_TTL_MS = 10 * 60_000
+  /** 最近一次编目录时的账号可见性（`/channels/own` 的计数与显示要用同一份）。 */
+  let ownEnabled = {}
+  const ownCatalogRows = () => Object.fromEntries([...ownCatalogs].map(([provider, entry]) => [provider, entry.rows]))
+  /** 目录来源（面板「实时/预制」提示 + 倍率）：与 rows 同一次抓取落盘。 */
+  const ownCatalogMeta = provider => {
+    const entry = ownCatalogs.get(provider)
+    return {
+      source: entry?.source === 'live' ? 'live' : 'preset',
+      at: entry?.at ?? 0,
+      ...entry?.note === undefined ? {} : { note: entry.note },
+      ...entry?.catalogError === undefined ? {} : { error: entry.catalogError },
+      ...entry?.error === undefined ? {} : { error: entry.error },
+    }
+  }
+  const ownCatalogRatios = provider => ownCatalogs.get(provider)?.ratios ?? {}
+  const ownControlSettings = () => {
+    const current = settings.get()
+    const disabledModels = {}
+    const closedProviders = {}
+    for (const provider of OWN_PROVIDERS) {
+      disabledModels[provider] = [...ownDisabledModelsOf(current, provider)]
+      closedProviders[provider] = ownProviderClosed(current, provider)
+    }
+    return { disabledModels, closedProviders }
+  }
+  /** 面板卡片与「模型」折叠读的计数（含被关掉/被关闭的行）。 */
+  const ownCountsOf = provider => ownModelStats({
+    catalogs: ownCatalogRows(),
+    enabled: ownEnabled,
+    ...ownControlSettings(),
+  }, provider)
+  const syncOwnCatalog = async ({ refresh = false } = {}) => {
     diagLog({ kind: 'sync-begin', hasExtras: channelExtras !== undefined && channelExtras.available === true })
     const enabled = {}
     for (const provider of OWN_PROVIDERS) {
@@ -1258,21 +1512,51 @@ export function apply(ctx, config) {
       enabled[provider] = accounts.length > 0
       diagLog({ kind: 'provider', provider, accounts: accounts.length, signedIn: enabled[provider] })
       if (accounts.length === 0) continue
-      if (!ownCatalogs.has(provider)) {
-        try {
-          const status = await channelExtras.status(provider)
-          ownCatalogs.set(provider, Array.isArray(status?.catalog) ? status.catalog : [])
-          diagLog({ kind: 'catalog', provider, rows: ownCatalogs.get(provider).length })
-        } catch (error) {
-          diagLog({ kind: 'catalog-failed', provider, error: String(error?.message ?? error) })
-          logger.warn?.(`our-free-model: ${provider} 目录不可用（${error?.message ?? error}）`)
-        }
+      const cached = ownCatalogs.get(provider)
+      const stale = cached === undefined || cached.error !== undefined || Date.now() - cached.at > OWN_CATALOG_TTL_MS
+      if (!refresh && !stale) continue
+      try {
+        const status = await channelExtras.status(provider)
+        const rows = Array.isArray(status?.catalog) ? status.catalog : []
+        // `source` 由各渠道的 statusOf 决定：远端成功 = live；回退内置表 =
+        // static/preset。没写 source 但给了目录的渠道按 live（它们自己已回退）。
+        const source = status?.source === 'static' ? 'preset' : (rows.length > 0 ? 'live' : 'preset')
+        ownCatalogs.set(provider, {
+          rows,
+          at: Date.now(),
+          source,
+          ...status?.catalogNote === undefined && status?.note === undefined
+            ? {}
+            : { note: status?.catalogNote ?? status?.note },
+          ...status?.catalogError === undefined ? {} : { catalogError: status.catalogError },
+          // 倍率与目录同源：面板「模型」折叠直接显示，不再依赖另开「活动」折叠。
+          ratios: status?.ratios !== null && typeof status?.ratios === 'object' ? status.ratios : {},
+        })
+        diagLog({ kind: 'catalog', provider, rows: rows.length, source })
+      } catch (error) {
+        // 抓取失败**不覆盖**已有行（宁可旧目录，也不要整组消失）。
+        ownCatalogs.set(provider, {
+          rows: Array.isArray(cached?.rows) ? cached.rows : [],
+          at: cached?.at ?? 0,
+          source: cached?.source ?? 'preset',
+          ...cached?.note === undefined ? {} : { note: cached.note },
+          ...cached?.ratios === undefined ? {} : { ratios: cached.ratios },
+          error: String(error?.message ?? error),
+        })
+        diagLog({ kind: 'catalog-failed', provider, error: String(error?.message ?? error) })
+        logger.warn?.(`our-free-model: ${provider} 目录不可用（${error?.message ?? error}）`)
       }
     }
+    ownEnabled = enabled
     const rows = buildOwnCatalog({
-      catalogs: Object.fromEntries(ownCatalogs),
+      catalogs: ownCatalogRows(),
       enabled,
       hideAll: settings.get().hideChannelModels === true,
+      // 选择器/网关只看到「有登录账号」的渠道（用户 2026-11-24 要求）。
+      // 面板不读这份：卡片计数与「模型」折叠仍按 ownCatalogs 全量编，否则
+      // 未登录渠道连「登录后有哪些模型」都看不到。
+      signedInOnly: true,
+      ...ownControlSettings(),
     })
     diagLog({ kind: 'sync-done', rows: rows.length, hideAll: settings.get().hideChannelModels === true })
     modelRuntime.setOwnCatalog(rows)
@@ -1280,49 +1564,105 @@ export function apply(ctx, config) {
   }
 
   /**
-   * 浏览器登录（CDP 拦截回调型）：目前只有 Marvis。
+   * 浏览器登录（CDP）：用一个**宿主自己起的**隔离浏览器完成「网页登录」那条腿。
    *
    * 流程与设备码同形（`start` 立刻回账号与地址、`poll` 逐次看结果），差别只在
-   * 「谁在等」：设备码等上游轮询，这里等**我们截停的回调 URL**。拦截与浏览器
-   * 生命周期都在 `src/channels/browser/chromium.js`，本处只管账号落库。
+   * 「谁在等」：设备码等上游轮询，这里等**页面/回调**。拦截与浏览器生命周期都在
+   * `src/channels/browser/chromium.js`，本处只管账号落库。
    */
   const browserLogins = new Map()
-  /** 走「起浏览器」那条腿的渠道：Marvis 拦回调，Magicrew 读 localStorage。 */
-  const BROWSER_LOGIN_PROVIDERS = new Set(['marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace'])
+  /**
+   * 走「起浏览器」那条腿的渠道。
+   *
+   * ⚠️ 这张集合与下面的 `BROWSER_LOGIN_ENTRIES` **必须逐条对齐**：集合里多一个 id
+   * 却没有入口，用户点「添加账号」只会得到一句「入口尚未实现」；入口里多一个 id
+   * 而集合里没有，则那条入口是死代码（两处各有一句自检，见 `tests/doubao-channel.mjs`）。
+   */
+  const BROWSER_LOGIN_PROVIDERS = new Set(['marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'doubao'])
   const BROWSER_LOGIN_TIMEOUT_MS = 240_000
+
+  /** 产品型渠道（超级麦吉 / MonkeyCode）：页面地址由产品表决定。 */
+  function productLoginEntry(provider) {
+    const product = magicrewProductOf(provider) ?? monkeycodeProductOf(provider)
+    if (product === null || product === undefined) return undefined
+    const platform = provider === 'monkeycode' || provider === 'monkeycodeintl'
+    return {
+      loginUrl: platform ? `${product.platformBase}/` : `${product.webOrigin}/login`,
+      flow: { product },
+    }
+  }
+
+  /**
+   * 每个渠道的**登录入口**：打开哪个页面、要不要拦回调、流程里要先备好什么。
+   *
+   * 表驱动而不是 if 链：上一版是 if 链 + 一个「其余都按超级麦吉处理」的兜底分支，
+   * 于是 `baizhi` / `officeace` 掉进兜底里读 `null.webOrigin` 抛 TypeError ——
+   * 两者一直登不上，而错误文案是「不能读取 null 的属性」，与真实原因毫无关系。
+   */
+  const BROWSER_LOGIN_ENTRIES = {
+    marvis(options) {
+      const loginType = options?.loginType === '2' ? '2' : '1'
+      const guid = crypto.randomUUID()
+      return { loginUrl: marvisAuthorizeUrl(loginType, guid), intercept: isMarvisCallbackUrl, flow: { guid, loginType } }
+    },
+    officeace() {
+      // PKCE + DPoP：私钥必须随凭据持久化（续期要用同一把），故先造好挂进 flow。
+      const { codeVerifier, codeChallenge } = pkcePair()
+      const { privateJwk } = generateDpopKey()
+      return {
+        loginUrl: officeaceAuthorizeUrl({ state: crypto.randomUUID(), codeChallenge }),
+        intercept: isOfficeaceCallbackUrl,
+        flow: { codeVerifier, privateJwk },
+      }
+    },
+    // 豆包：登录是页面内的二维码模态框（不是独立登录页），扫码后 `.doubao.com` 种下
+    // `sessionid`。不拦任何请求 —— 页面必须能正常加载，用户才扫得到码。
+    doubao() {
+      return { loginUrl: DOUBAO.pageUrl, flow: {} }
+    },
+    // 百智云：控制台登录后 cookie 换 `sk-`。
+    baizhi() {
+      return { loginUrl: `${BAIZHI.platformBase}/console`, flow: {} }
+    },
+    magicrew: () => productLoginEntry('magicrew'),
+    magicrewintl: () => productLoginEntry('magicrewintl'),
+    monkeycode: () => productLoginEntry('monkeycode'),
+    monkeycodeintl: () => productLoginEntry('monkeycodeintl'),
+  }
 
   async function startBrowserChannelLogin(provider, options = {}) {
     if (!BROWSER_LOGIN_PROVIDERS.has(provider)) return { error: `该渠道没有浏览器登录：${provider}` }
+    const entryOf = BROWSER_LOGIN_ENTRIES[provider]
+    if (typeof entryOf !== 'function') return { error: `该渠道的浏览器登录入口尚未实现：${provider}` }
+    const entry = entryOf(options)
+    if (entry === undefined || typeof entry.loginUrl !== 'string' || entry.loginUrl === '') {
+      return { error: `该渠道的登录入口不可用：${provider}` }
+    }
     const account = ownAccounts.create(provider)
     let session
     try {
-      if (provider === 'marvis') {
-        const loginType = options.loginType === '2' ? '2' : '1'
-        const guid = crypto.randomUUID()
-        const loginUrl = marvisAuthorizeUrl(loginType, guid)
-        session = await startChromiumSession({ url: loginUrl, log: message => logger.info?.(`our-free-model: ${message}`) })
-        const hook = interceptCallback(session, isMarvisCallbackUrl)
-        const flow = { accountId: account.id, provider, session, hook, guid, loginType, done: false, result: undefined }
-        hook.promise.then(value => { flow.done = true; flow.result = value ?? null })
-        browserLogins.set(account.id, flow)
-        return { accountId: account.id, loginUrl, mode: 'browser' }
-      }
-      // Magicrew：网页登录完成后从 localStorage 读 JWT（键名带 `MAGIC:user:` 前缀）。
-      const providerProduct = magicrewProductOf(provider) ?? monkeycodeProductOf(provider)
-      const loginUrl = provider === 'monkeycode' || provider === 'monkeycodeintl'
-        ? `${providerProduct.platformBase}/`
-        : `${providerProduct.webOrigin}/login`
-      session = await startChromiumSession({ url: loginUrl, log: message => logger.info?.(`our-free-model: ${message}`) })
+      // ⚠️ `intercept` 只在真的要拦回调时打开：`Fetch` 域一旦覆盖 `*`，页面每个请求
+      // 都会停在 `requestPaused` 等人放行 —— 没人放行的会话就是白屏窗口。
+      const hookable = typeof entry.intercept === 'function'
+      session = await startChromiumSession({
+        url: entry.loginUrl,
+        intercept: hookable,
+        log: message => logger.info?.(`our-free-model: ${message}`),
+      })
       const flow = {
         accountId: account.id,
         provider,
-        product: providerProduct,
         session,
         done: false,
         deadline: Date.now() + BROWSER_LOGIN_TIMEOUT_MS,
+        ...entry.flow ?? {},
+      }
+      if (hookable) {
+        flow.hook = interceptCallback(session, entry.intercept)
+        flow.hook.promise.then(value => { flow.done = true; flow.result = value ?? null })
       }
       browserLogins.set(account.id, flow)
-      return { accountId: account.id, loginUrl, mode: 'browser' }
+      return { accountId: account.id, loginUrl: entry.loginUrl, mode: 'browser' }
     } catch (error) {
       // 浏览器起不来就把占位账号删掉，否则面板会留一条永远登不上的空账号。
       await ownAccounts.remove(account.id).catch(() => {})
@@ -1362,8 +1702,11 @@ export function apply(ctx, config) {
         await ownAccounts.remove(accountId).catch(() => {})
         return { done: true, success: false, error: exchanged.error }
       }
-      await ownAccounts.attach(accountId, exchanged.credential, { nickname: OFFICEACE.displayName })
-      void syncOwnCatalog()
+      await ownAccounts.attach(accountId, exchanged.credential, {
+        nickname: OFFICEACE.displayName,
+        ...typeof exchanged.credential.expires_at === 'number' ? { expiresAt: exchanged.credential.expires_at } : {},
+      })
+      void syncOwnCatalog({ refresh: true })
       return { done: true, success: true, nickname: OFFICEACE.displayName }
     }
 
@@ -1394,7 +1737,7 @@ export function apply(ctx, config) {
         ...nickname === undefined ? {} : { nickname },
         ...typeof credential.expires_at === 'number' ? { expiresAt: credential.expires_at } : {},
       })
-      void syncOwnCatalog()
+      void syncOwnCatalog({ refresh: true })
       return { done: true, success: true, ...nickname === undefined ? {} : { nickname } }
     }
 
@@ -1403,7 +1746,8 @@ export function apply(ctx, config) {
     if (Date.now() > flow.deadline) {
       closeBrowserFlow(accountId)
       await ownAccounts.remove(accountId).catch(() => {})
-      return { done: true, success: false, error: '登录窗口已关闭或超时，请重新发起' }
+      // `expiredReason` 由各渠道在「已经看到一半」时改写：超时那句话得说清缺的是哪一半。
+      return { done: true, success: false, error: flow.expiredReason ?? '登录窗口已关闭或超时，请重新发起' }
     }
     // MonkeyCode：会话是 **HttpOnly cookie**（`document.cookie` 读不到），
     // 只能走 CDP 的 `Network.getCookies`；拿到后当场签网关凭据（两件一起收）。
@@ -1427,7 +1771,7 @@ export function apply(ctx, config) {
       }
       closeBrowserFlow(accountId)
       await ownAccounts.attach(accountId, exchanged.credential, { nickname: BAIZHI.displayName })
-      void syncOwnCatalog()
+      void syncOwnCatalog({ refresh: true })
       return { done: true, success: true, nickname: BAIZHI.displayName }
     }
 
@@ -1446,9 +1790,42 @@ export function apply(ctx, config) {
         return { done: true, success: false, error: issued.error }
       }
       await ownAccounts.attach(accountId, issued.credential, { nickname: flow.product.displayName })
-      void syncOwnCatalog()
+      void syncOwnCatalog({ refresh: true })
       return { done: true, success: true, nickname: flow.product.displayName }
     }
+    // 豆包：扫码后 `.doubao.com` 种下 `sessionid`；另外**必须**等页面把 `bdms`
+    // 注入好（签到的 `a_bogus` 只能在那里算）。两个条件都满足才算登完 ——
+    // 「cookie 有了但签名环境还没起来」是最常见的中间态，此时落库等于签到时才报错。
+    // ⚠️ 登录**不**打任何上游请求：签到是写操作，登录只负责把会话收下来。
+    if (flow.provider === 'doubao') {
+      // 用户把窗口关了：立刻收尾，别让他对着「等待中」等满 4 分钟。
+      if (flow.session?.cdp?.closed === true) {
+        closeBrowserFlow(accountId)
+        await ownAccounts.remove(accountId).catch(() => {})
+        return { done: true, success: false, error: '登录窗口已关闭，请重新发起' }
+      }
+      let cookie
+      try {
+        cookie = doubaoCookieHeaderFromList(await flow.session.cookies(DOUBAO.pageUrl))
+      } catch {
+        return { done: false, status: 'pending' }
+      }
+      const sessionid = sessionIdFromCookie(cookie)
+      if (sessionid === undefined) return { done: false, status: 'pending' }
+      // 空串 = 「bdms 还没注入」，**不是错误**：继续轮询。
+      let signature = ''
+      try { signature = await flow.session.evaluate(DOUBAO_SIGN_EXPRESSION) } catch { signature = '' }
+      if (typeof signature !== 'string' || signature === '') {
+        // 登录态已经收下、差的是签名环境（实测冷启动要 15–20 秒；被拦掉的 chunk 就永远不会来）。
+        flow.expiredReason = '登录态已收下，但页面签名环境（bdms）始终没就绪：请确认浏览器能正常打开 www.doubao.com/chat/ 后重试'
+        return { done: false, status: 'pending' }
+      }
+      closeBrowserFlow(accountId)
+      await ownAccounts.attach(accountId, { cookie, accountKey: sessionid, provider: DOUBAO.id }, { nickname: DOUBAO.displayName })
+      void syncOwnCatalog({ refresh: true })
+      return { done: true, success: true, nickname: DOUBAO.displayName }
+    }
+
     let harvested
     try {
       harvested = parseMagicrewHarvest(await flow.session.evaluate(MAGICREW_HARVEST_EXPRESSION))
@@ -1467,7 +1844,7 @@ export function apply(ctx, config) {
     await ownAccounts.attach(accountId, credential, {
       ...typeof credential.apiKeyExpiresAt === 'number' ? { expiresAt: credential.apiKeyExpiresAt } : {},
     })
-    void syncOwnCatalog()
+    void syncOwnCatalog({ refresh: true })
     return { done: true, success: true, nickname: flow.product.displayName }
   }
 
@@ -1483,6 +1860,9 @@ export function apply(ctx, config) {
   }
   const api = createApiRoutes({
     settings, stats, availability, catalog: () => modelRuntime.catalog, state,
+    // 诊断日志是 apply 作用域里的闭包：`createApiRoutes` 在模块级，直接引用会
+    // ReferenceError（真机表现：点「模型」折叠 → 操作失败：diagLog is not defined）。
+    diagLog,
     refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress,
     pool: fetchPoolSnapshot,
     eacAuth,
@@ -1648,9 +2028,58 @@ export function apply(ctx, config) {
     // 传的是对象（`list` / `update` / `remove` 都要用），不是单个函数。
     channelAccounts: () => ownAccounts,
     // 账号/目录变化后重编自有渠道的模型行（选择器与网关都读同一份 catalog）。
-    syncOwnCatalog: () => syncOwnCatalog(),
+    syncOwnCatalog: options => syncOwnCatalog(options),
+    // 面板的「模型」折叠：**含被关掉的行**（否则关掉一个模型后它就从列表里消失，
+    // 用户再也点不回来）。选择器读的仍是过滤后的 catalog。
+    ownModelRows: provider => {
+      const ratios = ownCatalogRatios(provider)
+      return buildOwnCatalog({
+        catalogs: ownCatalogRows(),
+        enabled: ownEnabled,
+        includeDisabled: true,
+        ...ownControlSettings(),
+      }).filter(entry => entry.provider === provider).map(entry => {
+        // 倍率与目录同源：`statusOf` 回的 ratios 用完整 id（`doubao/xxx`）；
+        // 行本身的 `rate`（若有）优先。没有倍率就不编。
+        const ratio = entry.rate ?? ratios[entry.id] ?? ratios[entry.modelId]
+        return ratio === undefined ? entry : { ...entry, ratio: String(ratio) }
+      })
+    },
+    ownModelCounts: provider => ownCountsOf(provider),
+    ownModelMeta: provider => ownCatalogMeta(provider),
+    /** 这家渠道有没有可用的续期实现（面板据此决定是否渲染「刷新凭据」）。 */
+    canRefreshProvider: provider => typeof OWN_REFRESH[provider] === 'function',
+    refreshOwnAccount: accountId => refreshOwnAccount(accountId),
     deviceLogin: () => deviceLogin,
     smsLogin: () => smsLogin,
+    // 下面这几项原本是 apply 作用域里的自由变量，被 `createApiRoutes`（模块级
+    // 函数）直接引用 ⇒ 一点就 `ReferenceError`（真机：模型折叠 500 / Accio 登录失败）。
+    // 统一走 deps，路由函数里不再出现裸引用。
+    hostLlm: () => hostLlm,
+    hasRefreshMaterial,
+    agnesImport: importAgnesAccount,
+    accioLogin: {
+      start: startBrowserLogin,
+      open: openBrowser,
+      exchange: exchangeCode,
+      userInfo: fetchAccioUserInfo,
+      flows: accioLogins,
+    },
+    /**
+     * 渠道清单（**宿主实际加载的那一份**）：面板拿它与自己渲染的卡片对账。
+     *
+     * 值全部现场读真实注册表 —— 不再抄一份常量（那只会把「六处」变成「七处」）。
+     */
+    manifest: () => buildChannelManifest({
+      ownIds: [...OWN_PROVIDERS],
+      extrasIds: channelExtras.available === true ? channelExtras.providers() : [],
+      browserIds: [...BROWSER_LOGIN_PROVIDERS],
+      importIds: Object.keys(AGNES_PRODUCTS_BY_PROVIDER),
+      supportsDeviceLogin: provider => deviceLogin.supports(provider),
+      supportsSmsLogin: provider => smsLogin.supports(provider),
+      hasQrLogin: provider => provider === 'astudio',
+      modelCount: provider => modelRuntime.catalog.filter(entry => entry.channel === 'own' && entry.provider === provider).length,
+    }),
     // The catalog visibility switch lives in `apply`'s scope (it wraps the pool
     // the pack provides on mount), so the route reaches it through here.
     channelVisibility: () => channelVisibility,
@@ -2132,7 +2561,7 @@ function imageResolver(ctx, logger) {
 /** The fixed failure classes the pool proxy may surface to the client. */
 const POOL_REASONS = new Set(['no-lane', 'gateway-status', 'malformed', 'unreachable'])
 
-function createApiRoutes(deps) {
+export function createApiRoutes(deps) {
   return async function handler(req, res) {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const routePath = url.pathname.replace(/^\/api\/our-free-model/, '').replace(/\/+$/, '') || '/'
@@ -2239,6 +2668,15 @@ function createApiRoutes(deps) {
           return send(404, { error: `pool unavailable (${reason})` })
         }
       }
+      if (method === 'GET' && routePath === '/channels/manifest') {
+        // 面板的对账入口：**宿主到底认识哪些渠道**。不带任何凭据，只报注册表事实。
+        // `?expect=a,b,c`（面板渲染的自有渠道）→ 额外回 `missing`：宿主不认识的那些。
+        // 判据在宿主侧算一次（`missingFromHost`），面板只显示 —— 不抄第二份规则。
+        const manifest = deps.manifest()
+        const expect = String(url.searchParams.get('expect') ?? '').trim()
+        const expected = expect === '' ? [] : expect.split(',').map(id => id.trim()).filter(id => id !== '')
+        return send(200, { ...manifest, missing: missingFromHost(manifest, expected) })
+      }
       if (method === 'GET' && routePath === '/channels/extra') {
         // 渠道权益扩展（余额明细 / 活动 / 倍率）。逐账号问上游，故由页面按需
         // 触发；单账号失败在响应里逐行说明，不是整个 500。
@@ -2262,7 +2700,7 @@ function createApiRoutes(deps) {
         deps.logger?.info?.(`our-free-model: extra claim ${provider}/${accountId} → ${outcome.kind}`)
         // 领取会改变余额；目录本身不变，但账号可用性可能从「无」变成「有」，
         // 故重编一次（幂等，且只对自有渠道产生行）。
-        if (outcome.kind !== 'failed') void deps.syncOwnCatalog?.()
+        if (outcome.kind !== 'failed') void deps.syncOwnCatalog?.({ refresh: true })
         return send(outcome.kind === 'failed' ? 502 : 200, outcome)
       }
       // ── 本插件自己的渠道账号（渠道包不认识的那些） ──────────────────────────
@@ -2286,7 +2724,7 @@ function createApiRoutes(deps) {
           let ids = []
           let error = null
           try {
-            const models = hostLlm === null ? [] : await hostLlm.listModels(provider)
+            const models = deps.hostLlm() === null ? [] : await deps.hostLlm().listModels(provider)
             count = Array.isArray(models) ? models.length : 0
             ids = Array.isArray(models) ? models.slice(0, 4).map(model => model.id ?? model.name ?? '?') : []
           } catch (failure) {
@@ -2294,37 +2732,149 @@ function createApiRoutes(deps) {
           }
           rows.push({ provider, count, ids, error })
         }
-        const ownRows = modelRuntime.catalog.filter(entry => entry.channel === 'own')
+        const ownRows = deps.catalog().filter(entry => entry.channel === 'own')
         const summary = rows.map(row => row.provider + ':' + row.count).join(' ')
-        diagLog({ kind: 'diag-models', counts: summary, own: ownRows.length })
+        deps.diagLog?.({ kind: 'diag-models', counts: summary, own: ownRows.length })
         return send(200, {
-          hostLlm: hostLlm !== null,
+          hostLlm: deps.hostLlm() !== null,
           packProviders: rows,
           ownRows: ownRows.length,
           ownSample: ownRows.slice(0, 4).map(entry => entry.id),
         })
       }
       // 自有渠道的模型清单：面板「模型」折叠用它（渠道包的 model.list 不认识这些 id）。
-      // 读的就是喂给选择器的那份 catalog，两处永远一致。
+      // ⚠️ 这里**包含被关掉的行**（`disabled: true`）：过滤后的那份只给选择器/
+      // 网关用，面板必须能看到自己关过什么、并点回来。
       if (method === 'GET' && routePath === '/channels/own/models') {
         const provider = String(url.searchParams.get('provider') ?? '').trim()
         if (provider === '') return send(400, { error: 'provider is required' })
-        const rows = modelRuntime.catalog
-          .filter(entry => entry.channel === 'own' && entry.provider === provider)
-        diagLog({ kind: 'models-route', provider, total: rows.length })
+        const rows = deps.ownModelRows(provider)
+        deps.diagLog?.({ kind: 'models-route', provider, total: rows.length })
         const models = rows.map(entry => ({
-            id: entry.id,
-            name: entry.name,
-            disabled: false,
-            dead: false,
-            ...entry.needsLogin === true ? { needsLogin: true } : {},
-          }))
-        return send(200, { provider, models })
+          id: entry.id,
+          modelId: entry.modelId,
+          name: entry.name,
+          disabled: entry.disabled === true,
+          dead: false,
+          ...entry.needsLogin === true ? { needsLogin: true } : {},
+          ...entry.ratio === undefined ? {} : { ratio: entry.ratio },
+          ...entry.rate === undefined ? {} : { rate: entry.rate },
+          ...entry.contextWindow === undefined ? {} : { contextWindow: entry.contextWindow },
+        }))
+        return send(200, {
+          provider,
+          models,
+          counts: deps.ownModelCounts(provider),
+          // 「实时/预制」提示：远端取到就用最新表，取不到就继续显示预制表并说明。
+          catalog: deps.ownModelMeta(provider),
+        })
+      }
+      // 模型开关（单个 / 全部）：写进设置，选择器与网关在下一次 sync 时生效。
+      if (method === 'POST' && routePath === '/channels/own/models/update') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (!OWN_PROVIDERS.includes(provider)) return send(400, { error: `unknown own provider: ${provider}` })
+        const disabled = body?.disabled === true
+        const rawId = String(body?.modelId ?? '').trim()
+        // 面板拿到的是完整 id（`doubao/xxx`），设置里存裸 modelId —— 与兜底表同名。
+        const modelId = rawId.startsWith(`${provider}/`) ? rawId.slice(provider.length + 1) : rawId
+        const current = deps.settings.get().ownDisabledModels ?? {}
+        const set = new Set((Array.isArray(current[provider]) ? current[provider] : []).map(String))
+        if (modelId !== '') {
+          if (disabled) set.add(modelId)
+          else set.delete(modelId)
+        } else if (disabled) {
+          for (const row of deps.ownModelRows(provider)) set.add(row.modelId)
+        } else {
+          set.clear()
+        }
+        const next = { ...current }
+        if (set.size === 0) delete next[provider]
+        else next[provider] = [...set]
+        deps.settings.update({ ownDisabledModels: next })
+        deps.settings.flush()
+        await deps.syncOwnCatalog()
+        return send(200, { ok: true, provider, models: deps.ownModelCounts(provider), rows: deps.ownModelRows(provider) })
+      }
+      // 渠道级总开关：关闭 = 隐藏全部模型 + 停用全部账号；打开 = 清空模型黑名单 + 启用全部账号。
+      if (method === 'POST' && routePath === '/channels/own/provider/update') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (!OWN_PROVIDERS.includes(provider)) return send(400, { error: `unknown own provider: ${provider}` })
+        const enabled = body?.enabled === true
+        const closedMap = { ...(deps.settings.get().ownClosedProviders ?? {}) }
+        const disabledMap = { ...(deps.settings.get().ownDisabledModels ?? {}) }
+        if (enabled) {
+          delete closedMap[provider]
+          delete disabledMap[provider]
+        } else {
+          closedMap[provider] = true
+        }
+        const accounts = deps.channelAccounts().list(provider)
+        for (const account of accounts) deps.channelAccounts().update(account.id, { enabled })
+        deps.settings.update({ ownClosedProviders: closedMap, ownDisabledModels: disabledMap })
+        deps.settings.flush()
+        await deps.syncOwnCatalog()
+        return send(200, {
+          ok: true,
+          provider,
+          enabled,
+          models: deps.ownModelCounts(provider),
+          // 上面已把**全部账号**写成同一个 `enabled`，故两数同源。
+          accounts: { total: accounts.length, enabled: enabled ? accounts.length : 0 },
+        })
+      }
+      // 面板「刷新凭据」：只对登记了续期实现的渠道；逐账号串行由面板负责。
+      if (method === 'POST' && routePath === '/channels/own/refresh') {
+        const body = await readJson(req)
+        const accountId = String(body?.accountId ?? '').trim()
+        if (accountId === '') return send(400, { error: 'accountId is required' })
+        const result = await deps.refreshOwnAccount(accountId)
+        if (result.error !== undefined) {
+          return send(result.error === '账号不存在' ? 404 : 400, result)
+        }
+        return send(200, result)
+      }
+      // AgnesCode：没有登录端点，凭据来自桌面客户端的加密会话（读取 + 解密在
+      // src/channels/agnescode.js）。这里只负责落账号/凭据并触发目录重编。
+      if (method === 'POST' && routePath === '/channels/own/import') {
+        const body = await readJson(req)
+        const provider = String(body?.provider ?? '').trim()
+        if (provider === '') return send(400, { error: 'provider is required' })
+        const imported = await deps.agnesImport(provider)
+        if (imported.error !== undefined) return send(400, { error: imported.error })
+        const username = typeof imported.credential?.username === 'string' ? imported.credential.username : ''
+        // 同一个客户端账号反复导入 → 复用已有那条（有且仅有一条启用账号时）。
+        const existing = deps.channelAccounts().list(provider).filter(entry => entry.enabled !== false)
+        const account = existing.length === 1
+          ? existing[0]
+          : deps.channelAccounts().create(provider, { nickname: username })
+        await deps.channelAccounts().attach(account.id, imported.credential, {
+          ...username === '' ? {} : { nickname: username },
+        })
+        void deps.syncOwnCatalog({ refresh: true })
+        deps.diagLog?.({ kind: 'agnes-import', provider, accountId: account.id, hasNickname: username !== '' })
+        return send(200, { accountId: account.id, nickname: username })
       }
       if (method === 'GET' && routePath === '/channels/own') {
         const provider = String(url.searchParams.get('provider') ?? '').trim()
         if (provider === '') return send(400, { error: 'provider is required' })
-        return send(200, { provider, accounts: deps.channelAccounts().list(provider), supported: deps.deviceLogin().supports(provider) })
+        const canRefresh = deps.canRefreshProvider(provider)
+        // `refreshable` 是**账号级**的：有续期实现 + 凭据本体存在。面板据此决定
+        // 是否渲染「刷新凭据」，而不是给一个点了报「该渠道没有续期接口」的按钮。
+        const accounts = await Promise.all(deps.channelAccounts().list(provider).map(async entry => {
+          const credential = await deps.channelAccounts().credentialOf(entry)
+          return { ...entry, refreshable: canRefresh && deps.hasRefreshMaterial(provider, credential) }
+        }))
+        const models = deps.ownModelCounts(provider)
+        return send(200, {
+          provider,
+          accounts,
+          supported: deps.deviceLogin().supports(provider),
+          models,
+          closed: models.closed,
+          refreshable: canRefresh,
+        })
       }
       if (method === 'POST' && routePath === '/channels/own/login/start') {
         const body = await readJson(req)
@@ -2338,35 +2888,66 @@ function createApiRoutes(deps) {
         if (accountId === '') return send(400, { error: 'account is required' })
         const polled = await deps.deviceLogin().poll(accountId)
         // 登录完成即重编自有渠道的模型行（账号从「无」变「有」）。
-        if (polled.done === true && polled.success === true) void deps.syncOwnCatalog()
+        if (polled.done === true && polled.success === true) void deps.syncOwnCatalog({ refresh: true })
         // 轮询本身成功（还没授权）不是错误：`done:false` 就是「继续等」。
         return send(200, polled)
       }
       // Accio：浏览器 PKCE。与设备码同一形状（先回地址、再轮询等回调），
       // 但等的是**我们自己**起的 loopback，不是上游的轮询端点。
+      //
+      // ⚠️ 浏览器由**宿主**用 `rundll32 url.dll,FileProtocolHandler` 打开，不靠面板的
+      // `window.open`：桌面壳的渲染进程可能拦掉弹出窗口（`dsh-app://` 上下文里
+      // window.open 常被策略吃掉），而这条登录**必须在真浏览器里完成**。
+      // 面板仍会把地址显示出来（`loginUrl` 回给前端）作为兜底。
       if (method === 'POST' && routePath === '/channels/own/oauth/start') {
         const body = await readJson(req)
         const provider = String(body?.provider ?? '').trim()
         if (provider !== 'accio') return send(400, { error: `该渠道没有浏览器授权登录：${provider}` })
-        const account = ownAccounts.create(provider)
-        const flow = await startBrowserLogin({ region: typeof body?.region === 'string' ? body.region : 'cn' })
-        accioLogins.set(account.id, flow)
-        return send(200, { accountId: account.id, loginUrl: flow.loginUrl })
+        const account = deps.channelAccounts().create(provider)
+        try {
+          const flow = await deps.accioLogin.start({ region: typeof body?.region === 'string' ? body.region : 'cn' })
+          deps.accioLogin.flows.set(account.id, flow)
+          deps.accioLogin.open(flow.loginUrl)
+          return send(200, { accountId: account.id, loginUrl: flow.loginUrl })
+        } catch (error) {
+          // 起不了 loopback 就把占位账号删掉，别在面板上留一条永远等不到回调的账号。
+          await deps.channelAccounts().remove(account.id).catch(() => {})
+          return send(500, { error: `Accio 登录初始化失败：${error?.message ?? error}` })
+        }
       }
       if (method === 'GET' && routePath === '/channels/own/oauth/poll') {
         const accountId = String(url.searchParams.get('account') ?? '').trim()
-        const flow = accioLogins.get(accountId)
+        const flow = deps.accioLogin.flows.get(accountId)
         if (flow === undefined) return send(200, { done: true, success: false, error: '登录流程不存在或已结束，请重新发起' })
+        // ⚠️ 落定即关掉 loopback 端口：那是一个「等着收凭据」的口子，留着没有任何好处
+        // （`state` 是公开信息，本机进程能往它投一枚 code 换走凭据）。
+        const settle = () => {
+          deps.accioLogin.flows.delete(accountId)
+          try { flow.close?.() } catch { /* 已关 */ }
+        }
         try {
           const { code, verifier, redirectUri } = await flow.waitForCode()
-          const exchanged = await exchangeCode({ code, codeVerifier: verifier, redirectUri })
-          accioLogins.delete(accountId)
+          const exchanged = await deps.accioLogin.exchange({ code, codeVerifier: verifier, redirectUri })
+          settle()
           if (exchanged.error !== undefined) return send(200, { done: true, success: false, error: exchanged.error })
-          await ownAccounts.attach(accountId, exchanged.credential)
-          void syncOwnCatalog()
-          return send(200, { done: true, success: true, nickname: exchanged.credential.access_token.slice(0, 6) })
+          // 兑换响应**没有身份字段**：补一次 userinfo 才有可读昵称（手机号掩码/
+          // 用户名），同时把区域写进凭据（续期/推理按它选域）。
+          const identity = await deps.accioLogin.userInfo(exchanged.credential.access_token)
+          const info = identity.info ?? {}
+          const nickname = info.maskedMobile ?? info.userName ?? info.userId ?? 'Accio'
+          const credential = {
+            ...exchanged.credential,
+            ...Object.keys(info).length === 0 ? {} : { account: info },
+            ...info.routeRegion === undefined ? {} : { region: info.routeRegion },
+          }
+          await deps.channelAccounts().attach(accountId, credential, {
+            nickname,
+            ...typeof credential.expires_at === 'number' ? { expiresAt: credential.expires_at } : {},
+          })
+          void deps.syncOwnCatalog({ refresh: true })
+          return send(200, { done: true, success: true, nickname })
         } catch (error) {
-          accioLogins.delete(accountId)
+          settle()
           return send(200, { done: true, success: false, error: String(error?.message ?? error) })
         }
       }
@@ -2390,15 +2971,15 @@ function createApiRoutes(deps) {
         const body = await readJson(req)
         const provider = String(body?.provider ?? '').trim()
         const phone = String(body?.phone ?? '').trim()
-        if (!smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
-        return send(200, await smsLogin().send(provider, phone))
+        if (!deps.smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
+        return send(200, await deps.smsLogin().send(provider, phone))
       }
       if (method === 'POST' && routePath === '/channels/own/sms/login') {
         const body = await readJson(req)
         const provider = String(body?.provider ?? '').trim()
-        if (!smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
-        const result = await smsLogin().login(provider, String(body?.phone ?? '').trim(), String(body?.code ?? '').trim())
-        if (result.error === undefined) void deps.syncOwnCatalog()
+        if (!deps.smsLogin().supports(provider)) return send(400, { error: `该渠道没有短信登录：${provider}` })
+        const result = await deps.smsLogin().login(provider, String(body?.phone ?? '').trim(), String(body?.code ?? '').trim())
+        if (result.error === undefined) void deps.syncOwnCatalog({ refresh: true })
         return send(result.error === undefined ? 200 : 400, result)
       }
       if (method === 'POST' && routePath === '/channels/own/login/cancel') {
@@ -2414,11 +2995,15 @@ function createApiRoutes(deps) {
           ...typeof body?.nickname === 'string' ? { nickname: body.nickname } : {},
           ...typeof body?.enabled === 'boolean' ? { enabled: body.enabled } : {},
         })
+        // 停用最后一个账号后，模型行要变成「待登录」；启用后要变回来。
+        if (account !== undefined) void deps.syncOwnCatalog()
         return account === undefined ? send(404, { error: 'account not found' }) : send(200, { ok: true, account })
       }
       if (method === 'POST' && routePath === '/channels/own/remove') {
         const body = await readJson(req)
         const removed = await deps.channelAccounts().remove(String(body?.accountId ?? '').trim())
+        // 删掉最后一个账号 = 这家渠道从「已登录」回到「待登录」。
+        if (removed) void deps.syncOwnCatalog()
         return removed ? send(200, { ok: true }) : send(404, { error: 'account not found' })
       }
       if (method === 'GET' && routePath === '/announcement') {

@@ -1,10 +1,16 @@
-import { ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
+import { ROUTE_MAIN } from '../adapter.js'
 import { toOpenAiUsage } from '../forward.js'
 
 export function routableModelIds(snapshot) {
-  const membership = new Set(snapshot.membership[ROUTE_MAIN] ?? [])
-  if (snapshot.settings.exposeRegionModels !== false) {
-    for (const id of snapshot.membership[ROUTE_REGION] ?? []) membership.add(id)
+  /**
+   * 自有渠道有自己的路由（每条路由 = 选择器里的一个分组），但本机网关与
+   * `/v1/models` 是**按模型 id 收单**的：只并 `ROUTE_MAIN` 会让 80 个自有模型
+   * 在网关里 404（模型看得到、选得中，网关却说不存在）。所以这里并**所有**
+   * 路由 —— 路由名只影响选择器分组，不影响哪些 id 可路由。
+   */
+  const membership = new Set()
+  for (const ids of Object.values(snapshot.membership ?? {})) {
+    for (const id of Array.isArray(ids) ? ids : []) membership.add(id)
   }
   return membership
 }

@@ -45,11 +45,17 @@ export function createSmsLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
       const nickname = result.nickname ?? phone
       const existing = accounts.list(provider).find(entry => entry.nickname === nickname)
       const account = existing ?? accounts.create(provider, { nickname })
-      await accounts.attach(account.id, result.credential, existing === undefined ? { nickname } : {})
+      const expiresAt = Number(result.credential?.expires_at)
+      await accounts.attach(account.id, result.credential, {
+        ...existing === undefined ? { nickname } : {},
+        // 到期时间必须写回账号表：面板的「有效期」和续期闸门都读这个字段，
+        // 只写在凭据里等于界面永远显示「永久」。
+        ...Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {},
+      })
       return {
         accountId: account.id,
         nickname,
-        ...result.credential?.expires_at === undefined ? {} : { expiresAt: result.credential.expires_at },
+        ...Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {},
       }
     },
   }

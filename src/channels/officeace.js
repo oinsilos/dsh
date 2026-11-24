@@ -119,18 +119,23 @@ export async function fetchOfficeaceModels(credential, { fetch: fetchImpl = fetc
 /**
  * 权益扩展：**只有额度读数，没有签到**。
  *
- * 本模块只接目录；额度端点（订阅/用量）在登录腿落地后补 —— 在那之前
- * `claim` 如实回 `inactive`，不假装成功。
+ * 目录：远端 `/v2/models` 优先（会随租户/账号变化），失败才退回内置的 8 条。
+ * 上一版只回静态表 —— `fetchOfficeaceModels` 写好了却没人调，用户永远看不到
+ * 自己租户多出来的模型。
+ *
+ * 额度端点（订阅/用量）尚未取证；在那之前 `claim` 如实回 `inactive`，不假装成功。
  */
-export function createOfficeaceExtras({ credentialOf } = {}) {
+export function createOfficeaceExtras({ credentialOf, fetch: fetchImpl = fetch } = {}) {
   async function statusOf(account) {
     const base = { accountId: typeof account?.id === 'string' ? account.id : '', nickname: typeof account?.nickname === 'string' ? account.nickname : '' }
     const credential = credentialOf === undefined ? null : await credentialOf(account)
+    if (credential === null) return { ...base, catalog: officeaceCatalogRows(), source: 'static', error: '凭据不可用（需要重新登录）' }
+    const models = await fetchOfficeaceModels(credential, { fetch: fetchImpl })
     return {
       ...base,
-      catalog: officeaceCatalogRows(),
-      source: 'static',
-      ...credential === null ? { error: '凭据不可用（需要重新登录）' } : {},
+      catalog: models.rows ?? officeaceCatalogRows(),
+      source: models.rows === undefined ? 'static' : 'live',
+      ...models.rows === undefined ? { catalogError: models.error } : {},
     }
   }
   async function claim() {

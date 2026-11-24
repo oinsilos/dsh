@@ -95,6 +95,26 @@ export function authorizeUrl({ state, codeChallenge, base = OFFICEACE.clawBase }
   return url.toString()
 }
 
+/**
+ * 这个 URL 是不是**回调**（而不是授权页本身）。
+ *
+ * ⚠️ 只认路径会把「授权页里嵌的 `redirect_uri` 参数」当成已回调 —— 页面刚打开就
+ * 误判登录成功。必须同时带 `code=` 或 `error=`（与 Marvis 那条判据同型）。
+ *
+ * 回调落在**上游主机**（`agentarts…/v1/claw/auth/callback`），所以由宿主的浏览器
+ * 在 `Fetch.requestPaused` 阶段截停 —— 请求不出网，code 也不会被上游消费一次。
+ */
+export function isOfficeaceCallbackUrl(url) {
+  let parsed
+  let expected
+  try {
+    parsed = new URL(String(url))
+    expected = new URL(OFFICEACE.redirectUri)
+  } catch { return false }
+  if (parsed.origin !== expected.origin || parsed.pathname !== expected.pathname) return false
+  return parsed.searchParams.has('code') || parsed.searchParams.has('error')
+}
+
 async function tokenRequest(body, privateJwk, { fetch: fetchImpl = fetch, tokenUrl = OFFICEACE.tokenUrl } = {}) {
   const form = new URLSearchParams(body).toString()
   let response
@@ -141,11 +161,15 @@ export async function exchangeOfficeaceCode({ code, codeVerifier, privateJwk, fe
   if (accessToken === undefined && payload.credentials === undefined) {
     return { error: `token 响应里没有 access_token（${JSON.stringify(payload).slice(0, 200)}）` }
   }
+  const expiresIn = Number(payload.expires_in)
   return {
     credential: {
       access_token: accessToken ?? String(payload.credentials?.security_token ?? ''),
       ...refreshToken === undefined ? {} : { refresh_token: refreshToken },
       ...payload.credentials === undefined ? {} : { sts: payload.credentials },
+      // 续期闸门要用：没有到期时间就只能「永不自动续期」或「每请求都烧一次性
+      // refresh_token」。上游给 expires_in 时记下来（秒 → 毫秒）。
+      ...Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_at: Date.now() + expiresIn * 1000 } : {},
       privateJwk,
       provider: 'officeace',
     },
@@ -164,11 +188,13 @@ export async function refreshOfficeaceToken({ refreshToken, privateJwk, fetch: f
   const payload = result.payload ?? {}
   const accessToken = typeof payload.access_token === 'string' ? payload.access_token : String(payload.credentials?.security_token ?? '')
   if (accessToken === '') return { error: '续期响应里没有 token' }
+  const expiresIn = Number(payload.expires_in)
   return {
     credential: {
       access_token: accessToken,
       refresh_token: typeof payload.refresh_token === 'string' && payload.refresh_token !== '' ? payload.refresh_token : refreshToken,
       ...payload.credentials === undefined ? {} : { sts: payload.credentials },
+      ...Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_at: Date.now() + expiresIn * 1000 } : {},
       privateJwk,
       provider: 'officeace',
     },

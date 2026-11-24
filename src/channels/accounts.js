@@ -27,7 +27,7 @@ import crypto from 'node:crypto'
  * ⚠️ 只登记**渠道包不认识**的渠道。`minimax` 由渠道包持有账号池，这里放进去会
  * 出现两套账号表认同一家；`minimaxintl` 是另一家产品（账号不互通），故只登记它。
  */
-export const OWN_PROVIDERS = Object.freeze(['codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'astudio'])
+export const OWN_PROVIDERS = Object.freeze(['codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis', 'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi', 'officeace', 'astudio', 'doubao', 'agnescode', 'agnescodeintl'])
 
 const REF_PREFIX = 'OFM'
 
@@ -137,6 +137,24 @@ export function createChannelAccounts(store, credentials, resolve) {
       } catch {
         return null
       }
+    },
+    /**
+     * 清掉「占位账号」：账号表里有行、凭据库里没有本体。
+     *
+     * 登录流程是**内存态**的（浏览器/扫码等回调），进程一重启就没了 ⇒ 那些行永远
+     * 等不到凭据，只会让面板显示一片「待登录」。启动时清一次，返回被清掉的条数。
+     */
+    async prunePending() {
+      const rows = doc().accounts
+      const keep = []
+      const dropped = []
+      for (const entry of rows) {
+        const credential = await this.credentialOf(entry)
+        if (credential === null) dropped.push(entry.id)
+        else keep.push(entry)
+      }
+      if (dropped.length > 0) save(keep)
+      return dropped
     },
   }
 }

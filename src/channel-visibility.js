@@ -1,21 +1,25 @@
 /**
- * 渠道包「模型目录可见性总开关」。
+ * 渠道包「模型目录可见性」。
  *
  * ## 为什么需要它
  *
  * 渠道包（`vendor/channel-pack/pack.js`）的 13 个 provider 会各自向 DSH 的模型
- * 选择器贡献一个分组。用户只想保留自己在 profile 里配置的那十几个 provider，
- * 于是希望一次性把这些渠道分组收起来。
+ * 选择器贡献一个分组。默认规则（用户 2026-11-24 明确要求，11-25 再次确认）：
+ * **只有登录过账号的渠道才出现在选择器里**，没登录的渠道整组不出现；登录后
+ * 下一次刷新就会出现。
  *
- * 渠道包自己已有一条门控 `providerCatalogVisible()`（`src/account-pool.ts`）：
- * 适配器 `listModels()` 的第一行调用它，返回 `false` 就返回 `[]`，而
+ * 渠道包自己有一条门控 `providerCatalogVisible()`（`pack.js`）：适配器
+ * `listModels()` 第一行调用它，返回 `false` 就返回 `[]`，而
  * `dsh-api-session-controller` 的 `buildModelCatalog()` 会
  * `.filter(group => group.models.length > 0)` —— **空数组即整组消失**。
+ * 但它只在环境变量 `DSH_HIDE_MODELS_WITHOUT_ACCOUNT` 为真时才去问账号池；
+ * 为假时直接「全部可见」。本插件需要自己掌舵，因此包裹账号池的
+ * `hasLoggedInAccount`，并保证环境变量始终为真（否则上游根本不会调用包装层）。
  *
- * 但那条门控按「是否已登录账号」判定，**只要有一个可解析凭据就放行**。用户机器
- * 上 13 个 provider 全都有账号，因此它对收拢分组完全无效；而「逐模型关闭」也不
- * 可靠：远端目录会持续新增模型，黑名单追不上（实测 Loomy 的 8 个模型全被关掉、
- * 分组却仍在，因为远端还有黑名单里没有的模型）。
+ * ## 语义
+ *
+ * - `hideChannelModels`（面板上的「隐藏所有渠道」）为真 → 13 个分组**全部收起**。
+ * - 该开关为假 → **交回上游原判定**：有可解析凭据才可见（未登录 = 隐藏）。
  *
  * ## 做法
  *
@@ -33,24 +37,23 @@
  *   路径只走 `resolveModelInfo()`。被隐藏的模型仍能正常收发。
  * - **`listAllModels()` 不受影响**：渠道包设置页的「显示列表」「关闭全部」读的是
  *   它（它有意绕过黑名单），必须保持原样，否则用户无法再打开被关掉的模型。
- * - **失败即放行**：账号池缺失、未实现该方法、或包裹过程抛错时一律视为「未安装」，
- *   宁可多显示也不让整组模型凭空消失（与上游门控同一取向）。
+ * - **失败即放行**：账号池缺失、未实现该方法、原方法抛错时一律返回 `true`
+ *   —— 宁可多显示，也不让整组模型凭空消失。
+ * - **热重载换新开关**：`shouldHide` 存在 pool 的 Symbol 上而不是闭包里，
+ *   重复安装时只更新它（包装本身复用），避免旧闭包把新设置锁死。
  */
 
-/** `providerCatalogVisible()` 读取的开关：缺省即开启，只有显式假值才关闭。 */
+/** `providerCatalogVisible()` 读取的开关：缺省即开启（= 去问账号池）。 */
 const HIDE_FLAG = 'DSH_HIDE_MODELS_WITHOUT_ACCOUNT'
 
-/** 与上游 `resolveHideWithoutAccountFlag()` 一致的假值集合。 */
-const FALSEY = new Set(['0', 'false', 'no', 'off'])
+/** 包装标记：热重载重复 apply 时只包一次。 */
+const WRAPPED = Symbol.for('our-free-model.catalog-visibility')
 
-/** 上游 `resolveHideWithoutAccountFlag()` 的等价实现，用于还原用户原本的取值。 */
-function flagEnabled(raw) {
-  if (raw === undefined) return true
-  return !FALSEY.has(String(raw).trim().toLowerCase())
-}
+/** 最新的 `shouldHide` 回调（每次安装覆盖，包装层现读）。 */
+const HIDE_HOOK = Symbol.for('our-free-model.catalog-visibility.should-hide')
 
 /**
- * 把账号池的门控换成「总开关」驱动。
+ * 包裹账号池的 `hasLoggedInAccount`。
  *
  * @param pool 渠道包暴露的账号池（`ctx.get('accountPool')`）。
  * @param options.shouldHide 每次判定现读的回调：`true` = 隐藏全部渠道分组。
@@ -62,50 +65,38 @@ export function installChannelCatalogVisibility(pool, { shouldHide } = {}) {
     return { installed: false, sync() {} }
   }
   const shouldHideNow = typeof shouldHide === 'function' ? shouldHide : () => false
+  pool[HIDE_HOOK] = shouldHideNow
 
   const original = pool.hasLoggedInAccount
-  // 记录用户自己的环境变量取值，关闭总开关时原样还回去（可能是 undefined）。
-  const originalFlag = process.env[HIDE_FLAG]
-  let hiding = null
 
-  const applyFlag = hide => {
-    // ⚠️ 关闭时必须写**显式假值** `'0'`，不能删除变量：
-    // 上游 `resolveHideWithoutAccountFlag(undefined)` 返回 true（= 走「有账号才
-    // 可见」那条判定），删除等于把「没登录就看没有」留在 env 路径上。
-    // 只有在用户原来就设过该变量时才还原它的取值。
-    if (hide) process.env[HIDE_FLAG] = '1'
-    else if (originalFlag === undefined) process.env[HIDE_FLAG] = '0'
-    else process.env[HIDE_FLAG] = originalFlag
+  // 开关读不出来时按「没要求全隐藏」处理，交回账号判定（不比上游更激进）。
+  const hideAll = () => {
+    try {
+      return pool[HIDE_HOOK]?.() === true
+    } catch {
+      return false
+    }
   }
 
-  // 只包裹一次：热重载会重新 apply，重复包裹会层层叠加。
-  if (pool[Symbol.for('our-free-model.catalog-visibility')] !== true) {
+  if (pool[WRAPPED] !== true) {
     try {
       pool.hasLoggedInAccount = async function hasLoggedInAccount(provider) {
         /*
-         * 两种状态都要能确定，不能「放行后继续问上游」：
-         *
-         * - 总开关**开**   → `false`（13 个渠道分组全收起）
-         * - 总开关**关**   → `true`（**一律显示**，含未登录的渠道）
-         *
-         * ⚠️ 原来「关」时 `return await original.call(this, provider)` —— 那等于
-         * 把判定交回上游的「有账号才可见」。于是在面板里登录着的渠道看得见模型，
-         * **没登录的渠道连分组都不出现**，用户改模型表也永远看不到效果
-         * （2026-11-24 报障「qoder 和 zcode 模型显示也没变化」——
-         * Qoder 从没账号、QoderCN 的账号被用户移除 ⇒ 两个分组一直是空的，
-         * 与模型表无关）。用户明确要求「未登录也列出」，故这里显式返回 true。
+         * - 总开关**开** → `false`：13 个渠道分组全收起。
+         * - 总开关**关** → 交回上游：`true` 仅当该 provider 有可解析凭据。
          *
          * 这条门控的唯一调用点就是 `listModels()` 的展示判定，不影响路由与
-         * 推理（`resolveModelInfo()` 不经过它），所以放行不会让死模型可选后崩。
+         * 推理（`resolveModelInfo()` 不经过它），所以隐藏不会让死模型可选后崩。
          */
+        if (hideAll()) return false
         try {
-          return shouldHideNow() !== true
+          return await original.call(this, provider)
         } catch {
-          // 读开关异常时保持「显示」：宁可多显示，也不让整组凭空消失。
+          // 原方法出错宁可显示：整组消失比多显示更难排查。
           return true
         }
       }
-      Object.defineProperty(pool, Symbol.for('our-free-model.catalog-visibility'), {
+      Object.defineProperty(pool, WRAPPED, {
         value: true, enumerable: false, configurable: true,
       })
     } catch {
@@ -114,18 +105,11 @@ export function installChannelCatalogVisibility(pool, { shouldHide } = {}) {
   }
 
   /**
-   * 让环境变量与当前开关一致；上游门控先读它，必须由总开关说了算。
-   *
-   * ⚠️ 关闭时写 **`'0'`** 而不是删除：`resolveHideWithoutAccountFlag(undefined)`
-   * 返回 `true`（= 走「有账号才可见」那条判定），只有**显式假值**才让它短路成
-   * 「全部可见」。删除等于把上面那个 bug 留在 env 路径上。
+   * 上游门控先读环境变量：为假会短路成「全部可见」，包装层根本不会被调用。
+   * 因此接管期间必须保持真值（'1'）。
    */
   const sync = () => {
-    let hide = false
-    try { hide = shouldHideNow() === true } catch { hide = false }
-    if (hide === hiding) return
-    hiding = hide
-    applyFlag(hide)
+    process.env[HIDE_FLAG] = '1'
   }
 
   sync()

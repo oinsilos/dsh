@@ -31,6 +31,18 @@ import { monkeycodeSignature } from './monkeycode.js'
 import { BAIZHI, baizhiInferenceHeaders, baizhiMaxOutputTokensFor } from './baizhi.js'
 import { OFFICEACE, officeaceInferenceHeaders } from './officeace.js'
 import { ASTUDIO, astudioBearerHeaders } from './astudio.js'
+import { agnesHostAllowed } from './agnescode.js'
+import {
+  DOUBAO,
+  buildDoubaoChatBody,
+  createDoubaoTranslator,
+  doubaoHeaders,
+  doubaoModeOf,
+  doubaoPromptOf,
+  doubaoQueryString,
+  doubaoWebQuery,
+  readDoubaoFrames,
+} from './doubao.js'
 
 const TURN_TIMEOUT_MS = 300_000
 const KEY_TIMEOUT_MS = 15_000
@@ -253,6 +265,34 @@ const LANES = {
     base: BAIZHI.baseUrl,
     path: BAIZHI.messagesPath,
   },
+  /**
+   * 豆包：请求体与响应帧都是**这套协议自己的**（不是 OpenAI 兼容）。
+   *
+   * - 请求体由 `buildDoubaoChatBody` 整体生成（`mode=1+agent_mode=2` = 对话、
+   *   `mode=3+agent_mode=1` = 工作任务）；
+   * - 响应帧 `id:/event:/data:`，正文在 `STREAM_CHUNK` / `CHUNK_DELTA` 里，
+   *   由 `createDoubaoTranslator` 翻成 OpenAI chunk。
+   *   ⇒ 故这里带 `frames: 'doubao'`，`postOwnChannelStreamed` 用它选解析器。
+   */
+  doubao: {
+    id: 'doubao',
+    base: DOUBAO.baseUrl,
+    path: DOUBAO.chatPath,
+    frames: 'doubao',
+  },
+  /**
+   * AgnesCode ×2：OpenAI 兼容，但主机**每账号下发**（凭据里的 `bff_base`），
+   * 所以没有静态 `base` —— `buildRequest()` 里现读并做域名钉扎。
+   * 响应 SSE 带 `reasoning_content`，由 `src/stream.js` 的通用推理字段接住。
+   */
+  agnescode: {
+    id: 'agnescode',
+    path: '/chat/completions',
+  },
+  agnescodeintl: {
+    id: 'agnescodeintl',
+    path: '/chat/completions',
+  },
 }
 
 export function laneFor(provider) {
@@ -302,6 +342,57 @@ export async function postOwnChannelStreamed({ provider, credential, body, signa
   const shape = sniffBody(head.text)
   if (shape === 'empty') throw new UpstreamError('model stream returned no body', CODE.empty)
 
+  /**
+   * 豆包：帧是 `id:` / `event:` / `data:`，**事件名有意义**（正文散在
+   * `STREAM_CHUNK` / `CHUNK_DELTA` 里），而通用的 `readSse` 只交 `data:` 负载。
+   * 故这条线走自己的帧解析 + 翻译器，交出的同样是 OpenAI chunk 负载。
+   */
+  if (lane.frames === 'doubao') {
+    const translator = createDoubaoTranslator()
+    const emit = chunk => { if (typeof chunk === 'string' && chunk !== '') onData(chunk) }
+    // 上游把业务错误塞在 200 的流里（`STREAM_ERROR`），必须当场抛出去 ——
+    // 否则用户看到的是一条「没有正文」的成功回答（实测 `710020202 common invalid param`）。
+    const checkFailure = () => {
+      if (translator.failure === undefined) return
+      const { code, message } = translator.failure
+      throw new UpstreamError(`doubao: 上游返回 ${code} ${message}`.trim(), CODE.server)
+    }
+    if (shape === 'sse') {
+      await readDoubaoFrames(replayStream(head), frame => {
+        for (const chunk of translator.push(frame)) emit(chunk)
+        checkFailure()
+      }, signal, timeoutMs)
+    } else {
+      // 非流式：整份 JSON 当成一帧快照喂进去（上游偶尔这么回）。
+      let rawText = head.text
+      if (!head.done) {
+        try {
+          while (true) {
+            const row = await head.reader.read()
+            if (row.done) break
+            if (row.value !== undefined) rawText += head.decoder.decode(row.value, { stream: true })
+          }
+        } catch (error) {
+          await head.reader.cancel().catch(() => {})
+          throw classifyStreamFailure(error, signal)
+        }
+      }
+      rawText += head.decoder.decode()
+      let payload
+      try { payload = JSON.parse(rawText) } catch {
+        throw new UpstreamError(`unexpected non-stream response: ${rawText.slice(0, 200)}`, CODE.server, { status: response.status })
+      }
+      if (payload?.error !== undefined) throw classifyFailure(response.status, payload, setRetry)
+      const code = Number(payload?.code)
+      if (Number.isFinite(code) && code !== 0) {
+        throw new UpstreamError(`doubao: 上游返回 ${code} ${String(payload?.message ?? payload?.msg ?? '')}`.trim(), CODE.server, { status: response.status })
+      }
+      for (const chunk of translator.push({ event: 'FULL_MSG_NOTIFY', data: JSON.stringify(payload) })) emit(chunk)
+    }
+    for (const chunk of translator.finish()) emit(chunk)
+    return { status: response.status }
+  }
+
   if (shape === 'sse') {
     const rewrite = lane.wrap === undefined ? null : payload => {
       let parsed
@@ -345,6 +436,21 @@ export async function postOwnChannelStreamed({ provider, credential, body, signa
 
 /** 按车道组装 URL / 头 / 体。 */
 async function buildRequest(lane, credential, body, { fetch: fetchImpl, signal }) {
+  if (lane.id === 'doubao') {
+    // 请求体**整体替换**（不是 OpenAI 形）：模式号从目录来，`mode=3` 是会员付费额度那条线。
+    const modelId = String(body?.modelId ?? body?.model ?? '')
+    return {
+      url: `${DOUBAO.baseUrl}${DOUBAO.chatPath}?${doubaoQueryString(doubaoWebQuery(credential))}`,
+      headers: doubaoHeaders(credential?.cookie, { accept: 'text/event-stream' }),
+      bodyText: buildDoubaoChatBody({
+        model: modelId,
+        mode: doubaoModeOf(modelId),
+        prompt: doubaoPromptOf(body?.messages),
+        reasoningEffort: typeof body?.reasoning_effort === 'string' ? body.reasoning_effort : undefined,
+      }),
+    }
+  }
+
   if (lane.id === 'codely') {
     const prepared = await lane.headers(credential, { fetch: fetchImpl, signal })
     return {
@@ -493,6 +599,24 @@ async function buildRequest(lane, credential, body, { fetch: fetchImpl, signal }
     return {
       url: `${lane.base}${lane.path}`,
       headers: marvisChatHeaders(credential),
+      bodyText: JSON.stringify({ ...body, stream: true }),
+    }
+  }
+
+  if (lane.id === 'agnescode' || lane.id === 'agnescodeintl') {
+    // 主机来自凭据（每账号下发），挂 Authorization 前必须过域名白名单 ——
+    // 否则一份被改过的会话文件就能把令牌送到任意主机。
+    const base = String(credential.bff_base ?? '').replace(/\/+$/, '')
+    if (!agnesHostAllowed(base)) {
+      throw new UpstreamError('AgnesCode 凭据里的 bff_base 不在白名单内（需要重新导入登录态）', CODE.credential)
+    }
+    return {
+      url: `${base}${lane.path}`,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${String(credential.access_token ?? '').trim()}`,
+      },
       bodyText: JSON.stringify({ ...body, stream: true }),
     }
   }

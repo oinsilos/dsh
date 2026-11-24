@@ -1,5 +1,5 @@
 /**
- * OfficeAce 登录腿测试（离线）：PKCE、DPoP JWT 形状与可验签性、换码/续期请求体。
+ * OfficeAce 登录腿测试（离线）：PKCE、DPoP JWT 形状与可验签性、回调判据、换码/续期请求体。
  */
 
 import assert from 'node:assert/strict'
@@ -9,6 +9,7 @@ import {
   decodeDpop,
   exchangeOfficeaceCode,
   generateDpopKey,
+  isOfficeaceCallbackUrl,
   pkcePair,
   refreshOfficeaceToken,
   signDpop,
@@ -24,7 +25,7 @@ import { OFFICEACE, officeaceCatalogRows } from '../src/channels/officeace.js'
   assert.equal(url.searchParams.get('redirect_uri'), OFFICEACE.redirectUri)
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256')
   assert.equal(url.searchParams.get('state'), 's1')
-  console.log('ok 1/4 PKCE 与授权页')
+  console.log('ok 1/5 PKCE 与授权页')
 }
 
 /* 2. DPoP：头/载荷/可验签 */
@@ -53,7 +54,20 @@ import { OFFICEACE, officeaceCatalogRows } from '../src/channels/officeace.js'
     Buffer.from(parts[2], 'base64url'),
   )
   assert.equal(verified, true, 'DPoP 签名必须能被公钥验过')
-  console.log('ok 2/4 DPoP')
+  console.log('ok 2/5 DPoP')
+}
+
+/* 3. 回调判据：登录起点靠它拦停，判错一次就是「永远等不到登录」 */
+{
+  assert.equal(isOfficeaceCallbackUrl(`${OFFICEACE.redirectUri}?code=abc&state=s`), true)
+  assert.equal(isOfficeaceCallbackUrl(`${OFFICEACE.redirectUri}?error=access_denied`), true, '被拒绝也要落定，否则流程悬挂')
+  assert.equal(isOfficeaceCallbackUrl(OFFICEACE.redirectUri), false, '没有 code/error 不算回调')
+  // ⚠️ 授权页里嵌着 `redirect_uri=` 参数：只判路径会把刚打开的页面当成已回调
+  const authorize = authorizeUrl({ state: 's', codeChallenge: 'c' })
+  assert.equal(isOfficeaceCallbackUrl(authorize), false, '授权页自己带的 redirect_uri 不许误判')
+  assert.equal(isOfficeaceCallbackUrl('https://evil.example/v1/claw/auth/callback?code=x'), false, '主机不同不算（回调在上游主机）')
+  assert.equal(isOfficeaceCallbackUrl('not a url'), false)
+  console.log('ok 3/5 回调判据')
 }
 
 /* 3. 换码 */
@@ -80,7 +94,7 @@ import { OFFICEACE, officeaceCatalogRows } from '../src/channels/officeace.js'
 
   const failed = await exchangeOfficeaceCode({ code: 'c', codeVerifier: 'v', privateJwk, fetch: async () => ({ ok: false, status: 400, text: async () => 'STS5.1806' }) })
   assert.match(failed.error, /STS5\.1806/)
-  console.log('ok 3/4 换码')
+  console.log('ok 4/5 换码')
 }
 
 /* 4. 续期 + 目录 */
@@ -105,7 +119,7 @@ import { OFFICEACE, officeaceCatalogRows } from '../src/channels/officeace.js'
   const rows = officeaceCatalogRows()
   assert.equal(rows.length, 8)
   assert.equal(rows.find(row => row.id === 'deepseek-v4.1-flash').vision, true)
-  console.log('ok 4/4 续期与目录')
+  console.log('ok 5/5 续期与目录')
 }
 
-console.log('officeace auth OK: 4 组断言全部通过')
+console.log('officeace auth OK: 5 组断言全部通过')

@@ -94,11 +94,17 @@ export function findBrowserExecutable({ env = process.env, platform = process.pl
   return undefined
 }
 
-/** 起浏览器用的参数（临时 profile + 关掉一切「第一次运行」噪音）。 */
-export function buildLaunchArgs({ userDataDir, url = 'about:blank' }) {
+/**
+ * 起浏览器用的参数（临时 profile + 关掉一切「第一次运行」噪音）。
+ *
+ * `headless` 只给**不需要用户看**的会话用（豆包签到的签名环境：起一次只为在页面里
+ * 算一枚 `a_bogus`）。登录要用户扫码/填号，必须带窗口 —— 别给登录流程开无头。
+ */
+export function buildLaunchArgs({ userDataDir, url = 'about:blank', headless = false }) {
   return [
     `--user-data-dir=${userDataDir}`,
     '--remote-debugging-port=0',
+    ...headless ? ['--headless=new'] : [],
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-background-networking',
@@ -231,22 +237,29 @@ function killTree(pid) {
 }
 
 /**
- * 起一个会话（浏览器 + CDP），并把回调请求拦在发出之前。
+ * 起一个会话（浏览器 + CDP）。
+ *
+ * ⚠️ `intercept` 决定要不要启用 `Fetch` 域，**默认不启用**：一旦 `Fetch.enable`
+ * 覆盖 `*`，页面发出的**每一个**请求都会停在 `requestPaused` 等客户端放行 ——
+ * 没人放行的会话就是一个白屏窗口。只有真的要拦回调（Marvis / OfficeAce）才开它；
+ * 其余「网页登录」（豆包扫码、超级麦吉、MonkeyCode、百智云）必须让页面正常加载。
  *
  * @param {object} options
  * @param {string} options.url - 打开的第一个页面（授权页）
  * @param {string} [options.executable]
  * @param {string} [options.userDataDir] - 缺省用系统临时目录下的随机目录（不污染用户 profile）
+ * @param {boolean} [options.headless] - 无头（只为在页面里求值，不需要用户看）
+ * @param {boolean} [options.intercept] - 是否启用 `Fetch` 域（拦回调前必须为 true）
  * @param {(message: string) => void} [options.log]
  * @returns {Promise<{cdp: CdpConnection, targetId: string, close: () => void}>}
  */
-export async function startChromiumSession({ url, executable, userDataDir, log = () => {} } = {}) {
+export async function startChromiumSession({ url, executable, userDataDir, headless = false, intercept = false, log = () => {} } = {}) {
   const binary = executable ?? findBrowserExecutable()
   if (binary === undefined) {
     throw new Error('没有找到 Chromium 系浏览器（Chrome / Edge）。可用环境变量 OFM_CHROMIUM 指定可执行文件')
   }
   const profileDir = userDataDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'ofm-browser-'))
-  const child = spawn(binary, buildLaunchArgs({ userDataDir: profileDir, url: 'about:blank' }), {
+  const child = spawn(binary, buildLaunchArgs({ userDataDir: profileDir, url: 'about:blank', headless }), {
     stdio: 'ignore',
     windowsHide: false,
     detached: process.platform !== 'win32',
@@ -274,7 +287,7 @@ export async function startChromiumSession({ url, executable, userDataDir, log =
     const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' })
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true })
     await cdp.send('Page.enable', {}, { sessionId })
-    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, { sessionId })
+    if (intercept) await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, { sessionId })
     if (typeof url === 'string' && url !== '') {
       await cdp.send('Page.navigate', { url }, { sessionId })
     }

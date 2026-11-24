@@ -112,7 +112,13 @@ Qoder 那一路的具体策略（见 [src/channels/qoder.js](src/channels/qoder.
 渠道包完全不认识的渠道由**本插件**接管：账号表落在 `~/.dsh/our-free-model/channels.json`
 （只存指向凭据的引用），凭据照旧写宿主 `credentials`，ref 名带 `OFM_` 前缀与渠道包的
 `CODEARTS_ACCOUNT_*` 命名空间分开。**推理也走本插件**（`src/channels/inference.js`），
-模型以 `{渠道}/{模型}` 出现在选择器里。
+模型以 `{渠道}/{模型}` 出现在选择器里，并且**按渠道分组**（豆包 / Codely / AStudio …
+各自一组，不和免费车道混在一起）。每组的模型可在面板「模型」折叠里单独开关，
+渠道也能整组关闭（关闭 = 隐藏全部模型 + 停用全部账号）。
+
+模型列表**永远有一份较新的预制表**：能拉到上游最新目录就整表替换（面板标
+「实时目录」），拉不到就继续显示预制表并把原因写在「预制目录」的悬停里；
+倍率（如豆包的 `0.65x`）直接显示在模型行里。
 
 | 渠道 | 登录 | 权益 | 推理 |
 | --- | --- | --- | --- |
@@ -120,6 +126,10 @@ Qoder 那一路的具体策略（见 [src/channels/qoder.js](src/channels/qoder.
 | **AutoClaw（智谱）** | 手机短信验证码（`agent-send-code` → `agent-login`） | 钱包 `wallets`、签到 `user-info`（**先 `refresh` 制造登录事件**） | 管理头（MD5 签名）+ `X-Authorization` + 模型名走 `X-Request-Model` |
 | **Accio（阿里）** | 浏览器 PKCE + 本机 loopback（`client_id=accio-work`） | 目录 `POST /api/llm/config/v2`、积分 `GET /api/entitlement/*`（**无签到端点**） | `/api/adk/llm/generateContent`，Gemini 形请求体 + 响应包成 `candidates` |
 | **MiniMax Code 国际版（minimaxintl）** | OAuth 设备码 + PKCE S256（`account.minimax.io/oauth2/device/code` → `/oauth2/token`） | 目录 `GET /mavis/api/v1/models?region=en&buildEnv=prod`、签到 `signin/status` → `signin/claim`（`?timezone_id=` 必填）、积分 `credit/details` | `POST /mavis/api/v1/llm/v1/messages`（**Anthropic Messages 线**，不走 OpenAI 兼容） |
+
+同一渠道的**多个账号会轮换使用**（按账号表顺序，跳过没有凭据的占位行）；
+令牌只在「快过期」或用户点「续期」时才续，续上了立刻回写账号表。支持续期的
+九家：Codely / MiniMax 国际版 / Marvis / OfficeAce / 超级麦吉×2 / AutoClaw×2 / Accio。
 
 三家都走 `/channels/own/*`，UI 按登录方式分三种：设备码显示「去浏览器确认这个码」、
 短信先填手机号再填验证码、浏览器授权直接开授权页（用 `rundll32` 打开，绝不用
@@ -139,19 +149,52 @@ bffBase 来自桌面端会话），hub 自己的兜底表都是空的 —— 所
 | 状态 | 渠道 |
 | --- | --- |
 | 已覆盖（渠道包 13 家） | codearts、buddy、workbuddy、lobsterai、qoder、qodercn、trae、cline、loomy、raccoon、minimax、zcode、opencode（+ gemini、kilo） |
-| 已覆盖（自有渠道） | codely、autoclaw、autoclawintl、accio、**minimaxintl（0 期）**、**marvis / magicrew / magicrewintl（1 期）** |
+| 已覆盖（自有渠道） | codely、autoclaw、autoclawintl、accio、**minimaxintl（0 期）**、**marvis / magicrew / magicrewintl（1 期）**、**monkeycode×2 / baizhi（2 期）**、**doubao / astudio / officeace（3 期）** —— 共 14 家 |
 | 已覆盖（聚合车道贴 Key） | modelscope、qiniu 及其余 76 家注册表条目 |
-| 待移植 | monkeycode / monkeycodeintl、baizhi、doubao、astudio、officeace、agnescode / agnescodeintl |
+| 已接入 | agnescode / agnescodeintl（读取桌面客户端登录态，目录按订阅档下发） |
 
-阶段划分（0–1 已完成，2–4 待做）：
+阶段划分（0–3 已完成，4 待做）：
 
 | 期 | 内容 | 状态 |
 | --- | --- | --- |
 | 0 | `minimaxintl`（设备码 + PKCE + 目录 + 签到 + 推理） | ✅ 已完成，8 组离线断言 |
 | 1 | CDP 浏览器驱动 + `marvis`（拦截回调 + UAL 签名 + 钱包）+ `magicrew`×2（JWT 收割 + `mgw_` 签发 + 签到） | ✅ 已完成，驱动 5 组 + marvis 7 组 + magicrew 8 组 |
-| 2 | `monkeycode`×2 + `baizhi` | 待做 |
-| 3 | `doubao` + `astudio` + `officeace` | 待做 |
-| 4 | `agnescode`×2（读桌面客户端登录态） | 待做 |
+| 2 | `monkeycode`×2 + `baizhi` | ✅ 已完成，monkeycode 6 组 + baizhi 4 组 |
+| 3 | `doubao` + `astudio` + `officeace` | ✅ 已完成，doubao 8 组（astudio / officeace 的登录腿状态见 docs/PORT-STATUS.md） |
+| 4 | `agnescode`×2（读桌面客户端登录态） | 已完成（国内站真机验证） |
+
+### 渠道总表：面板上 27 张卡片从哪来
+
+「渠道现在是 26 个」这类疑问的答案在这张表里 —— 面板的卡片**不是**一份手写清单，
+它是两层拼起来的，而且**宿主进程与面板是两份代码**：
+
+| 层 | 数量 | 谁提供登录 | 谁提供模型 | 面板折叠 |
+| --- | --- | --- | --- | --- |
+| 渠道包（`vendor/channel-pack/pack.js`） | 13 | 渠道包（`account.create` / `login.poll`） | 渠道包 adapter | `credits.*` RPC |
+| 本插件自有（`src/channels/*`） | 14 | 本插件（`/channels/own/*`） | 本插件 `inference.js` | `/channels/extra` |
+| 聚合车道（贴 Key） | 注册表 78 家 | 用户自己贴 | 远端 `/models` | —— |
+
+自有 14 家逐条：
+
+| id | 登录 | 权益 | 模型线 |
+| --- | --- | --- | --- |
+| `codely` | 设备码 | 签到 + 积分 | OpenAI 形 |
+| `autoclaw` / `autoclawintl` | 手机短信 | 签到（refresh 造登录事件） | OpenAI 形 |
+| `accio` | 浏览器 PKCE（loopback） | 无签到，只有额度 | Gemini 形 |
+| `minimaxintl` | 设备码 + PKCE | 签到 + 积分 | Anthropic Messages |
+| `marvis` | 浏览器拦回调（QQ / 微信） | 无签到，钱包只读 | OpenAI 形 |
+| `magicrew` / `magicrewintl` | 浏览器读 localStorage | 签到 + 积分 | OpenAI 形 |
+| `monkeycode` / `monkeycodeintl` | 浏览器读 HttpOnly cookie | 签到（过 Cap PoW） | OpenAI 形 |
+| `baizhi` | 浏览器控制台 → `sk-` | 每日临时积分 | Anthropic 兼容 |
+| `officeace` | 浏览器 OAuth + DPoP | 无签到 | OpenAI 形 |
+| `doubao` | 浏览器页面扫码 | 签到（页面 `bdms` 签名）+ 活动额度 | 自定义帧（16 个模型） |
+| `astudio` | 微信扫码（SSO 三段，无浏览器） | 每日奖励弹窗 + 积分 | OpenAI Responses |
+
+⚠️ **宿主进程与面板是两份代码**：`client.js` 每次打开面板都从磁盘读（所以永远是新的），
+而宿主 `index.js` 只在**插件加载时**读一次。插件更新后没重载时，就会出现
+「面板有 27 张卡片、宿主只认识 24 个」——那几张新卡片的「添加账号」点了不会有反应。
+现在面板会拿 `GET /channels/manifest` 与宿主对账，缺谁就点名，并给一个**热重载插件**按钮
+（`POST /reload`）。重载后页面会自动刷新；也可以直接重启 DSH。
 
 ### 1 期：CDP 浏览器驱动
 
@@ -168,6 +211,12 @@ monkeycode、doubao、baizhi、officeace 都挂在它上面）：
 ⚠️ 三条踩过的坑（都有测试钉住）：CDP 请求的超时计时器**不能 unref**（否则
 「等回调」永远挂着、进程带着未结算的 await 退出）；端口 0 不是可连接端口；
 只判路径会把授权页自己带的 `redirect_uri=` 当成已回调。
+
+⚠️ `Fetch` 域**默认不开**（`intercept: false`）：一旦 `Fetch.enable` 覆盖 `*`，
+页面每个请求都停在 `requestPaused` 等人放行 —— 没人放行的会话就是一个白屏窗口。
+只有真要拦回调的两家（Marvis / OfficeAce）传 `intercept: true`；豆包、超级麦吉、
+MonkeyCode、百智云的登录页必须能正常加载，用户才扫得到码/点得到按钮。
+签到那种「只要页面能跑」的会话用 `headless: true`（`--headless=new`），登录**不能**无头。
 
 ### 1 期：腾讯 Marvis
 
@@ -204,6 +253,42 @@ monkeycode、doubao、baizhi、officeace 都挂在它上面）：
 
 localStorage 收割的判据：六个键**一次取完**、jwt 与 org **同前缀配对**
 （错配在上游是 HTTP 200 + `code:403`，看起来像密钥坏）。
+
+### 3 期：豆包（签到/额度渠道）
+
+| 项 | 值 |
+| --- | --- |
+| 登录 | 宿主起隔离浏览器打开 `www.doubao.com/chat/`，页面内二维码扫码；判据 = `.doubao.com` 出现 `sessionid` **且** `window.bdms.frontierSign` 已就绪（后者冷启动要 15–20 秒） |
+| 鉴权 | **纯 cookie**（`sessionid` / `sid_tt` / `ttwid`），没有 `Authorization` |
+| 签名 | query 的 **`a_bogus`**，由页面上下文 `bdms.frontierSign({'X-MS-STUB': ''})` → `{'X-Bogus': …}` 产出；值里带 `/`，进 URL 必须编码 |
+| 签到 | `POST /alice/ug/campaign/landing/checkin`，body `{"scene":"pc_incentive_task_mvp_v3"}`；要签名 ⇒ 起一次**无头**浏览器；幂等 |
+| 状态 | `POST /alice/ug/campaign/landing/get`，免签名，**不能**用来短路签到（已签账号也回空活动） |
+| 额度 | `POST /alice/commerce/sale/subscription/quota/summary/`，免签名；金额是千分位字符串、`"<1"` 要单独解析 |
+| 设备身份 | `accountKey`（= `sessionid`）SHA-256 派生**每账号一套** 19 位数字；`s_v_web_id`/`ttwid` 是预验证 id，不算设备号 |
+| 模型 | `POST /chat/completion`：请求体整体由本插件组装（`mode=1`+`agent_mode=2` 对话 / `mode=3`+`agent_mode=1` 工作任务），响应是自定义帧（`id:/event:/data:`），由翻译器转成 OpenAI chunk；目录 `POST /alice/slot/action_bar_v3/brief_list` 真机回 16 个模型，兜底表同源 |
+
+三条实测判据（都有离线断言）：
+
+1. `710010702` 是**没有可领活动**（`inactive`），不是「系统错误」；
+2. `710012001` 是**登录态失效**，文案必须指去重新登录；
+3. `idempotent:true` 在首次成功时也是 true ⇒ 「本次是否真领到」只能看 `reward_amount > 0`。
+
+### 3 期：AStudio（微信扫码）
+
+| 项 | 值 |
+| --- | --- |
+| 登录 | 微信扫码，**不需要浏览器**：`fd`（客户端自生成的 8 位串）→ `GET {sso}/SSOService/wx/scanlogin/qrcode` → 轮询 `…/uids` → `…/bind` |
+| 凭据 | 四字段 Cookie `ssoSessionId=…; sso_sessionid=…; account_id=…; token=…`，再 `init-app` → `userInfo` → `bot/models/configs` 换 `modelBearerToken` |
+| 二维码 | 宿主把二维码图片**内联成 data URL** 再交给面板（`dsh-app://` 渲染进程里外链图可能被策略挡掉） |
+| 额度 | `GET {auth}/points/balance`，权威字段 **`totalBalance`**（不是逐包求和） |
+| 签到 | 弹窗语义：`GET /client-popups/pending` 找 `DAILY_REWARD_DIALOG` → `POST /client-popups/complete`（`{popupId, instanceKey}`）；**没弹窗 = 今天已领** |
+| 推理 | `POST {maas}/model-gateway/v1/responses`（Responses 线；`/chat/completions` 恒 404） |
+
+三条判据：
+
+1. `code:-1` = 未扫码；`code:0` + **空 `infoList`** = 该微信没开通 AStudio（重扫同一号仍是空 ⇒ 必须去客户端绑手机号）；
+2. `80000`（含 1002 / 1005）= 会话失效 ⇒ 文案指去重新扫码，不当网络故障重试；
+3. 额度/签到两条腿必须带 `clientType` / `studioVersion`（版本串是上游下发内容的判据）。
 
 ### 0 期顺带修掉的三条协议缺陷
 
@@ -248,6 +333,11 @@ node tests/accio-channel.mjs      # Accio：三个端点各自的传参方式、
 node tests/minimax-channel.mjs    # MiniMax 国际版：设备码/PKCE、令牌三查、签到信封、claim 幂等、目录归一、续期
 node tests/own-inference.mjs      # 推理腿：三家协议 + 帧归一化 + 目录行
 node tests/channel-pack-tables.mjs # 渠道包三张模型表（Qoder/ZCode/Raccoon），守住倍率不被乱改
+node tests/doubao-channel.mjs     # 豆包：设备身份派生、a_bogus 表达式（真跑一遍）、签到分类、额度解析、领取全链路
+node tests/astudio-login.mjs      # AStudio：SSO 扫码三段、四字段 Cookie、补全凭据、额度、弹窗签到
+node tests/channel-manifest.mjs   # 渠道清单对账：面板卡片 == 宿主账号表（少一条就是「添加账号没反应」）
+node tests/doubao-inference.mjs   # 豆包推理腿：目录树解析、请求体路由（conversation_mode 字符串坑）、帧翻译
+node tests/pending-accounts.mjs   # 占位账号：没凭据 = 待登录（不是「查询失败」），启动时清掉
 node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲染一遍
 ```
 
@@ -256,7 +346,6 @@ node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲�
 **请求契约**，数据语义交给前三个脚本。
 
 ## 已知差异（对照上游实现，2.2.0）
-
 本插件的 13 个渠道来自 `vendor/channel-pack` 的一份快照，与各产品自己的 DSH 插件
 （`dsh-codearts`、`dsh-connect-qoder`、`dsh-providers-hub`）比对后，仍有三处落后：
 
@@ -299,6 +388,10 @@ dsh plugin add /path/to/our-free-model
 3. 模型 ID 用面板列出的完整形式，例如 `loomy/GLM-5.3-Flash`、`codearts/glm-5.3-flash`、`our-free-model/deepseek-v4.1-flash-free`。
 
 需要从其它设备访问时，使用网关页下方的「局域网转发（本插件中继）」并设置监听地址与中继密钥。
+
+## 交接与现状
+
+接手/回顾请看 **docs/HANDOVER.md**：现状、下一步、逐条判据与命令速查；过程记录在 docs/PORT-STATUS.md。
 
 ## 目录结构
 

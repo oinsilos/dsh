@@ -132,6 +132,27 @@ export function parseWallets(payload) {
   return { total, packages: packages.map(({ priority, ...rest }) => rest) }
 }
 
+/**
+ * `expires_at` / `expires_in` 归一成**毫秒时间戳**。
+ *
+ * 上游两种字段都用过：epoch 秒（≈1.7e9）与有效期秒数（≈3600）。不归一的话，
+ * 「3600」会被面板画成 1970 年，续期闸门也会永远判定「已过期」。
+ */
+function expiresAtMs(raw, obtainedAt) {
+  if (typeof raw !== 'number' && typeof raw !== 'string') return undefined
+  const text = String(raw).trim()
+  if (text === '') return undefined
+  const value = Number(text)
+  if (Number.isFinite(value) && value > 0) {
+    if (value > 1e12) return Math.round(value)
+    if (value > 1e9) return Math.round(value * 1000)
+    return Math.round(obtainedAt + value * 1000)
+  }
+  // ISO 8601 也见过：解析成功就用它，失败不猜。
+  const parsed = Date.parse(text)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
 /** `agent-login` → 凭据（缺字段就说缺，不造）。 */
 export function parseLoginPayload(payload) {
   const data = payload?.data
@@ -139,15 +160,16 @@ export function parseLoginPayload(payload) {
   const accessToken = typeof data.access_token === 'string' ? data.access_token : ''
   const refreshToken = typeof data.refresh_token === 'string' ? data.refresh_token : ''
   if (accessToken === '') return { error: '登录响应缺少 access_token' }
-  const expiresAtRaw = data.expires_at ?? data.expires_in
+  const obtainedAt = Date.now()
+  const expiresAt = expiresAtMs(data.expires_at ?? data.expires_in, obtainedAt)
   return {
     credential: {
       access_token: accessToken,
       ...refreshToken === '' ? {} : { refresh_token: refreshToken },
-      obtained_at: Date.now(),
+      obtained_at: obtainedAt,
       ...typeof data.user_id === 'string' || typeof data.user_id === 'number' ? { user_id: data.user_id } : {},
       ...typeof data.device_id === 'string' ? { device_id: data.device_id } : {},
-      ...typeof expiresAtRaw === 'number' || typeof expiresAtRaw === 'string' ? { expires_at: expiresAtRaw } : {},
+      ...expiresAt === undefined ? {} : { expires_at: expiresAt },
     },
     ...typeof data.user_name === 'string' && data.user_name !== '' ? { nickname: data.user_name } : {},
     ...typeof data.user_phone === 'string' && data.user_phone !== '' ? { nickname: data.user_name ?? data.user_phone } : {},
@@ -225,6 +247,42 @@ export async function loginWithCode(phone, code, { fetch: fetchImpl = fetch, pro
     return parseLoginPayload(result.payload)
   } catch (error) {
     return { error: `登录网络失败：${error instanceof Error ? error.message : String(error)}` }
+  }
+}
+
+/**
+ * 续期：`refresh_token` 换新 `access_token`。
+ *
+ * 上游实测**不轮换** refresh_token（旧 access 仍可用），所以失败不判终态；
+ * 到期判据用账号表里的 `expires_at`（毫秒，由 `expiresAtMs` 归一）。
+ */
+export async function refreshAutoclawToken(credential, { product = 'cn', fetch: fetchImpl = fetch, signal } = {}) {
+  const refreshToken = typeof credential?.refresh_token === 'string' ? credential.refresh_token : ''
+  if (refreshToken === '') return { error: '凭据里没有 refresh_token（需要重新登录）' }
+  const base = product === 'intl' ? AUTOCLAW_INTL_API_BASE : AUTOCLAW_API_BASE
+  try {
+    const result = await call(fetchImpl, `${base}${REFRESH_PATH}`, {
+      method: 'POST',
+      body: { refresh_token: refreshToken, source_id: SOURCE_ID, device_id: deviceIdOf(credential) },
+      signal,
+    })
+    const fresh = result.payload?.data?.access_token
+    if (!result.ok || typeof fresh !== 'string' || fresh === '') {
+      return { error: `续期失败（HTTP ${result.status}）${result.text.slice(0, 120)}` }
+    }
+    const obtainedAt = Date.now()
+    const expiresAt = expiresAtMs(result.payload?.data?.expires_at ?? result.payload?.data?.expires_in, obtainedAt)
+    return {
+      credential: {
+        ...credential,
+        access_token: fresh,
+        obtained_at: obtainedAt,
+        ...expiresAt === undefined ? {} : { expires_at: expiresAt },
+      },
+      refreshed: true,
+    }
+  } catch (error) {
+    return { error: `续期网络失败：${error instanceof Error ? error.message : String(error)}` }
   }
 }
 
