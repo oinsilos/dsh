@@ -41,8 +41,8 @@ export const ROUTE_REGION = 'our-free-model-region'
 
 /** Group headings — the only strings the picker shows as a section title. */
 export const ROUTE_LABELS = {
-  [ROUTE_MAIN]: 'Our Free Model',
-  [ROUTE_REGION]: 'Our Free Model · region-limited',
+  [ROUTE_MAIN]: 'Model Manager',
+  [ROUTE_REGION]: 'Model Manager · region-limited',
 }
 
 const STYLE_FOR_WIRE = { chat: 'chat', responses: 'flat', messages: 'claude' }

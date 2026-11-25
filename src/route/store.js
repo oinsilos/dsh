@@ -43,6 +43,25 @@ function asArray(value) {
   return Array.isArray(value) ? value : Array.isArray(value?.groups) ? value.groups : []
 }
 
+/**
+ * 旧插件是否还装着（任一 profile 的依赖或 bundles 里出现即可）。
+ * 卸载后数据目录仍会留在 `~/.dsh`，只看目录存在会把「从旧插件导入」一直挂在
+ * 设置页上；这个探测让迁移入口跟着插件的安装状态走。
+ */
+function legacyPluginInstalled(home) {
+  try {
+    const profiles = path.join(home, 'profiles')
+    for (const name of fs.readdirSync(profiles)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(profiles, name, 'package.json'), 'utf8'))
+        const bundles = manifest?.dsh?.profile?.bundles ?? []
+        if (manifest?.dependencies?.['model-failover-manager'] !== undefined || bundles.includes('model-failover-manager')) return true
+      } catch { /* 单个 profile 读不了不影响其它 profile */ }
+    }
+  } catch { /* 没有 profiles 目录：按未安装处理 */ }
+  return false
+}
+
 /** 旧目录（`~/.dsh/model-failover-manager`）的路径与文件探测。 */
 function legacyState(home) {
   const dir = path.join(home, 'model-failover-manager')
@@ -395,6 +414,7 @@ export function createRouteStore({ dataDir, home, logger, catalog } = {}) {
         legacy: {
           dir: legacy.dir,
           available: legacy.exists,
+          installed: legacyPluginInstalled(home),
           importedAt,
           importedFrom,
           settings: readJson(legacy.settings, {}) ?? {},

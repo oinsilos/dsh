@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Our Free Model — browser half.
  *
  * Contributes three things to the web shell:
@@ -80,6 +80,11 @@ window.__ModuleLoader__.load({
         'panel.routes.addClose': '收起添加',
         'panel.routes.addSearch': '搜索模型名称或 ID',
         'panel.routes.added': '已加入',
+        'panel.routes.pickAll': '全选',
+        'panel.routes.pickNone': '取消全选',
+        'panel.routes.pickClear': '清空',
+        'panel.routes.bulkAdd': '添加 {n} 个',
+        'panel.routes.bulkHint': '勾选多个一次加入；新成员排在组末（优先级 = 现有最大值 + 10）',
         'panel.routes.missing': '目录缺失',
         'panel.routes.priority': '优先级（越小越先）',
         'panel.routes.enable': '启用',
@@ -843,7 +848,7 @@ window.__ModuleLoader__.load({
         'route.importedBody': '导入 {groups} 个分组、{members} 个成员。',
         'route.importSkip': '没有导入',
         'route.importFailed': '导入失败',
-        'route.bindingNote': '旧插件里有 {n} 条会话绑定记录在这里。宿主会话保存的是旧门面模型 id，卸载后这些 id 不在目录里；需要在会话里重新选择「route:分组」。',
+        'route.bindingNote': '有 {n} 个历史会话仍绑定在这个分组上；在会话里重新选择「分组」即可更新绑定。',
         'route.loadFailed': '读取分组失败',
         'route.modelsCount': '可加入的模型 {n}',
 
@@ -919,6 +924,11 @@ window.__ModuleLoader__.load({
         'panel.routes.addClose': 'Close add',
         'panel.routes.addSearch': 'Search model name or ID',
         'panel.routes.added': 'Added',
+        'panel.routes.pickAll': 'Select all',
+        'panel.routes.pickNone': 'Clear all',
+        'panel.routes.pickClear': 'Clear',
+        'panel.routes.bulkAdd': 'Add {n}',
+        'panel.routes.bulkHint': 'Tick several to add at once; new members go last (priority = current max + 10)',
         'panel.routes.missing': 'not in catalog',
         'panel.routes.priority': 'Priority (lower runs first)',
         'panel.routes.enable': 'Enable',
@@ -1682,7 +1692,7 @@ window.__ModuleLoader__.load({
         'route.importedBody': '{groups} groups, {members} members.',
         'route.importSkip': 'Nothing imported',
         'route.importFailed': 'Import failed',
-        'route.bindingNote': '{n} legacy session bindings are recorded here. The host stored the old facade model id, which no longer exists after uninstall; reselect "route:group" in those sessions.',
+        'route.bindingNote': '{n} historical sessions are still bound to this group; reselect the group in those sessions to update the binding.',
         'route.loadFailed': 'Could not load groups',
         'route.modelsCount': '{n} models available',
 
@@ -2036,10 +2046,26 @@ window.__ModuleLoader__.load({
 .ofm_mpicknum{width:62px;padding:4px 6px;font-size:11.5px;text-align:center}
 .ofm_mpickeffort{width:104px;padding:4px 6px;font-size:11px}
 .ofm_mpickbadge[data-tone="warn"]{color:var(--dsw-alias-state-error-primary,#c0392b);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 32%,transparent)}
-.ofm_mpickadd{padding:10px 4px 2px;display:flex;flex-direction:column;gap:4px;border-top:1px dashed var(--dsw-alias-border-l1);margin-top:8px}
-.ofm_mpickaddrow{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px}
+.ofm_mpickadd{padding:10px 4px 2px;display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--dsw-alias-border-l1);margin-top:8px}
+.ofm_mpickaddbar{display:flex;align-items:center;gap:8px}
+.ofm_mpickaddbar .ofm_panelsearch{flex:1;max-width:none;margin:0}
+.ofm_mpickaddlist{max-height:236px;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:1px;padding:2px 2px 4px 0}
+.ofm_mpickaddgroup{display:flex;flex-direction:column;gap:1px}
+.ofm_mpickaddgrouphead{display:flex;align-items:center;gap:8px;padding:7px 8px 3px;font-size:11px;font-weight:600;color:var(--dsw-alias-label-caption);position:sticky;top:0;background:var(--dsw-alias-bg-layer-1);z-index:1}
+.ofm_mpickaddgrouphead .ofm_mpickgroupcount{font-weight:400}
+.ofm_mpickaddgrouphead .ofm_minibtn{margin-left:auto;font-size:10px;padding:1px 6px}
+.ofm_mpickaddrow{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
 .ofm_mpickaddrow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickaddrow[data-picked="true"]{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4a6cf7) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary,#4a6cf7) 32%,transparent)}
+.ofm_mpickaddrow[data-added="true"]{opacity:.42;cursor:default;background:none}
+.ofm_mpickaddrow input[type="checkbox"]{flex:none;width:14px;height:14px;accent-color:var(--dsw-alias-brand-primary,#4a6cf7);margin:0}
 .ofm_mpickaddmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ofm_mpickaddfoot{display:flex;align-items:center;gap:8px;padding-top:2px}
+.ofm_mpickaddfoot .ofm_note{flex:1;min-width:0}
+.ofm_chiplabel{display:inline-flex;align-items:center;white-space:nowrap;max-width:100%}
+.ofm_chiplabelprovider{opacity:.62}
+.ofm_chiplabelname{overflow:hidden;text-overflow:ellipsis}
+.ofm_chiplabelbadge{margin-left:4px;font-size:10px;line-height:14px;padding:0 4px;border-radius:4px;background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4a6cf7) 14%,transparent);color:inherit}
 .ofm_panelsearch{width:100%;max-width:360px;box-sizing:border-box;margin:0 0 10px;padding:8px 10px;font:inherit;font-size:12px;border-radius:9px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 80%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);color:var(--dsw-alias-label-primary);outline:none}
 .ofm_panelsearch::placeholder{color:var(--dsw-alias-label-caption)}
 .ofm_panelsearch:focus{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 48%,transparent);background:var(--dsw-alias-bg-layer-1)}
@@ -3959,7 +3985,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The plugin's own brand mark (user-supplied artwork, 128px JPEG). */
-    const BRAND_ICON = 'data:image/x-icon;base64,﻿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'
+    const BRAND_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAUOSURBVFhHpZdZqJZVFIafMqibsIuiSb2zESyyMipQL5o1Ky+aMSKo1AopM9KIsnmwSStCKaig0agMtTI1U7MZm0caKctsFG2O5+fdh83XOf1/fws+zn/2t/faa3jXu9YHncmmwG7AWcDDwHvAz8CPwGfA18Ay4AFgIrBrzvxv2QQYBtwOfAqsB74Fvge+AK4DzgMuz+V/AH9l7205q46uZHvgmlz4HfAQcBNwcy4+HjgcOArYERgBjANmAc/GkG+Aq6PrP8k+lRJDe0iisA74HfgFeDQe7gvcAEwDzgVmAnOAJ4DfKh3q7EhGJsce/Ao4Oop/zVr96KH5b677LAfuz3vx8m6i9K+ilW7cmEPvAM/HY5XqvflfEwC69ifwOvBJL0a8CkxJWtSpY3s3Ly1ingyVis3z9cD8hkKNei5hngBMAp5OJdwI3Bsj6zOCcUbO+v9SYLvm5SJVsLjhS+AC4I5EwzXD/z7wFPAYsBhYAVwLDAHOBN4EzgBuScQ+zlnX58X7tVm7qlkdgsl8epF581AJ7yvAxcBJwJikSdTvBJyaEBu9UcDC6FqS329UkXghleNfDekBpYQhwr3sceDF6tBHCbFG6PWtIZq9Kg/6A1vn98nAicCxwEvAZRU36Nz5wDHAT0lNi6xkOHP4DHBPI38CZwFwZPLWjt22AA4ABgZPRq0Gp2VpiYot13fxkPTqS0Hky7LZPIoLQ3oKsH8HBij9gM2ia3RAKwBLJOQS320AxntAChW55ueiygA3adyTCenmzZvaiBVinj0vJxj2EoXZqbYH3SjjacSBwBXZ9EHQLBgPamruUGTIQblc7EjpJbLyglF5240y1aVBtmB00+o0G1Hu+jZN7R2IIN09RHZ2xQNzo9eqMwotAEq1NhajYI7cKFD2AC4Etmxq71BOT+MS/erUWdNyRJz9wU1aYTM5NFwt1brZchOYArAb2SoNSifkhWKAqTkYmAx87kbBYbhtpTKdGzVChK4K4XTT07dN+qRsL7KvqFtndwCmp9m1KNILpd7C474QOPL2gFjdjViGAllAm2p1m1I7rvOF+lsjlgi9M2zoJgcQ61cO9/JzmprbiIQkK1qC9on7qvJ2gjKt8oLrrVyL0FKbbjISpkZ2lAWNjgTj004kIbHkJfuls9Yd0hI0uv7WuNYAKS0+AtxVTTE+H4ZO5QrzKc22IySNdO/YONAcZHRUmrZb7uyB0owM+2FBbrFYYy7JYKFCgXpcLpIbSnl6qYOG0VSXufWMjay0ZR8vdlTztzNFD7jNsy3SDScAr1WH/K2iRQmpeXVGFJwCSqMGx2v12LKNmobXel5Oq9e5wgc9Ug8kjlsOHwKwzAV6IYVaQnrp+mnAnllbmXbtsKKxpq6k0nHNKpCMZD/XruyttB0qDJ0bBKVjlD27zp9K7w6QrG2HDmlWzjCkRrBQbnl0RCAKPN/1OpIVMY+OYaVhaLW5rBWWiLxV/S+lyh3iqOBH8Elk8owfNOqUjIY2L22KJeRGrTVXdko7WtMIH9+XsNaPl1vvAlfDXNOx4c3L+hIjYTg9aNhFrvOBYbZxTU2KBJIDix8pXqr3NjN5w95SdBj2PsfxvkRMCMzioVxgWkS9URL1fpbZRR1mNEiw+UizpsPKcgLuM+ftpHycCkY/ODVECjUtfpAaZtutzcx+IqWbb4nNM5blP9DejUhWMqYl6OWG1sjYYKRvaVuw2Vfc47DZyfzI37iV37V7h+RzAAAAAElFTkSuQmCC'
 
     /**
      * The thirteen account channels enabled by OFM. Identity is static (it is
@@ -7195,8 +7221,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'ofm_card ofm_rise', style: { animationDelay: `${Math.min(index, 8) * 22}ms` } },
         h('div', { className: 'ofm_cardhead' },
           h('span', { className: 'ofm_cardname', title: group.name }, group.name),
-          h(Pill, { tone: usable ? 'ok' : 'warn' }, usable ? t('route.usable') : t('route.notUsable')),
-          group.legacyId === '' ? null : h('span', { className: 'ofm_tag' }, t('route.legacyTag'))),
+          h(Pill, { tone: usable ? 'ok' : 'warn' }, usable ? t('route.usable') : t('route.notUsable'))),
         h('div', { className: 'ofm_metrics' },
           h('span', null, group.id),
           h('span', null, `${t('route.memberCount').replace('{n}', String(group.models.length))}${group.bindings === 0 ? '' : ` · ${t('route.bindings').replace('{n}', String(group.bindings))}`}`)),
@@ -7336,16 +7361,20 @@ window.__ModuleLoader__.load({
               })),
             h(Button, { kind: 'primary', disabled: busy || draft === null, onClick: saveSettings }, t('route.saveSettings')),
             h(Button, { kind: 'ghost', disabled: busy, onClick: resetAll }, t('route.resetAll')),
-            h(Button, {
-              kind: 'ghost', disabled: busy || (panel.data?.legacy?.available !== true && groups.length === 0),
-              onClick: () => {
-                if (confirmImport || groups.length === 0) void runImport()
-                else setConfirmImport(true)
-              },
-            }, confirmImport ? t('route.importConfirm') : t('route.import')),
+            // 旧插件的导入只在它还装着时才有意义：卸载后数据目录仍会留在
+            // `~/.dsh`，只看目录存在会一直挂着一个「从旧插件导入」按钮。
+            panel.data?.legacy?.available === true && panel.data?.legacy?.installed === true
+              ? h(Button, {
+                kind: 'ghost', disabled: busy,
+                onClick: () => {
+                  if (confirmImport || groups.length === 0) void runImport()
+                  else setConfirmImport(true)
+                },
+              }, confirmImport ? t('route.importConfirm') : t('route.import'))
+              : null,
             confirmImport ? h(Button, { kind: 'ghost', onClick: () => setConfirmImport(false) }, t('route.cancel')) : null),
           h('p', { className: 'ofm_note' }, t('route.concurrencyHint')),
-          h('p', { className: 'ofm_note' }, panel.data?.legacy?.available === true ? t('route.importHint') : t('route.legacyMissing')),
+          panel.data?.legacy?.available === true && panel.data?.legacy?.installed === true ? h('p', { className: 'ofm_note' }, t('route.importHint')) : null,
           bindingCount === 0 ? null : h('p', { className: 'ofm_note' }, t('route.bindingNote').replace('{n}', String(bindingCount)))))
 
       const groupCards = groups.length === 0 ? null : h('div', { className: 'ofm_grid' }, groups.map((group, index) => h(GroupCard, {
@@ -7707,6 +7736,7 @@ window.__ModuleLoader__.load({
       const [selected, setSelected] = useState(null)
       const [adding, setAdding] = useState(false)
       const [query, setQuery] = useState('')
+      const [picked, setPicked] = useState([])
       const [newName, setNewName] = useState('')
       const active = groups.find(group => group.id === selected) ?? groups[0]
       const shape = group => ({
@@ -7742,11 +7772,13 @@ window.__ModuleLoader__.load({
       const removeMember = (group, index) => save(groups.map(item => item.id !== group.id
         ? shape(item)
         : { ...shape(item), models: shape(item).models.filter((member, at) => at !== index) }))
+      /** 新成员一律排到组末：优先级 = 现有最大值 + 10（0 是最高优先）。 */
+      const nextPriority = list => Math.min(999, (list ?? []).reduce((max, member) => Math.max(max, Number(member?.priority) || 0), 0) + 10)
       const addMember = (group, entry) => {
         if ((group.models ?? []).some(member => member.model === entry.id)) return
         save(groups.map(item => item.id !== group.id
           ? shape(item)
-          : { ...shape(item), models: [...shape(item).models, { model: entry.id, provider: entry.provider, priority: 50 }] }))
+          : { ...shape(item), models: [...shape(item).models, { model: entry.id, provider: entry.provider, priority: nextPriority(item.models) }] }))
       }
       const createGroup = () => {
         const name = newName.trim()
@@ -7776,16 +7808,35 @@ window.__ModuleLoader__.load({
           setBusy('')
         }
       }
-      const rows = catalogGroups.flatMap(group => group.models.map(model => ({
-        id: model.id,
-        name: model.name ?? model.id,
-        provider: group.id,
-        description: model.description ?? '',
-      })))
+      // 「添加模型」的候选：按宿主目录的渠道分组，跨渠道搜索；已加入的置灰。
+      // 多选 + 底部一次提交，加十几个模型只发一趟 POST（原来一个模型一趟）。
       const needle = query.trim().toLowerCase()
-      const matches = needle === ''
-        ? rows.slice(0, 30)
-        : rows.filter(row => `${row.name} ${row.id} ${row.provider}`.toLowerCase().includes(needle)).slice(0, 40)
+      const addGroups = catalogGroups.map(group => ({
+        id: group.id,
+        name: group.name ?? group.id,
+        models: (group.models ?? [])
+          // 虚拟行（路由分组 / 组合链）不能当另一个分组的成员：服务端会跳过，
+          // 列出来只会让人白点一次。
+          .filter(model => !String(model.id).startsWith('route:') && !String(model.id).startsWith('combo:'))
+          .map(model => ({
+            // 成员坐标必须是目录 id（`provider/modelId`），和 `/routes` 的
+            // `models[].id` 同一套；宿主目录里给的是 provider 内的裸 id，
+            // 直接存会导致「已加入」判不出来、分组里出现重复成员。
+            id: `${group.id}/${model.id}`,
+            modelId: model.id,
+            name: model.name ?? model.id,
+            description: model.description ?? '',
+            provider: group.id,
+          }))
+          .filter(row => needle === '' || `${row.name} ${row.id} ${row.provider}`.toLowerCase().includes(needle)),
+      })).filter(group => group.models.length > 0)
+      const rowOf = new Map()
+      for (const group of catalogGroups) {
+        for (const model of group.models ?? []) {
+          const id = `${group.id}/${model.id}`
+          if (!rowOf.has(id)) rowOf.set(id, { id, provider: group.id })
+        }
+      }
       if (routes.status === 'error') {
         return h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loadFailed')), h('span', null, routes.error))
       }
@@ -7805,13 +7856,48 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))
       }
       const members = active?.models ?? []
+      // 成员坐标可能有两种写法（目录 id，或迁移数据里的「裸名 + provider」），
+      // 统一折算成目录 id 再比对，否则「已加入」判不出来、批量加会出现重复。
+      const memberKeys = new Set()
+      for (const member of members) {
+        if (typeof member.model !== 'string' || member.model === '') continue
+        if (member.model.includes('/') || typeof member.provider !== 'string' || member.provider === '') memberKeys.add(member.model)
+        else memberKeys.add(`${member.provider}/${member.model}`)
+      }
+      const isMember = row => memberKeys.has(row.id)
+      const togglePicked = id => setPicked(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
+      /** 一次加入所有勾选的成员（跳过已存在的），只发一趟 POST。 */
+      const addPicked = () => {
+        if (busy !== '' || active === undefined) return
+        const fresh = picked.filter(id => !memberKeys.has(id))
+        if (fresh.length === 0) { setPicked([]); return }
+        let priority = nextPriority(members)
+        const additions = fresh.map(id => {
+          const row = rowOf.get(id)
+          const member = { model: id, priority }
+          if (row?.provider !== undefined) member.provider = row.provider
+          priority = Math.min(999, priority + 10)
+          return member
+        })
+        setPicked([])
+        save(groups.map(item => item.id !== active.id
+          ? shape(item)
+          : { ...shape(item), models: [...shape(item).models, ...additions] }))
+      }
+      const pickProvider = group => {
+        const ids = group.models.map(row => row.id).filter(id => !memberKeys.has(id))
+        const all = ids.length > 0 && ids.every(id => picked.includes(id))
+        setPicked(current => all
+          ? current.filter(id => !ids.includes(id))
+          : [...new Set([...current, ...ids])])
+      }
       return h('div', { className: 'ofm_mpickerbody' },
         h('aside', { className: 'ofm_mpickerrail' },
           h('div', { className: 'ofm_mpickerrailtitle' }, t('panel.routes.groups')),
           h('div', { className: 'ofm_mpickerraillist' }, groups.map(group => h('button', {
             key: group.id, type: 'button', className: 'ofm_mpickerrailrow',
             'data-on': active?.id === group.id ? 'true' : 'false',
-            onClick: () => { setSelected(group.id); setAdding(false) },
+            onClick: () => { setSelected(group.id); setAdding(false); setPicked([]); setQuery('') },
           },
             h('span', { className: 'ofm_mpickerrailname', title: group.name }, group.name),
             h('span', { className: 'ofm_mpickerrailcount' }, String((group.models ?? []).length))))),
@@ -7881,26 +7967,68 @@ window.__ModuleLoader__.load({
                   h('button', {
                     type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
                     onClick: () => removeMember(active, index),
-                  }, '×')))),
-            adding
-              ? h('div', { className: 'ofm_mpickadd' },
-                h('input', {
-                  className: 'ofm_panelsearch', type: 'search', value: query,
-                  placeholder: t('panel.routes.addSearch'), autoFocus: true,
-                  onChange: event => setQuery(event.currentTarget.value),
-                }),
-                matches.map(row => h('div', { key: row.id, className: 'ofm_mpickaddrow' },
-                  h('span', { className: 'ofm_mpickaddmain' },
-                    h('span', { className: 'ofm_mpickname' }, row.name),
-                    h('span', { className: 'ofm_mpickdesc' }, `${row.provider} · ${row.id}`)),
+                  }, '×'))))),
+          // 添加面单独一块，而不是塞进成员列表：成员列表是滚动容器，
+          // 塞进去会把「添加 N 个」一起卷到看不见的地方。
+          adding
+            ? h('div', { className: 'ofm_mpickadd' },
+                h('div', { className: 'ofm_mpickaddbar' },
+                  h('input', {
+                    className: 'ofm_panelsearch', type: 'search', value: query,
+                    placeholder: t('panel.routes.addSearch'), autoFocus: true,
+                    onChange: event => setQuery(event.currentTarget.value),
+                  }),
+                  picked.length === 0
+                    ? null
+                    : h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => setPicked([]) }, t('panel.routes.pickClear'))),
+                h('div', { className: 'ofm_mpickaddlist' },
+                  addGroups.length === 0
+                    ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.noMatch')))
+                    : addGroups.map(group => {
+                      const addable = group.models.filter(row => !isMember(row)).map(row => row.id)
+                      const allPicked = addable.length > 0 && addable.every(id => picked.includes(id))
+                      return h('div', { key: group.id, className: 'ofm_mpickaddgroup' },
+                        h('div', { className: 'ofm_mpickaddgrouphead' },
+                          h('span', null, group.name),
+                          h('span', { className: 'ofm_mpickgroupcount' }, String(group.models.length)),
+                          addable.length === 0
+                            ? null
+                            : h('button', {
+                              type: 'button', className: 'ofm_minibtn',
+                              onClick: () => pickProvider(group),
+                            }, allPicked ? t('panel.routes.pickNone') : t('panel.routes.pickAll'))),
+                        group.models.map(row => {
+                          const added = isMember(row)
+                          const on = picked.includes(row.id)
+                          return h('label', {
+                            key: row.id, className: 'ofm_mpickaddrow', title: row.id,
+                            'data-picked': on ? 'true' : 'false',
+                            'data-added': added ? 'true' : 'false',
+                          },
+                            h('input', {
+                              type: 'checkbox', checked: added || on, disabled: added,
+                              onChange: () => { if (!added) togglePicked(row.id) },
+                            }),
+                            h('span', { className: 'ofm_mpickaddmain' },
+                              h('span', { className: 'ofm_mpickname' }, row.name),
+                              h('span', { className: 'ofm_mpickdesc' }, added ? t('panel.routes.added') : row.id)),
+                            added
+                              ? null
+                              : h('button', {
+                                type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                                onClick: event => { event.preventDefault(); event.stopPropagation(); addMember(active, row) },
+                              }, '+'))
+                        }))
+                    })),
+                h('div', { className: 'ofm_mpickaddfoot' },
                   h('button', {
-                    type: 'button', className: 'ofm_minibtn',
-                    disabled: busy !== '' || (members ?? []).some(member => member.model === row.id),
-                    onClick: () => addMember(active, row),
-                  }, (members ?? []).some(member => member.model === row.id) ? t('panel.routes.added') : '+'))))
-              : null),
+                    type: 'button', className: 'ofm_btn ofm_btn--primary',
+                    disabled: busy !== '' || picked.length === 0, onClick: addPicked,
+                  }, t('panel.routes.bulkAdd').replace('{n}', String(picked.length))),
+                  h('span', { className: 'ofm_note' }, t('panel.routes.bulkHint'))))
+            : null,
           h('div', { className: 'ofm_mpickerfoot' },
-            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { setAdding(!adding); setQuery('') } }, adding ? t('panel.routes.addClose') : t('panel.routes.add')),
+            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { setAdding(!adding); setQuery(''); setPicked([]) } }, adding ? t('panel.routes.addClose') : t('panel.routes.add')),
             h('span', { className: 'ofm_note' }, notice !== '' ? notice : t('panel.failed.hint')),
             h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))))
     }
@@ -8770,6 +8898,29 @@ window.__ModuleLoader__.load({
      *   - 取不到数就不渲染（绝不把「不知道」画成 0）；
      *   - 挂载/取数失败经 chip.debug RPC 回传宿主日志，便于排查「读数不显示」。
      */
+    /**
+     * 聊天框模型芯片的标签（`conversation.input.model.label`）。
+     *
+     * 宿主默认只画模型名：路由分组在芯片上就只剩一个「主力」，看不出这是
+     * 一条分组、更看不出它由谁供给（旧插件在时是它补的「渠道 · 模型」）。
+     * 这里在 trigger 上补回渠道名，并在菜单/列表里保留目录自带的徽章——
+     * 徽章是宿主的 fallback 的一部分，自定义标签必须自己画，否则会被吞掉。
+     */
+    function ModelChipLabel(props) {
+      const provider = props?.provider ?? {}
+      const model = props?.model ?? {}
+      const placement = props?.placement ?? 'menu'
+      const badge = badgeTextOf(model.badge)
+      const name = model.name ?? model.id ?? ''
+      const providerName = typeof provider.name === 'string' ? provider.name : ''
+      const prefix = placement === 'trigger' && providerName !== ''
+      return h('span', { className: 'ofm_chiplabel', 'data-placement': placement },
+        prefix ? h('span', { className: 'ofm_chiplabelprovider', title: provider.id ?? '' }, providerName) : null,
+        prefix ? h('span', { className: 'ofm_chiplabelsep' }, ' · ') : null,
+        h('span', { className: 'ofm_chiplabelname' }, name),
+        badge === '' ? null : h('span', { className: 'ofm_chiplabelbadge' }, badge))
+    }
+
     function ComposerChannelCredits(props) {
       const { ctx } = props;
       const t = typeof props.t === "function" ? props.t : (key => key);
@@ -9005,6 +9156,16 @@ window.__ModuleLoader__.load({
           locale: NS,
         }, props => h(ModelLauncherButton, { ...props, t: Object.assign(x => t(x), { locale: localeTag(ctx) }) })))
       } catch { /* 宿主没有 input.right 槽位：侧栏「模型」入口仍可用 */ }
+
+      // 芯片标签：把「渠道 · 模型」补回来，分组与自有渠道在聊天框里才可辨认。
+      // 宿主没有这个槽位时忽略，芯片退回默认的模型名。
+      try {
+        ctx.slots.inject('conversation.input.model.label', () => ctx.slots.register({
+          name: 'conversation.input.model.label',
+          order: 100,
+          locale: NS,
+        }, props => h(ModelChipLabel, props)))
+      } catch { /* 宿主没有 model.label 槽位：保持宿主默认标签 */ }
 
       ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
         name: 'settings.onboarding',
