@@ -6829,9 +6829,30 @@ window.__ModuleLoader__.load({
       codearts: true, buddy: true, workbuddy: true, lobsterai: true, qoder: true, qodercn: true,
       trae: true, cline: true, loomy: true, raccoon: true, minimax: true, zcode: true, gemini: true,
     };
+    /**
+     * 自有渠道：**不走** `credits.balances` RPC（渠道包不认识这些 provider，
+     * 会回 `unsupported provider`），而是走本插件自己的 `/channels/extra`。
+     *
+     * 这份清单必须与本插件面板的判据同源：`channel.own === true` 且
+     * `CHANNEL_EXTRAS.has(id)` 且 `noCredits !== true`。少一家就会重现
+     * 「新加的渠道在模型切换旁边没有积分」（2026-11-25 报障：AgnesCode / 豆包
+     * 等自有渠道全部缺席 —— 白名单里只有渠道包那 13 家）。
+     *
+     * ⚠️ 不写 `agnescode` / `agnescodeintl`：它们 `noCredits: true`（没有额度
+     * 读数端点），挂上去只会画一行空。
+     */
+    const CREDITS_CHIP_OWN = new Set([
+      'codely', 'autoclaw', 'autoclawintl', 'accio', 'minimaxintl', 'marvis',
+      'magicrew', 'magicrewintl', 'monkeycode', 'monkeycodeintl', 'baizhi',
+      'officeace', 'doubao', 'astudio',
+    ]);
     const CHIP_LABELS = {
       codearts: "CA", buddy: "WB", workbuddy: "WB·AI", lobsterai: "Lobster", qoder: "Qoder", qodercn: "Qoder·CN",
       trae: "TRAE", cline: "Cline", loomy: "Loomy", raccoon: "Raccoon", minimax: "MiniMax", zcode: "ZCode", gemini: "Gemini",
+      codely: "Codely", autoclaw: "AutoClaw", autoclawintl: "AutoClaw·Intl", accio: "Accio",
+      minimaxintl: "MiniMax·Intl", marvis: "Marvis", magicrew: "MagiCrew", magicrewintl: "MagiCrew·Intl",
+      monkeycode: "MonkeyCode", monkeycodeintl: "MonkeyCode·Intl", baizhi: "百智云", officeace: "OfficeAce",
+      doubao: "豆包", astudio: "AStudio",
     };
     /**
      * 输入框右侧、模型选择器旁边的积分读数（`conversation.input.right`）。
@@ -6851,24 +6872,44 @@ window.__ModuleLoader__.load({
       const projection = useProjection ? useProjection("modelSelection") : undefined;
       const candidate = projection?.next ?? projection?.lastUsed;
       const provider = typeof candidate?.provider === "string" && candidate.provider !== "" ? candidate.provider : "";
-      const scope = provider !== "" && CREDITS_CHIP_PROVIDERS[provider] !== undefined
+      // 自有渠道与渠道包渠道是**两条取数腿**：前者走 `/channels/extra`，后者走
+      // `credits.balances` RPC。混在一张表里会拿渠道包去问 `unsupported provider`。
+      const known = provider !== "" && (CREDITS_CHIP_PROVIDERS[provider] !== undefined || CREDITS_CHIP_OWN.has(provider));
+      const scope = known
         ? [provider]
-        : useProjection ? [] : Object.keys(CREDITS_CHIP_PROVIDERS);
+        : useProjection ? [] : [...Object.keys(CREDITS_CHIP_PROVIDERS), ...CREDITS_CHIP_OWN];
       useEffect(() => {
         report({ kind: "mount", hasUseProjection: useProjection !== undefined, provider, scope, rpcAvailable: available });
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
+      // 自有渠道**不需要** RPC 连接（它打自家 HTTP 路由）；渠道包渠道必须有。
+      const canLoad = scope.length > 0 && (available || scope.some(p => CREDITS_CHIP_OWN.has(p)));
       useEffect(() => {
-        if (!available || scope.length === 0) { setSegments(undefined); return undefined; }
+        if (!canLoad) { setSegments(undefined); return undefined; }
         let cancelled = false;
         const load = async () => {
           const out = [];
           await Promise.allSettled(scope.map(async (p) => {
             try {
-              const value = await rpc("credits.balances", { provider: p }, 90000);
-              const rows = Array.isArray(value?.accounts) ? value.accounts : [];
-              const known = rows.filter((row) => Number.isFinite(row?.balance?.total));
-              if (known.length > 0) out.push([p, known.reduce((sum, row) => sum + row.balance.total, 0)]);
+              let total
+              if (CREDITS_CHIP_OWN.has(p)) {
+                // 自有渠道：`/channels/extra` 的 `accounts[].balance.total` 或
+                // `info.total.remain`（与面板 `balanceRowOf` 同口径）。
+                const value = await api(`/channels/extra?provider=${encodeURIComponent(p)}`, { timeout: 30_000 })
+                const rows = Array.isArray(value?.accounts) ? value.accounts : []
+                const known2 = rows
+                  .map(row => Number.isFinite(row?.balance?.total) ? row.balance.total
+                    : Number.isFinite(row?.info?.total?.remain) ? row.info.total.remain
+                      : NaN)
+                  .filter(n => Number.isFinite(n))
+                if (known2.length > 0) total = known2.reduce((sum, n) => sum + n, 0)
+              } else {
+                const value = await rpc("credits.balances", { provider: p }, 90000);
+                const rows = Array.isArray(value?.accounts) ? value.accounts : [];
+                const known2 = rows.filter((row) => Number.isFinite(row?.balance?.total));
+                if (known2.length > 0) total = known2.reduce((sum, row) => sum + row.balance.total, 0)
+              }
+              if (Number.isFinite(total)) out.push([p, total])
             } catch (error) {
               report({ kind: "balances-error", provider: p, error: String(error?.message ?? error).slice(0, 140) });
             }
@@ -6878,8 +6919,8 @@ window.__ModuleLoader__.load({
         void load();
         const timer = setInterval(() => { void load(); }, 90000);
         return () => { cancelled = true; clearInterval(timer); };
-      }, [scope.join("|"), available, rpc]);
-      if (!available || segments === undefined || segments.length === 0) return null;
+      }, [scope.join("|"), canLoad, rpc]);
+      if (!canLoad || segments === undefined || segments.length === 0) return null;
       return h("span", {
         title: t("chan.credits.left"),
         style: { fontSize: "12px", lineHeight: "20px", opacity: 0.72, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", marginRight: "8px", userSelect: "none" },
