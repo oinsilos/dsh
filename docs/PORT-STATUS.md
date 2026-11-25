@@ -318,3 +318,55 @@ WorkBuddy 国际版、Qoder 国际全部消失。
 - CodeArts 仅 AgentCenter 出现的模型：只作窗口源、不进目录（与 hub 同取舍）。
 - OfficeAce 倍率（`/v1/model-token-rates` V11 签名）未接。
 - AgnesCode 倍率：解析已支持，但本机 `/models` 响应没有 `points_cost_multiplier`。
+
+## 2026-11-25：Loomy（讯飞）「偶尔 500 / 首字节为空」的三层根因
+
+### 证据（`~/.dsh/channel-pack/token-ledger.json` 全部 Loomy 记录）
+
+| 日期 | 模型 | 通道 | 请求 | 成功 | 失败 | 平均首块 |
+|---|---|---|---|---|---|---|
+| 11-22 | GLM-5.3-Flash | direct | 7 | 3 | 2 | **95.3s** |
+| 11-24 | GLM-5.3-Flash | direct | 17 | 1 | **9** | **127.4s** |
+| 11-24 | qwen3.8-flash | direct | 2 | 0 | 2 | 无首块 |
+| 11-25 | glm-5.3-flash | gateway | 44 | 42 | 2 | 18s |
+| **11-25 02:48 复测** | **GLM-5.3-Flash** | **直连（裸 fetch）** | **1** | **1** | **0** | **65.3s** |
+
+⚠️ 最后一行是改完后的复测（2026-11-25 02:48，`max_tokens: 64` 的最短请求）：
+HTTP 200、**首块 65.3s**、25 帧、正常 DONE。这说明：
+① 链路完好、模型可用；② 首块延迟确实在 60–130s 区间波动（本次 65s，
+历史 95/127s）；③ 新阈值 85s **恰好覆盖**这个区间 —— 若仍是 120s 配置，
+宿主的 90s 会在这条请求上先掐断（65s < 90s 侥幸能过，但 95s+ 就必挂）。
+
+同一模型走 `gateway` 通道首块只要 18s ⇒ **慢是模型/时段特性，不是链路不通**。
+
+### 三层原因（前两层可修，已修）
+
+1. **超时配置互相冲突**：宿主 `llm-error-retry` 首字守卫默认 **90s**（本机
+   `rules.json` 也是 90000），而 Loomy 适配器原先 **120s** ⇒ 宿主永远先掐断，
+   适配器连给出准确归因的机会都没有。用户看到的就是空的「首字节为空」。
+2. **5xx 被映射成可重试错误**：`httpErrorCode4` 把 `status >= 500` 一律映射
+   `SERVER`，而 `SERVER` **在**宿主 `DEFAULT_RETRYABLE_CODES` 里 ⇒ 同一个号
+   白重试 5 次（0.5→1→2→4→8.6s），每次都重发**全量 prompt**。
+   `TIMEOUT` 同理 ⇒ 慢模型被连打 3 次 × 85s，白等四分钟以上。
+3. **上游行为**：豆包/讯飞这类免费渠道在上游拥塞时的首块延迟天然会到 95–127s。
+   这一层改不了，只能**准确归因 + 不白重试 + 交给路由组切换**。
+
+### 修法（P0-P2，全部已落地并有守卫）
+
+| 项 | 改动 | 落点 |
+|---|---|---|
+| P0 | 适配器首字/chunk 超时 120s → **85s**（< 宿主 90s） | `pack.js` 的 `resolveFirstTokenTimeoutMs7` / `resolveChunkTimeoutMs7` |
+| P1 | 新增 `loomyErrorCodeOf`：`status >= 500` 且命中网关文案 ⇒ **`UPSTREAM`**（不在重试集合，不冷却、不换号） | `pack.js` 的 `!response.ok` 分支 |
+| P1 | 新增 `relabelLoomyStreamError`：首字超时 `TIMEOUT` → **`UPSTREAM`**，文案「上游首字超时（85 秒内无任何输出），本次不重试」 | `pack.js` 的 `stream` |
+| P2 | 新增 `looksLikeUpstreamProviderError`（HTML `openresty` 错误页 / `Gateway Time-out` / `暂时不可用`） | 同上 |
+
+⚠️ **共享函数未被污染**：`httpErrorCode4` 保持原样（cline / qoder / raccoon 共用），
+Loomy 走自己的 `loomyErrorCodeOf`。守卫 `tests/loomy-upstream.mjs`（18 条）把这条
+不变式钉住 —— 变异「把 Loomy 改回裸 `httpErrorCode4`」即红。
+
+### 效果
+
+- 上游 5xx：从「6 发全量 prompt」降到 **1 发**；
+- 慢模型首字超时：从「连打 3 次 × 85s」降到 **1 次**，且错误文案是人话；
+- 用户不再看到「首字节为空」，而是「上游首字超时（85 秒内无任何输出），本次不重试」，
+  并可由 model-failover-manager 切换到组内下一个模型。

@@ -42758,23 +42758,94 @@ var LoomyAdapter = class extends LlmAdapter7 {
     }
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
-      throw new LlmError10(`loomy: ${errorDetail4(errorText)}`, httpErrorCode4(response.status), { status: response.status });
+      throw new LlmError10(`loomy: ${errorDetail4(errorText)}`, loomyErrorCodeOf(response.status, errorText), { status: response.status });
     }
-    yield* consumeOpenAiSse(response, { signal: options.signal }, {
-      label: "loomy",
-      firstTokenTimeoutMs: resolveFirstTokenTimeoutMs7(),
-      chunkTimeoutMs: resolveChunkTimeoutMs7(),
-      ...options.maxTokens === void 0 ? {} : { maxTokens: options.maxTokens }
-    });
+    try {
+      yield* consumeOpenAiSse(response, { signal: options.signal }, {
+        label: "loomy",
+        firstTokenTimeoutMs: resolveFirstTokenTimeoutMs7(),
+        chunkTimeoutMs: resolveChunkTimeoutMs7(),
+        ...options.maxTokens === void 0 ? {} : { maxTokens: options.maxTokens }
+      });
+    } catch (error) {
+      throw relabelLoomyStreamError(error);
+    }
   }
 };
+/**
+ * 首字超时 → `UPSTREAM`（不重试），并把归因写成人话。
+ *
+ * ## 为什么必须改（本机真机数据，`~/.dsh/channel-pack/token-ledger.json`）
+ *
+ * | 日期 | 模型 | 通道 | 请求 | 成功 | 失败 | 平均首块 |
+ * |---|---|---|---|---|---|---|
+ * | 11-22 | GLM-5.3-Flash | direct | 7 | 3 | 2 | **95.3s** |
+ * | 11-24 | GLM-5.3-Flash | direct | 17 | 1 | **9** | **127.4s** |
+ * | 11-25 | glm-5.3-flash | gateway | 44 | 42 | 2 | 18s |
+ *
+ * 慢是**模型/时段**特性（同一模型走 gateway 通道时首块只要 18s）。而宿主的
+ * `TIMEOUT` 在 `DEFAULT_RETRYABLE_CODES` 里 ⇒ 会把同一个慢模型连打 3 次、
+ * 每次 85 秒，用户白等四分钟以上，最后还是失败。
+ *
+ * ⇒ 改写为 `UPSTREAM`（**不在**重试集合里）：只发一次、立刻把真实的
+ * 「上游首字超时」告诉用户，并交给 model-failover-manager 切换到组内下一个
+ * 模型（若装有该插件）。
+ *
+ * ⚠️ 只改 `first-token` 阶段：`chunk` 阶段超时是「流中途断了」，语义不同，保持原样。
+ */
+function relabelLoomyStreamError(error) {
+  const code = typeof error?.code === "string" ? error.code : "";
+  const message2 = typeof error?.message === "string" ? error.message : "";
+  if (code === "TIMEOUT" && message2.includes("first-token")) {
+    const seconds = Math.round(resolveFirstTokenTimeoutMs7() / 1e3);
+    return new LlmError10(
+      `loomy: \u4E0A\u6E38\u9996\u5B57\u8D85\u65F6\uFF08${seconds} \u79D2\u5185\u65E0\u4EFB\u4F55\u8F93\u51FA\uFF1B\u8BE5\u6A21\u578B\u5728\u6B64\u65F6\u6BB5\u54CD\u5E94\u504F\u6162\u6216\u7F51\u5173\u62E5\u585E\uFF09\uFF0C\u672C\u6B21\u4E0D\u91CD\u8BD5`,
+      "UPSTREAM"
+    );
+  }
+  return error;
+}
 function resolveFirstTokenTimeoutMs7() {
   const raw = Number(process.env.DSH_LOOMY_FIRST_TOKEN_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 12e4;
+  return Number.isFinite(raw) && raw > 0 ? raw : 85e3;
 }
 function resolveChunkTimeoutMs7() {
   const raw = Number(process.env.DSH_LOOMY_CHUNK_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 12e4;
+  return Number.isFinite(raw) && raw > 0 ? raw : 85e3;
+}
+/**
+ * 讯飞 Loomy 的失败归因（2026-11-25，对齐 dsh-providers-hub 的 issue #130 修法）。
+ *
+ * ## 为什么不能复用 `httpErrorCode4`
+ *
+ * 那个函数把 `status >= 500` 一律映射成 `SERVER`，而宿主的可重试集合
+ * `DEFAULT_RETRYABLE_CODES` = `[EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT]`
+ * **包含 `SERVER`** ⇒ 上游网关 5xx 会让宿主**用同一个账号**退避重试 5 次
+ * （0.5→1→2→4→8.6s），每次都重发**全量 prompt**。本机实测该会话 prompt 已达
+ * 24.5 万 tokens，一次抖动等于 6 倍成本。
+ *
+ * 参考实现实测的报文分布（GitHub issue #130，单会话 51 次调用里 23 次失败）：
+ *
+ * | 报文 | 次数 | HTTP |
+ * |---|---|---|
+ * | `<html>…<title>504 Gateway Time-out</title>…openresty/1.15.8.2</html>` | 5 | 504 |
+ * | `该模型服务暂时不可用，请切换其他模型试试` | 18 | 503 |
+ *
+ * ⇒ 这两类判 `UPSTREAM`：**不在**宿主重试集合里 ⇒ 只发一次；
+ * 且**不写冷却、不换号**（网关抖动不是「这个号坏了」，写标记会把一次抖动
+ * 放大成「整池被封」——与 2026-10-06 那次事故同型）。
+ *
+ * ⚠️ 判据**窄**：中文只认 `暂时不可用`（报障原句含该子串）。不要把
+ * `服务不可用` 也收进来 —— 本仓其它渠道的文案（如 `额度服务不可用`）会误伤。
+ * ⚠️ 必须带 `status >= 500` 闸门：400 参数错的文案里也可能出现 gateway 字样。
+ */
+function looksLikeUpstreamProviderError(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  return /gateway\s+time-?out|bad\s+gateway|service\s+(?:temporarily\s+)?unavailable|(?:first\s+token|upstream)\s+timeout|暂时不可用/i.test(text);
+}
+function loomyErrorCodeOf(status, errorText) {
+  if (status >= 500 && looksLikeUpstreamProviderError(errorText)) return "UPSTREAM";
+  return httpErrorCode4(status);
 }
 function registerLoomyLlm(ctx, options) {
   const product = options.product ?? LOOMY;
