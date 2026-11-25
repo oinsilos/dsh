@@ -262,6 +262,67 @@ export function effortsFor(model, requested, fallback) {
   }))
 }
 
+/**
+ * 思考强度的跨来源归一。
+ *
+ * 从 model-failover-manager 迁过来的分组，成员档位是用它自己的词汇存的
+ * （`low` / `medium` / `high` / `xhigh` / `max` / `extra_high`，界面上写
+ * "默认（最低）/ 默认（高）/ Extra High"）；本插件的两条车道各有自己的 id
+ * （免费车道 `light/balanced/deep`，自带菜单的渠道用模型声明的那一组）。
+ *
+ * 直接把这些词交给 `resolveLevel` 不会报错——它落回默认档，于是用户以为设了
+ * xhigh、实际跑的是 balanced，这正是"思考强度不生效"的来源。这里显式翻译
+ * 到当前模型真实认的那一档；翻译不到就返回空串（跟随会话），由面板把这件事
+ * 说出来，而不是静默降级。
+ *
+ * @param {object} model - catalog entry（决定可用档位）
+ * @param {string|undefined} value - 旧词汇或本插件的 id
+ * @returns {string} 模型自己的档位 id；'' = 跟随会话
+ */
+export function normalizeEffort(model, value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, '_') : ''
+  const menu = hasDeclaredEffortMenu(model)
+    ? model.efforts.map(id => String(id).toLowerCase())
+    : supportsEffort(model) ? LEVELS.map(level => level.id) : []
+  if (menu.length === 0) return ''
+  // 旧面板把档位显示成「强度：默认（高）」「Extra High」这类标签，迁移数据里
+  // 可能整串存下来。先用整串匹配，再用中文提示词兜一次。
+  const hint = effortHintOf(raw)
+  for (const candidate of [raw, hint]) {
+    if (candidate === '' || candidate === 'default' || candidate === 'auto' || candidate === 'follow' || candidate === 'session') continue
+    if (menu.includes(candidate)) return candidate
+    for (const rule of EFFORT_ALIASES) {
+      if (!rule.ids.includes(candidate) && !rule.alias.includes(candidate)) continue
+      for (const id of rule.ids) if (menu.includes(id)) return id
+      // 最高档在只有三档的车道上没有同名词：退到该车道最高的一档。关思考
+      // 这一档没有这种退法，翻不到就是翻不到。
+      if (rule.ids[0] === 'max') return menu[menu.length - 1]
+    }
+  }
+  if (raw === '' || raw === 'default' || raw === 'auto' || raw === 'follow' || raw === 'session') return ''
+  return ''
+}
+
+/** 中文/英文标签里的强弱提示词 → 通用档位名；认不出来返回 ''。 */
+function effortHintOf(raw) {
+  if (raw === '') return ''
+  if (raw.includes('关')) return 'disabled'
+  if (raw.includes('最高') || raw.includes('极高') || raw.includes('extra')) return 'max'
+  if (raw.includes('高')) return 'high'
+  if (raw.includes('中')) return 'medium'
+  if (raw.includes('低')) return 'low'
+  return ''
+}
+
+/** 旧插件词汇 → 本插件档位。顺序即「优先取哪一个同义档」。 */
+const EFFORT_ALIASES = Object.freeze([
+  { ids: ['disabled', 'off', 'none'], alias: ['disabled', 'off', 'none', '关闭'] },
+  { ids: ['light', 'low', 'min', 'minimal', 'lowest'], alias: ['light', 'low', 'min', 'minimal', 'lowest', '最低', '精简'] },
+  { ids: ['balanced', 'medium', 'med', 'normal'], alias: ['balanced', 'medium', 'med', 'normal', '中', '均衡'] },
+  { ids: ['deep', 'high', 'higher'], alias: ['deep', 'high', 'higher', '高', '深思'] },
+  { ids: ['max', 'xhigh', 'extra_high', 'extrahigh', 'extra-high', 'ultra', 'maximum', 'highest'], alias: ['max', 'xhigh', 'extra_high', 'extrahigh', 'extra-high', 'ultra', 'maximum', 'highest', '最高', '极高'] },
+])
+
 /** 16384 -> `16 K`, the spelling the settings page and the README both use. */
 function kilos(tokens) {
   return `${Math.round(tokens / 1024)} K`

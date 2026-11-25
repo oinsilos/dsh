@@ -48,6 +48,11 @@ import { PluginUpdater } from './src/updater.js'
 import { selfReload, watchPackage, isReloading } from './src/reload.js'
 import { installChannelCatalogVisibility } from './src/channel-visibility.js'
 import { createChannelExtras } from './src/channels/index.js'
+import { applyCompactionSettings, compactionStatus, restoreRatio } from './src/compaction/ratio.js'
+import { installRetry } from './src/retry/host.js'
+import { createRouteStore } from './src/route/store.js'
+import { createGate } from './src/route/gate.js'
+import { describeGroupLine, isRouteEntry, remapGroups, GROUP_PREFIX } from './src/route/groups.js'
 import { createChannelAccounts, OWN_PROVIDERS } from './src/channels/accounts.js'
 import { refreshAutoclawToken } from './src/channels/autoclaw.js'
 import { refreshCodelyToken } from './src/channels/codely.js'
@@ -197,6 +202,39 @@ export function apply(ctx, config) {
 
   const stores = createRuntimeStores({ dataDir, logger })
   const { settings, stats, availability } = stores
+
+  /**
+   * 路由分组的存储与并发闸门。
+   *
+   * 存储先建（内部只做结构归一化），目录建好后再 `attachCatalog`：迁移时的
+   * `provider/model` → 目录 id 映射必须有完整目录，而目录由下面的 runtime 提供。
+   */
+  const routeStore = createRouteStore({ dataDir, home, logger })
+  const routeConcurrency = modelId => {
+    const route = settings.get().route ?? {}
+    const table = route.concurrencyByModel ?? {}
+    if (Object.prototype.hasOwnProperty.call(table, modelId)) {
+      const own = Number(table[modelId])
+      return Number.isFinite(own) && own > 0 ? Math.trunc(own) : 0
+    }
+    const fallback = Number(route.defaultConcurrency)
+    return Number.isFinite(fallback) && fallback > 0 ? Math.trunc(fallback) : 0
+  }
+  const gate = createGate({
+    limitOf: routeConcurrency,
+    cooldownOf: () => Number(settings.get().route?.capacityCooldownMs) || 30_000,
+  })
+
+  /**
+   * `dsh-llm-error-retry` 合并进来的宿主半。
+   *
+   * 不写进顶层 `inject`：重试只是增强，缺 agents/sessions/timer 的组合仍应
+   * 提供模型。数据目录沿用旧包的位置，故卸载旧包后 rules.json 与
+   * status.json 原样继续生效，用户调过的规则不需要重填。
+   */
+  ctx.inject(['timer', 'agents', 'sessions'], retryScope => {
+    installRetry(retryScope, { dataDir: path.join(home, 'llm-error-retry') })
+  })
 
   if (generation > 1) {
     settings.update({ reloadedAt: Date.now(), reloadCount: generation - 1 })
@@ -604,11 +642,125 @@ export function apply(ctx, config) {
     resolveImage: imageResolver(ctx, logger),
     sealedCredential: sealedCredentialOf,
     ownCredential: ownCredentialFor,
+    routeStore,
+    gate,
+    routeGroups: () => routeStore.groups,
+    // 分组成员属于别的渠道时，这一轮交回宿主自己的路由（懒绑定：llm 服务在
+    // 运行时创建之后才发布）。返回 null = 这个宿主没有转发能力。
+    hostStream: options => (hostLlm !== null && typeof hostLlm.stream === 'function' ? hostLlm.stream(options) : null),
     onSealedUnavailable: () => logger.warn?.('our-free-model: the sealed lane is not available in this composition (no recognized host profile); its models stay hidden'),
     onTopology: () => emitTopology(),
   })
-  const { state, adapter, refreshCatalog, refreshAvailability, watchEgress, fetchListing, publicModelRows, syncAggregateCatalog } = modelRuntime
+  const { state, adapter, refreshCatalog, refreshAvailability, watchEgress, fetchListing, publicModelRows, syncAggregateCatalog, syncRouteCatalog } = modelRuntime
   const runForwarded = modelRuntime.complete
+
+  // 目录已成立，接上映射并接手旧插件的分组；失败不拖垮主路由。
+  try {
+    routeStore.attachCatalog(() => modelRuntime.catalog)
+    const routeImport = routeStore.autoImport()
+    if (routeImport.imported === true) {
+      logger.info?.(`our-free-model: imported ${routeImport.groups} route group(s) / ${routeImport.members} member(s) from model-failover-manager`)
+      syncRouteCatalog()
+    }
+  } catch (error) {
+    logger.warn?.(`our-free-model: route group import failed (${error?.message ?? error})`)
+  }
+
+  /**
+   * 旧插件的并发配置也要复用。
+   *
+   * `model-failover-manager` 的 `defaultConcurrency: 3` 是"每模型最多 3 个在飞
+   * 请求"；我们的默认 0 是"不限"。自动导入只搬 groups/bindings/failed，不包含
+   * settings，所以这里单独迁一次，并写 marker——之后用户在面板里改成 0 不会被
+   * 下一次启动再覆盖回 3。
+   */
+  if (settings.get().routeConcurrencyMigratedAt === undefined) {
+    let legacyRouteSettings = null
+    try {
+      legacyRouteSettings = JSON.parse(fs.readFileSync(path.join(home, 'model-failover-manager', 'settings.json'), 'utf8'))
+    } catch { /* 没装过旧插件就是没有这个文件 */ }
+    if (legacyRouteSettings !== null) {
+      const legacyConcurrency = Number(legacyRouteSettings?.defaultConcurrency)
+      settings.update({
+        route: {
+          ...(settings.get().route ?? {}),
+          ...Number.isFinite(legacyConcurrency) && legacyConcurrency >= 0
+            ? { defaultConcurrency: Math.min(64, Math.trunc(legacyConcurrency)) }
+            : {},
+        },
+        routeConcurrencyMigratedAt: Date.now(),
+      })
+      settings.flush()
+    }
+  }
+
+  /**
+   * 上下文压缩：引擎是宿主的，我们只接管「比例」。
+   *
+   * 三条不能省的细节（都来自踩过的坑）：
+   * 1. 引擎挂在每个 preset 的隔离组里，只能遍历 `ctx.registry` 的 fiber store；
+   * 2. `config` 是 frozen 快照，必须换引用；
+   * 3. `headroomTokens` 要一起改，否则滑块高位被公式静默夹死。
+   *
+   * 每一步都重放一次：preset 后挂载、热重载换 config、上下文窗口切换都会让
+   * 上一次写入失效，只有 `agent/pre-step` 是稳定的锚点。
+   */
+  const legacyThresholdFile = path.join(home, 'compaction-threshold.json')
+  let legacyThresholdRatio = null
+  try {
+    const parsed = JSON.parse(fs.readFileSync(legacyThresholdFile, 'utf8'))
+    const ratio = Number(parsed?.thresholdRatio)
+    if (Number.isFinite(ratio) && ratio > 0) legacyThresholdRatio = ratio
+  } catch { /* 没装过阈值插件就是没有这个文件 */ }
+  if (legacyThresholdRatio !== null && settings.get().compactionMigratedAt === undefined) {
+    settings.update({
+      compaction: { enabled: true, thresholdRatio: legacyThresholdRatio },
+      compactionMigratedAt: Date.now(),
+    })
+    settings.flush()
+  }
+  const applyCompaction = () => applyCompactionSettings(ctx, settings.get().compaction)
+  const compaction = {
+    apply: applyCompaction,
+    status: () => ({
+      ...compactionStatus(ctx, settings.get().compaction),
+      legacy: legacyThresholdRatio === null ? null : { thresholdRatio: legacyThresholdRatio, file: legacyThresholdFile },
+    }),
+    set(patch) {
+      const current = settings.get()
+      const merged = sanitizeSettings({
+        ...current,
+        compaction: { ...(current.compaction ?? {}), ...pick(patch ?? {}, ['enabled', 'thresholdRatio']) },
+      }, current)
+      settings.update({ compaction: merged.compaction })
+      settings.flush()
+      applyCompactionSettings(ctx, merged.compaction)
+      return {
+        ...compactionStatus(ctx, merged.compaction),
+        legacy: legacyThresholdRatio === null ? null : { thresholdRatio: legacyThresholdRatio, file: legacyThresholdFile },
+      }
+    },
+    restore() {
+      // 只把引擎换回原值不够：设置里还留着 0.75，下一步 `agent/pre-step` 会
+      // 立刻再写回去。恢复默认 = 清掉配置值（followDefault），再还原引擎。
+      const current = settings.get()
+      settings.update({
+        compaction: { ...(current.compaction ?? {}), thresholdRatio: null },
+      })
+      settings.flush()
+      const restored = restoreRatio(ctx)
+      return {
+        ...compactionStatus(ctx, settings.get().compaction),
+        restored,
+        legacy: legacyThresholdRatio === null ? null : { thresholdRatio: legacyThresholdRatio, file: legacyThresholdFile },
+      }
+    },
+  }
+  applyCompaction()
+  ctx.on('agent/pre-step', (_payload, next) => {
+    applyCompaction()
+    return next()
+  }, { global: true, prepend: true })
 
   /**
    * 链路诊断日志：写文件而不是 logger —— 桌面版没有可持续读取的宿主日志，
@@ -1853,6 +2005,135 @@ export function apply(ctx, config) {
     return closeBrowserFlow(accountId) !== undefined
   }
 
+  /**
+   * 宿主其它渠道的模型目录（只作路由分组成员的候选）。
+   *
+   * 分组的价值在于覆盖**整个宿主**：成员的 provider 常常不是本插件，落在别的
+   * adapter 上。那些行由这里从宿主 `llm` 读出，只进分组视图（不进我们自己的
+   * 目录）；真正发请求时再原样交回宿主路由（见 `FreeModelAdapter.runForeign`）。
+   *
+   * 60 秒缓存：`/routes` 是面板每次改动都会拉的路径，逐个 provider 现读会把一次
+   * 保存拖成十几趟 RPC；这个目录只会因为「渠道装没装 / 开没开」而变。
+   */
+  const HOST_CATALOG_TTL = 60_000
+  let hostCatalogAt = 0
+  let hostCatalogRun = null
+  let hostCatalogSig = ''
+  let hostCatalogLogged = false
+  async function syncHostCatalog({ force = false } = {}) {
+    const llm = hostLlm
+    if (llm === null || typeof llm.listProviders !== 'function' || typeof llm.listModels !== 'function') return
+    if (!force && Date.now() - hostCatalogAt < HOST_CATALOG_TTL) return
+    if (hostCatalogRun !== null) return hostCatalogRun
+    hostCatalogRun = (async () => {
+      const skip = new Set([ROUTE_MAIN, ROUTE_REGION, ...OWN_PROVIDERS])
+      const rows = []
+      const counts = []
+      let providers = []
+      try { providers = llm.listProviders() ?? [] } catch { providers = [] }
+      for (const provider of providers) {
+        const id = String(provider?.id ?? provider?.name ?? '').trim()
+        if (id === '' || skip.has(id) || id.startsWith(GROUP_PREFIX) || id.startsWith('combo:')) continue
+        try {
+          const models = await llm.listModels(id)
+          const list = Array.isArray(models) ? models : []
+          counts.push(`${id}:${list.length}`)
+          for (const model of list) {
+            const modelId = String(model?.id ?? '').trim()
+            if (modelId === '') continue
+            const reasoning = model?.reasoning
+            const efforts = Array.isArray(reasoning?.efforts)
+              ? reasoning.efforts.map(row => typeof row === 'string' ? row : String(row?.id ?? '')).filter(value => value !== '')
+              : []
+            rows.push({
+              id: `${id}/${modelId}`,
+              name: String(model?.name ?? modelId),
+              provider: id,
+              modelId,
+              channel: 'host',
+              vision: Array.isArray(model?.inputModalities) && model.inputModalities.includes('image'),
+              ...efforts.length === 0 ? {} : { efforts },
+              ...typeof reasoning?.defaultEffort === 'string' ? { effortDefault: reasoning.defaultEffort } : {},
+              ...reasoning === undefined || reasoning === null ? {} : { reasoning: true },
+            })
+          }
+        } catch {
+          counts.push(`${id}:ERR`)
+        }
+      }
+      hostCatalogAt = Date.now()
+      const signature = rows.map(row => row.id).join('\n')
+      // 目录变化才重建（rebuild 会发拓扑事件）；但第一次必须留一条读数，
+      // 否则「一个成员都加不进来」时没有任何观测点。
+      if (signature !== hostCatalogSig || !hostCatalogLogged) {
+        hostCatalogSig = signature
+        hostCatalogLogged = true
+        modelRuntime.setHostCatalog(rows)
+        diagLog({ kind: 'host-catalog', rows: rows.length, counts: counts.join(' ') })
+      }
+    })().finally(() => { hostCatalogRun = null })
+    return hostCatalogRun
+  }
+
+  /**
+   * 路由页的完整读数：分组 + 熔断 + 绑定 + 可加入分组的模型清单。
+   * `models` 只列真实模型行，且排除分组自身——否则一个组可以把自己当成员，
+   * 候选解析会无限递归。组合链也不列：成组后 `runChain` 没有嵌套 combo 的递归
+   * 路径，会把 `combo:` 当实模型直发免费车道端点。
+   *
+   * 目录用 `routeCatalog`：本插件自己的行 + 宿主其它渠道的行，这样迁移过来的
+   * 分组（成员常是 unisound / codearts / trae 这些）才能被解析、被修复。
+   */
+  const routeStatus = async () => {
+    await syncHostCatalog()
+    const snapshotState = state()
+    const visible = snapshotState.routeCatalog ?? snapshotState.catalog
+    return {
+      ...routeStore.status({ catalog: visible, gate }),
+      settings: {
+        defaultConcurrency: Number(settings.get().route?.defaultConcurrency) || 0,
+        capacityCooldownMs: Number(settings.get().route?.capacityCooldownMs) || 30_000,
+        concurrencyByModel: { ...(settings.get().route?.concurrencyByModel ?? {}) },
+      },
+      models: visible
+        // 组合链不能进分组：`runChain` 把成员当实模型直接发下游，没有嵌套 combo 的
+        // 递归路径；把 `combo:` 放进组会以 chat 协议打到免费车道端点。
+        .filter(entry => !isRouteEntry(entry) && !isComboEntry(entry))
+        .map(entry => ({
+          id: entry.id,
+          name: entry.name,
+          channel: entry.channel ?? 'free',
+          provider: entry.provider ?? '',
+          contextWindow: entry.contextWindow,
+          vision: entry.vision === true,
+          availability: availability.get().results?.[entry.id]?.state ?? 'unknown',
+          // 分组编辑器要把「成员档位」做成下拉：只给 id 的话用户只能背 id，
+          // 填错的旧词汇还会静默落回默认档。这里把模型自己认的档位一起下发。
+          reasoning: entry.reasoning === true,
+          canDisableThinking: entry.canDisableThinking === false ? false : undefined,
+          efforts: Array.isArray(entry.efforts) ? entry.efforts.map(level => String(level)) : [],
+          effortDefault: typeof entry.effortDefault === 'string' ? entry.effortDefault : undefined,
+        })),
+    }
+  }
+
+  // 启动后补一次宿主目录：即便用户没打开过 `/routes`，分组面板也要能立刻列出
+  // 「可加入的模型」。延迟是为了等所有渠道包注册完 adapter；`llm` 服务本身可能
+  // 比 apply 还晚（实测：6 秒时 `scoped.llm` 仍是空的），所以没等到就再试几次。
+  {
+    let attempts = 0
+    const kick = () => {
+      void syncHostCatalog({ force: true })
+        .then(() => {
+          if (hostLlm !== null || attempts >= 5) return
+          attempts += 1
+          setTimeout(kick, 4000).unref?.()
+        })
+        .catch(error => logger.warn?.(`our-free-model: host catalog sync failed (${error?.message ?? error})`))
+    }
+    setTimeout(kick, 6000).unref?.()
+  }
+
   const logAdmissionRejection = surface => ({ status, source, reason }) => {
     // Fixed fields only: headers, request URLs and admission errors may contain
     // credentials. JSON API and SSE must report the same admission boundary.
@@ -1993,6 +2274,64 @@ export function apply(ctx, config) {
         } })
         settings.flush()
         return publicTokenSaver(settings.get().tokenSaver)
+      },
+    },
+    // ── 上下文压缩（宿主编译器 + 运行时阈值）──────────────────────────────
+    compaction: {
+      get: async () => compaction.status(),
+      /** 设置页保存后立即重放（下一次 `agent/pre-step` 仍会再兜底一次）。 */
+      apply: async () => {
+        applyCompaction()
+        return compaction.status()
+      },
+      set: async patch => {
+        if (patch === null || typeof patch !== 'object') throw httpError(400, 'the request body must be a JSON object')
+        return compaction.set(patch)
+      },
+      restore: async () => compaction.restore(),
+    },
+    // ── 路由分组（取代 model-failover-manager 的持久层）────────────────────
+    routes: {
+      list: async () => await routeStatus(),
+      save: async patch => {
+        if (patch === null || typeof patch !== 'object') throw httpError(400, 'the request body must be a JSON object')
+        const groups = routeStore.saveGroups(patch.groups ?? patch)
+        const catalog = syncRouteCatalog()
+        for (const group of groups) {
+          logger.info?.(`our-free-model: route group saved — ${describeGroupLine(group)}`)
+        }
+        return { groups, usable: catalog.filter(isRouteEntry).map(entry => ({ id: entry.id, name: entry.name, models: entry.memberIds })) }
+      },
+      resetFailed: async patch => {
+        const key = typeof patch?.key === 'string' && patch.key !== '' ? patch.key : undefined
+        if (key === undefined) routeStore.resetFailed()
+        else routeStore.resetFailed(key)
+        return await routeStatus()
+      },
+      /**
+       * 把「目录里能对上、但存的是旧坐标」的成员改写当前 id。
+       *
+       * 迁移过来的分组常带旧 provider 前缀或双前缀（`unison/u2-flash`、
+       * `doubao/doubao/person-…`），`memberEntry` 能在运行时按尾段兜底解析，
+       * 但面板会一直显示「目录缺失」，改档位/看失败也没法定位。这里一次性
+       * 把坐标写正；真的找不到的成员原样保留并列出来，由用户删或补。
+       */
+      remap: async () => {
+        await syncHostCatalog({ force: true })
+        const { groups, changed, unresolved } = remapGroups(routeStore.groups, state().routeCatalog)
+        if (changed > 0) routeStore.saveGroups(groups)
+        syncRouteCatalog()
+        logger.info?.(`our-free-model: route remap — ${changed} member(s) rewritten, ${unresolved.length} unresolved`)
+        return { changed, unresolved, ...await routeStatus() }
+      },
+      cooldown: async patch => {
+        gate.resetCooldown(typeof patch?.model === 'string' && patch.model !== '' ? patch.model : undefined)
+        return await routeStatus()
+      },
+      import: async patch => {
+        const result = routeStore.importLegacy({ force: patch?.force === true })
+        if (result.imported === true) syncRouteCatalog()
+        return { result, ...await routeStatus() }
       },
     },
     // ── the five local answers ──────────────────────────────────────────────
@@ -2505,6 +2844,46 @@ function sanitizeSettings(patch, current) {
     const hours = Number(next.updateCheckHours)
     next.updateCheckHours = Number.isFinite(hours) && hours >= 0 ? Math.trunc(hours) : (Number(current.updateCheckHours) || 6)
   }
+  if (next.compaction !== undefined) {
+    const raw = next.compaction ?? {}
+    const ratio = raw.thresholdRatio === null || raw.thresholdRatio === undefined || raw.thresholdRatio === ''
+      ? null
+      : Number(raw.thresholdRatio)
+    next.compaction = {
+      enabled: raw.enabled !== false,
+      // null = 跟随引擎默认。1.0 不在这里出现：那只能由"关闭"开关产生。
+      thresholdRatio: Number.isFinite(ratio) && ratio > 0
+        ? Math.min(0.95, Math.max(0.2, Math.round(ratio * 100) / 100))
+        : null,
+    }
+  }
+  if (next.modelEffort !== undefined) {
+    const table = {}
+    for (const [id, level] of Object.entries(next.modelEffort ?? {})) {
+      if (typeof level !== 'string') continue
+      const clean = level.trim().slice(0, 24)
+      if (clean === '') continue
+      table[String(id).slice(0, 160)] = clean
+    }
+    next.modelEffort = table
+  }
+  if (next.route !== undefined) {
+    const merged = { ...(current.route ?? {}), ...(next.route ?? {}) }
+    const clampCount = value => {
+      const number = Number(value)
+      return Number.isFinite(number) && number >= 0 ? Math.min(64, Math.trunc(number)) : 0
+    }
+    merged.defaultConcurrency = clampCount(merged.defaultConcurrency)
+    const cooldown = Number(merged.capacityCooldownMs)
+    merged.capacityCooldownMs = Number.isFinite(cooldown) && cooldown >= 0 ? Math.min(600_000, Math.trunc(cooldown)) : 30_000
+    const table = {}
+    for (const [id, value] of Object.entries(merged.concurrencyByModel ?? {})) {
+      const number = Number(value)
+      if (Number.isFinite(number) && number >= 0) table[String(id).slice(0, 160)] = Math.min(64, Math.trunc(number))
+    }
+    merged.concurrencyByModel = table
+    next.route = merged
+  }
   return next
 }
 
@@ -2618,6 +2997,40 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/combos') {
         const body = await readJson(req)
         return send(200, { ok: true, ...await deps.combos.save(body) })
+      }
+      // ── compaction threshold (host engine, runtime takeover) ───────────────
+      if (method === 'GET' && routePath === '/compaction') {
+        return send(200, await deps.compaction.get())
+      }
+      if (method === 'POST' && routePath === '/compaction') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.compaction.set(body) })
+      }
+      if (method === 'POST' && routePath === '/compaction/restore') {
+        return send(200, { ok: true, ...await deps.compaction.restore() })
+      }
+      // ── route groups (failover, priority, windows, concurrency) ────────────
+      if (method === 'GET' && routePath === '/routes') {
+        return send(200, await deps.routes.list())
+      }
+      if (method === 'POST' && routePath === '/routes') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.routes.save(body) })
+      }
+      if (method === 'POST' && routePath === '/routes/import') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.routes.import(body) })
+      }
+      if (method === 'POST' && routePath === '/routes/remap') {
+        return send(200, { ok: true, ...await deps.routes.remap() })
+      }
+      if (method === 'POST' && routePath === '/routes/failed/reset') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.routes.resetFailed(body) })
+      }
+      if (method === 'POST' && routePath === '/routes/cooldown/reset') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.routes.cooldown(body) })
       }
       // ── token savers ───────────────────────────────────────────────────────
       if (method === 'GET' && routePath === '/token-saver') {
@@ -3075,7 +3488,7 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/settings') {
         const patch = await readJson(req)
         const current = deps.settings.get()
-        const next = sanitizeSettings({ ...current, ...pick(patch, ['enabled', 'exposeRegionModels', 'hideChannelModels', 'probeIntervalMinutes', 'defaultMaxTokens', 'announcementAck', 'feedUrl', 'feedPollMinutes', 'notifyOs', 'updateCheckHours', 'autoReloadWatch']) }, current)
+        const next = sanitizeSettings({ ...current, ...pick(patch, ['enabled', 'exposeRegionModels', 'hideChannelModels', 'probeIntervalMinutes', 'defaultMaxTokens', 'announcementAck', 'feedUrl', 'feedPollMinutes', 'notifyOs', 'updateCheckHours', 'autoReloadWatch', 'compaction', 'modelEffort', 'route']) }, current)
         if (patch.forward !== undefined) {
           const forward = { ...(current.forward ?? {}), ...pick(patch.forward, ['enabled', 'host', 'port']) }
           // The listener spends this machine's lane, and a routable bind address
@@ -3124,6 +3537,8 @@ export function createApiRoutes(deps) {
         }
         deps.settings.update(next)
         deps.settings.flush()
+        // 压缩阈值是"运行时接管"，保存后立刻重放一次；`pre-step` 还会兜底。
+        if (patch.compaction !== undefined) await deps.compaction.apply()
         // Apply the catalog switch before answering: the pack reads it live, so
         // the next catalog build already reflects the new value. `onTopology`
         // is what tells the picker to re-fetch instead of keeping its cache.
@@ -3452,6 +3867,16 @@ function publicSettings(settings, forwardInfo, egressInfo) {
     reloadCount: settings.reloadCount ?? 0,
     tokenSaver: publicTokenSaver(settings.tokenSaver),
     aggregate: publicAggregate(settings.aggregate),
+    compaction: {
+      enabled: settings.compaction?.enabled !== false,
+      thresholdRatio: typeof settings.compaction?.thresholdRatio === 'number' ? settings.compaction.thresholdRatio : null,
+    },
+    modelEffort: { ...(settings.modelEffort ?? {}) },
+    route: {
+      defaultConcurrency: Number(settings.route?.defaultConcurrency) || 0,
+      capacityCooldownMs: Number(settings.route?.capacityCooldownMs) || 0,
+      concurrencyByModel: { ...(settings.route?.concurrencyByModel ?? {}) },
+    },
     combos: normalizeCombos(settings.combos).map(combo => ({
       id: combo.id,
       name: combo.name,
@@ -3510,7 +3935,7 @@ function buildSummary(deps) {
   // and the aggregate lane are named by a listing round that already succeeded,
   // and a combo is a view over rows that were themselves named — none of them is
   // pinged, so "no verdict" must not render as "unknown".
-  const unprobed = entry => isEacEntry(entry) || isKiloEntry(entry) || isAggregateEntry(entry) || isComboEntry(entry)
+  const unprobed = entry => isEacEntry(entry) || isKiloEntry(entry) || isAggregateEntry(entry) || isComboEntry(entry) || isRouteEntry(entry)
   return {
     catalog: state.catalog.map(entry => ({
       ...entry,

@@ -1,8 +1,9 @@
 {
-  "name": "dsh-our-free-model",
-  "version": "2.10.1",
+  "name": "dsh-model-manager",
+  "version": "2.11.0",
   "type": "module",
-  "description": "Our Free Model — 在 dsh 里装上这个插件即可，无需登录、注册或填 API Key，就能使用包括 DeepSeek V4.1 Flash、Kimi K3 在内的前沿模型；接入 CodeArts、CodeBuddy、WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax、ZCode、Gemini 等账号渠道（登录、账号池、积分领取、本地 OpenAI 网关与局域网转发、数据看板与运行日志），六页毛玻璃界面统一呈现。",
+  "description": "Model Manager（dsh-model-manager）— 在 dsh 里装上这个插件即可，无需登录、注册或填 API Key，就能使用包括 DeepSeek V4.1 Flash、Kimi K3 在内的前沿模型；接入 CodeArts、CodeBuddy、WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax、ZCode、Gemini 等账号渠道（登录、账号池、积分领取、本地 OpenAI 网关与局域网转发、数据看板与运行日志），八个分区统一呈现；聊天框模型选择器左侧提供「模型」入口，点开即模型面板（含路由分组与失败模型编辑）。",
+  "icon": "./icon.ico",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
@@ -23,7 +24,7 @@
     "test:client-amounts": "node tests/amount-helpers.mjs",
     "test:client-i18n": "node tests/i18n-keys.mjs",
     "test:channels-smoke": "node tests/channels-smoke.mjs",
-    "test:client": "node tests/amount-helpers.mjs && node tests/i18n-keys.mjs && node tests/codearts-ops.mjs && node tests/channel-extras.mjs && node tests/codely-channel.mjs && node tests/autoclaw-channel.mjs && node tests/accio-channel.mjs && node tests/minimax-channel.mjs && node tests/marvis-channel.mjs && node tests/magicrew-channel.mjs && node tests/chromium-driver.mjs && node tests/own-inference.mjs && node tests/channel-pack-tables.mjs && node tests/codearts-catalog.mjs && node tests/qoder-catalog.mjs && node tests/loomy-upstream.mjs && node tests/composer-credits.mjs && node tests/channel-visibility.mjs && node tests/baizhi-channel.mjs && node tests/doubao-channel.mjs && node tests/doubao-inference.mjs && node tests/pending-accounts.mjs && node tests/astudio-login.mjs && node tests/channel-manifest.mjs && node tests/own-controls.mjs && node tests/api-own-routes.mjs && node tests/agnescode-channel.mjs && node tests/channels-smoke.mjs",
+    "test:client": "node tests/amount-helpers.mjs && node tests/i18n-keys.mjs && node tests/codearts-ops.mjs && node tests/channel-extras.mjs && node tests/codely-channel.mjs && node tests/autoclaw-channel.mjs && node tests/accio-channel.mjs && node tests/minimax-channel.mjs && node tests/marvis-channel.mjs && node tests/magicrew-channel.mjs && node tests/chromium-driver.mjs && node tests/own-inference.mjs && node tests/channel-pack-tables.mjs && node tests/codearts-catalog.mjs && node tests/qoder-catalog.mjs && node tests/loomy-upstream.mjs && node tests/composer-credits.mjs && node tests/channel-visibility.mjs && node tests/baizhi-channel.mjs && node tests/doubao-channel.mjs && node tests/doubao-inference.mjs && node tests/pending-accounts.mjs && node tests/astudio-login.mjs && node tests/channel-manifest.mjs && node tests/own-controls.mjs && node tests/api-own-routes.mjs && node tests/agnescode-channel.mjs && node tests/model-panel.mjs && node tests/channels-smoke.mjs && node tests/route-groups.mjs",
     "test:codearts": "node tests/codearts-ops.mjs",
     "test:channel-extras": "node tests/channel-extras.mjs",
     "test:codely": "node tests/codely-channel.mjs",
@@ -65,6 +66,7 @@
     "vendor/channel-pack/LICENSE",
     "locale",
     "icon.svg",
+    "icon.ico",
     "cordis.patch.yml",
     "LICENSE"
   ],

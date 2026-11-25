@@ -26,13 +26,14 @@ import { postOwnChannelStreamed } from './channels/inference.js'
 import { OWN_LABELS, isOwnEntry } from './channels/catalog.js'
 import { postAggregateStreamed, isAggregateEntry } from './aggregate.js'
 import { finishReason, readStream, windowTokens } from './stream.js'
-import { DEFAULT_LEVEL, MIN_BUDGET, budgetFor, defaultEffortFor, effortPatchFor, effortsFor, resolveLevel } from './effort.js'
+import { DEFAULT_LEVEL, MIN_BUDGET, budgetFor, defaultEffortFor, effortPatchFor, effortsFor, normalizeEffort, resolveLevel } from './effort.js'
 import { createChannel } from './channel.js'
 import { recoveryPolicy, canRecover, canRecoverSilentStop, recoveryMessages, continuationMessages, checkpointFits, addUsage, createBlockTracker } from './recovery.js'
 import { isEacEntry, isKiloEntry } from './catalog.js'
 import { isComboEntry, comboChain } from './combos.js'
 import { applyTokenSavers, saverConfig } from './token-saver/index.js'
-import { classifyFailure, describeVerdict, shouldAdvance } from './route/classify.js'
+import { classifyFailure, describeVerdict, shouldAdvance, FAILURE_KIND } from './route/classify.js'
+import { isRouteEntry, GROUP_PREFIX, resolveGroupCandidates } from './route/groups.js'
 import { PIXEL_IMAGE_PRICING } from './image-pricing.js'
 
 export const ROUTE_MAIN = 'our-free-model'
@@ -203,28 +204,154 @@ export class FreeModelAdapter {
   async * runStream(options, pinned, snapshot) {
     const modelId = baseModelId(options.model)
     const entry = pinned ?? snapshot.catalog.find(candidate => candidate.id === modelId) ?? null
+    // 面板里给单个模型定的档位优先于会话选择；清空下拉 = 跟随会话。
+    const panelEffort = entry === null ? undefined : snapshot.settings?.modelEffort?.[entry.id]
+    const effective = typeof panelEffort === 'string' && panelEffort !== ''
+      ? { ...options, reasoningEffort: panelEffort }
+      : options
     if (entry !== null && isComboEntry(entry)) {
-      yield * this.runCombo(options, entry, snapshot)
+      yield * this.runCombo(effective, entry, snapshot)
       return
     }
-    yield * this.runSingle(options, entry, snapshot, {})
+    if (entry !== null && isRouteEntry(entry)) {
+      yield * this.runRoute(effective, entry, snapshot)
+      return
+    }
+    // 会话钉在一个刚被停用/刚被删掉的分组上：目录里已经没有这一行，但仍要
+    // 说清是哪个分组、为什么没走。否则会掉进 `runSingle`，拿一个 `route:` id
+    // 去请求免费车道。
+    if (entry === null && modelId.startsWith(GROUP_PREFIX)) {
+      const group = (this.deps.routeGroups?.() ?? []).find(candidate => candidate.id === modelId)
+      if (group !== undefined) {
+        yield * this.runRoute(effective, {
+          id: group.id,
+          name: group.name,
+          group: group.id,
+          channel: 'route',
+          wire: 'chat',
+        }, snapshot)
+        return
+      }
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: `route group "${modelId.slice(GROUP_PREFIX.length)}" is no longer configured; pick another model`,
+        code: CODE.server,
+      } } }
+      return
+    }
+    yield * this.runSingle(effective, entry, snapshot, {})
   }
 
   /**
-   * Walk a combo's chain until one candidate produces output.
+   * A combo's chain, in the order its strategy produced.
+   *
+   * Kept as a thin wrapper so the walk itself lives in one place: a combo and a
+   * route group differ only in how candidates are chosen and what happens on
+   * failure, never in the commit rule.
+   */
+  async * runCombo(options, entry, snapshot) {
+    yield * this.runChain(options, entry, comboChain(entry, snapshot.catalog).map(candidate => ({ entry: candidate })), snapshot, {
+      onAdvance: (candidate, _result, reason) => {
+        this.deps.warn?.(`our-free-model: chain "${entry.name}" advanced past ${candidate.entry.id} — ${reason}`)
+      },
+      emptyMessage: `the chain "${entry.name}" has no model available on this egress`,
+    })
+  }
+
+  /**
+   * A route group's turn: priority order, windows, today's failures and the
+   * per-model concurrency gate all resolved before the first byte.
+   *
+   * Failure bookkeeping lives here rather than inside `runSingle`: "this model
+   * failed today" is a property of the group, not of one turn, and it has to
+   * survive the request that discovered it.
+   */
+  async * runRoute(options, entry, snapshot) {
+    const group = (this.deps.routeGroups?.() ?? []).find(candidate => candidate.id === entry.group)
+    if (group === undefined) {
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: `route group "${entry.name}" is no longer configured`,
+        code: CODE.server,
+      } } }
+      return
+    }
+    if (group.enabled === false) {
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: `route group "${entry.name}" is switched off in its panel; enable it or pick another model`,
+        code: CODE.server,
+      } } }
+      return
+    }
+    const resolved = resolveGroupCandidates(group, {
+      catalog: snapshot.routeCatalog ?? snapshot.catalog,
+      failedKeys: this.deps.routeStore?.failedKeys() ?? new Set(),
+      gate: this.deps.gate,
+    })
+    if (resolved.candidates.length === 0) {
+      const skipped = resolved.skipped.map(item => `${item.model} (${item.detail})`).join('; ')
+      const message = resolved.allFailed
+        ? `route group "${entry.name}" has every member circuit-broken today — reset the failures in its panel to try again`
+        : `route group "${entry.name}" has no usable member${skipped === '' ? '' : `: ${skipped}`}`
+      yield { type: 'finish', reason: { kind: 'error', failure: { message, code: CODE.server } } }
+      return
+    }
+    yield * this.runChain(options, entry, resolved.candidates, snapshot, {
+      planFor: candidate => ({
+        wire: wireOf(candidate.entry),
+        turnModel: entry.id,
+        // 成员的档位是这条分组真正的控制：同一组里 loomy 要 xhigh、codearts
+        // 走 token 阶梯，effort 必须跟着候选走，而不是跟着会话走。旧插件的
+        // 词汇（xhigh/Extra High/默认（高）…）先翻译成候选模型认的 id；
+        // 翻不到就跟随会话，而不是像 resolveLevel 那样静默落回默认档。
+        // 别的渠道的成员不跟随会话档位：那个档位是给本插件模型选的，塞给
+        // 外部模型只会换来一句 UNSUPPORTED_REASONING_EFFORT（翻不到就留空）。
+        reasoningEffort: normalizeEffort(candidate.entry, candidate.member.effort)
+          || (candidate.entry.channel === 'host' ? undefined : options.reasoningEffort),
+        hold: () => {
+          const model = candidate.entry.id
+          if (this.deps.gate?.acquire(model) !== true) return null
+          return () => this.deps.gate.release(model)
+        },
+      }),
+      onCommit: (candidate, result) => {
+        if (result?.ok === true) this.deps.routeStore?.clearFailed(candidate.entry.id)
+      },
+      onAdvance: (candidate, result, reason) => {
+        // 熔断键必须是目录 id，不是迁移前的成员写法：否则 `failedKeys.has(entry.id)`
+        // 永远查不到，同一模型会在一个请求里被反复尝试。
+        this.deps.routeStore?.markFailed({ ...candidate.member, model: candidate.entry.id }, {
+          group: entry.id,
+          code: result?.verdict?.kind ?? 'UNKNOWN',
+          reason,
+        })
+        // 429 / 配额类失败说明"上游忙"，冷却期间连候选都不该是它。
+        if (result?.verdict?.kind === FAILURE_KIND.RATE_LIMIT || result?.verdict?.cooldownMs > 0) {
+          this.deps.gate?.markCapacity(candidate.entry.id, result?.verdict?.cooldownMs)
+        }
+        this.deps.warn?.(`our-free-model: route group "${entry.name}" advanced past ${candidate.entry.id} — ${reason}`)
+      },
+      emptyMessage: `route group "${entry.name}" has no usable member`,
+    })
+  }
+
+  /**
+   * Walk a chain until one candidate produces output.
    *
    * The commit rule is the whole design. Chunks are held in a buffer until the
    * first answer-bearing delta, so a candidate that fails before that point is
    * discarded whole: the caller never saw a byte of it, and switching models is
    * invisible. Reasoning deltas are deliberately *not* a commit — "thought for a
-   * minute, then hit a quota wall" is the single most valuable case to fail over,
-   * and the held thinking is dropped along with the rest of the discarded try.
+   * minute, then hit a quota wall" is the single most valuable case to fail
+   * over, and the held thinking is dropped along with the rest of the discarded
+   * try.
    *
    * Once an answer delta has been handed over the answer is the caller's, and a
    * later failure ends the turn the normal way — the single-model recovery path
    * inside `runSingle` still gets its continuation attempt first.
+   *
+   * @param {Array<{entry: object, member?: object}>} candidates
+   * @param {object} [hooks] - `planFor` / `onAdvance` / `onCommit` / `emptyMessage`
    */
-  async * runCombo(options, entry, snapshot) {
+  async * runChain(options, entry, candidates, snapshot, hooks = {}) {
     const settings = snapshot.settings ?? {}
     const started = Date.now()
     const rejectedTurn = attempts => {
@@ -235,50 +362,64 @@ export class FreeModelAdapter {
       yield { type: 'finish', reason: { kind: 'error', failure: { message: 'our free model is switched off in its settings page', code: 'CONFIG_DISABLED' } } }
       return
     }
-    const candidates = comboChain(entry, snapshot.catalog)
     if (candidates.length === 0) {
       rejectedTurn(0)
-      yield { type: 'finish', reason: { kind: 'error', failure: { message: `the chain "${entry.name}" has no model available on this egress`, code: CODE.server } } }
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: hooks.emptyMessage ?? `the chain "${entry.name}" has no model available on this egress`,
+        code: CODE.server,
+      } } }
       return
     }
     const tried = []
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index]
-      const iterator = this.runSingle(options, candidate, snapshot, {
-        wire: wireOf(candidate),
-        turnModel: entry.id,
-        recordTurn: false,
-        allowAdvance: true,
-      })
-      let committed = false
-      let result
-      const held = []
-      while (true) {
-        const row = await iterator.next()
-        if (row.done === true) { result = row.value; break }
-        if (committed) { yield row.value; continue }
-        held.push(row.value)
-        if (commitsAnswer(row.value)) {
-          committed = true
-          for (const chunk of held) yield chunk
-          held.length = 0
+      const plan = hooks.planFor?.(candidate, index) ?? {}
+      const release = plan.hold?.() ?? null
+      try {
+        const passOptions = plan.reasoningEffort !== undefined
+          ? { ...options, reasoningEffort: plan.reasoningEffort }
+          : options
+        const iterator = candidate.entry.channel === 'host'
+          ? this.runForeign(passOptions, candidate.entry, plan)
+          : this.runSingle(passOptions, candidate.entry, snapshot, {
+            wire: plan.wire ?? wireOf(candidate.entry),
+            turnModel: entry.id,
+            recordTurn: false,
+            allowAdvance: true,
+          })
+        let committed = false
+        let result
+        const held = []
+        while (true) {
+          const row = await iterator.next()
+          if (row.done === true) { result = row.value; break }
+          if (committed) { yield row.value; continue }
+          held.push(row.value)
+          if (commitsAnswer(row.value)) {
+            committed = true
+            for (const chunk of held) yield chunk
+            held.length = 0
+          }
         }
+        if (committed) {
+          hooks.onCommit?.(candidate, result)
+          this.deps.recordTurn?.({ at: started, model: entry.id, ok: result?.ok === true, recovered: result?.recovered === true, attempts: index + 1, origin: 'harness' })
+          return
+        }
+        if (result?.advance !== true) {
+          // Not a candidate fault — an abort, or a failure that arrived after the
+          // single-model recovery budget was spent. Hand the caller the real
+          // ending instead of pretending another model could have saved it.
+          for (const chunk of held) yield chunk
+          rejectedTurn(index + 1)
+          return
+        }
+        const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
+        tried.push(`${candidate.entry.id} (${reason})`)
+        hooks.onAdvance?.(candidate, result, reason)
+      } finally {
+        release?.()
       }
-      if (committed) {
-        this.deps.recordTurn?.({ at: started, model: entry.id, ok: result?.ok === true, recovered: result?.recovered === true, attempts: index + 1, origin: 'harness' })
-        return
-      }
-      if (result?.advance !== true) {
-        // Not a candidate fault — an abort, or a failure that arrived after the
-        // single-model recovery budget was spent. Hand the caller the real
-        // ending instead of pretending another model could have saved it.
-        for (const chunk of held) yield chunk
-        rejectedTurn(index + 1)
-        return
-      }
-      const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
-      tried.push(`${candidate.id} (${reason})`)
-      this.deps.warn?.(`our-free-model: chain "${entry.name}" advanced past ${candidate.id} — ${reason}`)
     }
     rejectedTurn(candidates.length)
     yield { type: 'finish', reason: { kind: 'error', failure: {
@@ -286,6 +427,100 @@ export class FreeModelAdapter {
       code: CODE.server,
     } } }
   }
+
+
+  /**
+   * 一条「不是本插件供给」的组成员：把这一轮原样交回宿主自己的 `llm.stream`。
+   *
+   * 分组的价值在于覆盖整个宿主的渠道，而一个 adapter 只能代发自己注册的那几个
+   * provider。成员属于别的 provider 时（`channel: 'host'`），唯一不越权的做法
+   * 是把它交回宿主路由：我们只负责挑人、记账、失败时换下一个。选项对象原样
+   * 透传（tools / 附件 / 系统提示都是宿主自己的格式），只替换 provider/model；
+   * 成员的档位翻不到目标模型认的 id 时**不传**，让它按自己的默认走。
+   *
+   * @returns 与 `runSingle` 同形的收尾摘要，`advance` 决定链路是否换人。
+   */
+  async * runForeign(options, entry, plan = {}) {
+    const started = Date.now()
+    const emit = this.deps.hostStream
+    const provider = String(entry?.provider ?? '')
+    if (typeof emit !== 'function' || provider === '') {
+      yield { type: 'finish', reason: { kind: 'error', failure: {
+        message: `route group member "${entry?.id ?? ''}" is served by another provider, and this host exposes no llm.stream to forward it`,
+        code: CODE.server,
+      } } }
+      return { advance: true, verdict: null, ok: false, recovered: false }
+    }
+    const model = String(entry.modelId ?? entry.id ?? '')
+    const request = { ...options, provider, model: model.startsWith(`${provider}/`) ? model.slice(provider.length + 1) : model }
+    if (typeof plan.reasoningEffort === 'string' && plan.reasoningEffort !== '') request.reasoningEffort = plan.reasoningEffort
+    else delete request.reasoningEffort
+    const usage = { inputTokens: 0, outputTokens: 0 }
+    let firstDeltaAt
+    let failure = null
+    let thrown = null
+    try {
+      const stream = emit(request)
+      // 宿主没有 llm 服务（或版本太老）时不能假装「这个成员挂了」：
+      // 换人没用，必须说清楚是转发能力缺失。
+      if (stream === null || stream === undefined) {
+        throw Object.assign(new Error('this host exposes no llm.stream to forward a foreign route-group member'), { code: 'NO_HOST_STREAM' })
+      }
+      for await (const chunk of stream) {
+        if (chunk?.type === 'usage') {
+          for (const key of ['inputTokens', 'outputTokens']) {
+            const value = Number(chunk.usage?.[key])
+            if (Number.isFinite(value)) usage[key] = value
+          }
+          if (Number.isFinite(Number(chunk.usage?.reasoningTokens))) usage.reasoningTokens = Number(chunk.usage.reasoningTokens)
+          if (Number.isFinite(Number(chunk.usage?.cacheReadTokens))) usage.cacheReadTokens = Number(chunk.usage.cacheReadTokens)
+        }
+        if (firstDeltaAt === undefined
+          && (chunk?.type === 'text-delta' || chunk?.type === 'reasoning-delta' || chunk?.type === 'tool-call-delta')) {
+          firstDeltaAt = Date.now()
+        }
+        if (chunk?.type === 'finish' && (chunk.reason?.kind === 'error' || chunk.reason?.kind === 'aborted')) failure = chunk.reason
+        yield chunk
+      }
+    } catch (error) {
+      thrown = error
+    }
+    if (thrown !== null) {
+      this.deps.warn?.(`our-free-model: forwarding ${entry.id} failed — ${String(thrown?.message ?? thrown).slice(0, 200)}`)
+    }
+    const ok = failure === null && thrown === null
+    this.deps.recordUsage?.({
+      at: started,
+      model: entry.id,
+      effort: typeof request.reasoningEffort === 'string' ? request.reasoningEffort : '',
+      ok,
+      input: usage.inputTokens,
+      output: usage.outputTokens,
+      reasoning: usage.reasoningTokens ?? 0,
+      cacheRead: usage.cacheReadTokens ?? 0,
+      decodeTokens: ok ? windowTokens(usage, false) : 0,
+      ttftMs: firstDeltaAt === undefined ? undefined : firstDeltaAt - started,
+      decodeMs: firstDeltaAt === undefined ? 0 : Date.now() - firstDeltaAt,
+      origin: 'harness',
+      elapsedMs: Date.now() - started,
+    })
+    if (ok) return { advance: false, verdict: null, ok: true, recovered: false }
+    // 宿主没有转发能力是环境缺陷，换下一个成员也没用；但它发生在第一个 chunk
+    // 之前，调用方至今没收到任何收尾，所以这里必须自己补一个。
+    if (thrown?.code === 'NO_HOST_STREAM') {
+      yield { type: 'finish', reason: { kind: 'error', failure: { message: String(thrown.message ?? thrown), code: CODE.server } } }
+      return { advance: false, verdict: null, ok: false, recovered: false }
+    }
+    // 转发失败的真实原因必须留在熔断记录里：只写 "unknown/transient" 的话，
+    // 面板上根本看不出是没装适配器、模型下线还是参数被拒。
+    const text = String(failure?.failure?.message ?? thrown?.message ?? thrown ?? '')
+    const verdict = {
+      ...classifyFailure({ code: failure?.failure?.code ?? thrown?.code, message: text }),
+      rule: `forward: ${text.slice(0, 120)}`,
+    }
+    return { advance: true, verdict, ok: false, recovered: false }
+  }
+
 
   /**
    * One model's turn — the original single-lane path.
@@ -835,6 +1070,11 @@ function describe(entry, settings) {
   if (isComboEntry(entry)) {
     parts.push(`${entry.combo.length}-model chain: ${entry.combo.join(' -> ')}`)
     if (entry.strategy === 'round-robin') parts.push('rotating start')
+    return parts.join(' · ')
+  }
+  // 分组也是一个虚拟模型：行里说清"几条成员"，具体优先级在面板里看。
+  if (isRouteEntry(entry)) {
+    parts.push(`${entry.groupMembers}-model route group`)
     return parts.join(' · ')
   }
   if (entry.reasoning === true) {

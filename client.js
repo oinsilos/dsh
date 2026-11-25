@@ -19,7 +19,7 @@
  * the page survives a scheme switch.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-our-free-model',
+  id: 'dsh-model-manager',
   factory: require => {
     const module = { exports: {} }
     const exports = module.exports
@@ -42,11 +42,96 @@ window.__ModuleLoader__.load({
     // ── copy ──────────────────────────────────────────────────────────────────
     const DICT = {
       zh: {
-        'meta.title': 'Our Free Model',
+        'meta.title': 'Model Manager',
         'meta.description': '在 DeepSeek Harness 内直连免密免费模型：清单随上游更新、地区可用性自动探测、思考强度真实生效，并附 Token 看板与 OpenAI 兼容转发端口。',
         'ann.pitch': '你只需在 dsh 里装上这个插件，无需登录、注册、填 API Key 或任何其它操作，就能用上包括 Muse Spark 1.3、MiMo V2.6 在内的前沿模型——完全免费，不限量。',
-        nav: 'Our Free Model',
-        title: 'Our Free Model',
+        nav: 'Model Manager',
+        'nav.panel': '模型',
+        'panel.open': '模型面板',
+        'panel.title': '模型面板',
+        'panel.providers': '提供商',
+        'panel.allModels': '免费模型',
+        'panel.providerModels': '这个渠道共有 {n} 个模型',
+        'panel.searchProvider': '搜索提供商',
+        'panel.searchModel': '搜索模型名称或 ID',
+        'panel.noProvider': '没有匹配的提供商',
+        'panel.noMatch': '没有匹配的模型',
+        'panel.noModel': '这个渠道还没有模型',
+        'panel.noModelHint': '可以在设置页的「账号渠道」里登录或刷新目录。',
+        'panel.selectModel': '选择模型',
+        'panel.noModels': '该提供商暂无可用模型。',
+        'panel.tab.models': '模型',
+        'panel.tab.routes': '路由分组',
+        'panel.tab.failed': '失败模型',
+        'panel.routes.empty': '还没有路由分组。到「模型路由」页签新建一个，它就会出现在这里，也能在模型列表里当模型选。',
+        'panel.routes.use': '用这个分组',
+        'panel.routes.edit': '编辑',
+        'panel.routes.failedMark': '失败',
+        'panel.routes.groups': '分组',
+        'panel.routes.nameHint': '新分组名',
+        'panel.routes.create': '新建',
+        'panel.routes.delete': '删除分组',
+        'panel.routes.remap': '修复失效成员',
+        'panel.routes.remapDone': '已修复 {n} 个成员的模型坐标。',
+        'panel.routes.remapLeft': '仍有 {n} 个成员在本机目录里找不到，已保留原样。',
+        'panel.routes.noMembers': '这个分组还没有成员。',
+        'panel.routes.addHint': '点右下角「添加模型」从当前目录里挑。',
+        'panel.routes.add': '添加模型',
+        'panel.routes.addClose': '收起添加',
+        'panel.routes.addSearch': '搜索模型名称或 ID',
+        'panel.routes.added': '已加入',
+        'panel.routes.missing': '目录缺失',
+        'panel.routes.priority': '优先级（越小越先）',
+        'panel.routes.enable': '启用',
+        'panel.routes.disable': '停用',
+        'panel.routes.members': '{n} 个成员',
+        'panel.failed.empty': '今天没有被熔断的模型。',
+        'panel.failed.why': '{code} · {reason}',
+        'panel.failed.reset': '恢复',
+        'panel.failed.resetAll': '全部恢复',
+        'panel.failed.cooldown': '清冷却',
+        'panel.failed.hint': '路由分组里的成员失败会被记在这里，当天内不再重试；恢复后立刻可以再被选中。',
+        'panel.tab.dashboard': '数据看板',
+        'panel.settingsTitle': '模型设置',
+        'panel.close': '关闭',
+        'panel.current': '当前',
+        'panel.sessionRequired': '先打开一个会话，再选择模型。',
+        'panel.settingsLink': '完整设置',
+        'panel.failedProviders': '有 {n} 个提供商的目录没加载出来，其余照常可用。',
+        'panel.dockOpen': '模型面板',
+        'compact.chip': '自动压缩',
+        'compact.quickHint': '上下文占用达到窗口的这个比例时自动压缩；松手即保存并立即生效。',
+        'compact.restore': '恢复默认',
+        'compact.openPanel': '在管线中调整',
+        'compact.saved': '阈值已保存',
+        'compact.saveFailed': '阈值保存失败',
+        'ann.openPanel': '打开模型面板',
+        'llmretry.title': '请求重试',
+        'llmretry.hint': '命中规则后休眠再重发。规则支持 HTTP 状态码、机器码、field=value 和 msg~片段。',
+        'llmretry.rules': '规则',
+        'llmretry.code': '匹配表达式',
+        'llmretry.delay': '休眠（秒）',
+        'llmretry.maxRetries': '最多重试',
+        'llmretry.add': '新增规则',
+        'llmretry.save': '保存',
+        'llmretry.saved': '已保存并立即生效',
+        'llmretry.saveFailed': '保存失败',
+        'llmretry.source': '来源',
+        'llmretry.waiting': '休眠中',
+        'llmretry.events': '最近活动',
+        'llmretry.noEvents': '还没有事件',
+        'llmretry.honor': 'Retry-After 采信上限（秒）',
+        'llmretry.honorHint': '0 = 忽略服务端提示；默认 10 秒。',
+        'llmretry.firstToken': '首字超时',
+        'llmretry.firstTokenHint': '请求发出后多久没有第一个输出就中断。',
+        'llmretry.enabled': '启用',
+        'llmretry.seconds': '秒',
+        'llmretry.notMultimodal': '不支持多模态时',
+        'llmretry.offload': '自动省略图片',
+        'llmretry.maxNotices': '每轮最多提示',
+        'llmretry.emptyRules': '没有规则：所有失败直接上报。',
+        'llmretry.badNumber': '请输入有效数字。',
+        title: 'Model Manager',
         refresh: '刷新清单',
         reprobe: '重新探测可用性',
         probing: '探测中…',
@@ -241,7 +326,7 @@ window.__ModuleLoader__.load({
         'ann.p1': '免密：安装即可用，不需要注册、不需要填任何 API Key。',
         'ann.p2': '清单跟随上游：模型集合、上下文长度与能力每次刷新都重新拉取。',
         'ann.p3': '诚实的能力声明：探测不出来的能力不会显示，思考强度档位是真实生效的输出预算上限。',
-        'ann.s1': '在输入框的模型选择器里选 “Our Free Model” 分组下的任意模型。',
+        'ann.s1': '在输入框的模型选择器里选 “Model Manager” 分组下的任意模型。',
         'ann.s2': '需要更强推理时点开 Effort 档位；它是真实下发的输出预算，不是提示词。',
         'ann.s3': '想被其它本地工具调用：设置页 → 本地转发 → 启用，把 Base URL 和 Key 填进去。',
         'ann.s4': '地区受限模型会在你切换网络出口后自动重新归类，无需手动操作。',
@@ -292,11 +377,13 @@ window.__ModuleLoader__.load({
         'toast.annTitle': '新公告',
         'toast.updateTitle': '插件可升级',
         'toast.updateBody': '发现新版本 {latest}（当前 {current}），可到设置页升级。',
-        'nav.tab.pipeline': '管线',
-        'nav.tab.observe': '观测',
+        'nav.tab.pipeline': '压缩与省流',
+        'nav.tab.routing': '模型路由',
+        'nav.tab.observe': '数据看板',
+        'nav.tab.retry': '请求重试',
         'nav.tab.free': '免费模型',
         'nav.tab.eac': 'EAC 模型',
-        'nav.tab.channels': '白嫖模型接入',
+        'nav.tab.channels': '账号渠道',
         'star.cta': '点个 Star',
         'star.title': '在 GitHub 上给本仓库点 Star',
         'free.title': '免费模型',
@@ -307,8 +394,8 @@ window.__ModuleLoader__.load({
         'eac.title': 'EAC 模型',
         'eac.sub': '桌面端协付渠道：GitHub 登录并 star 本仓库后解锁，与免费车道互不影响。',
         'eac.tankLabel': '协付池压力',
-        'chan.title': '白嫖模型接入',
-        'chan.sub': '把各家的免费额度接进来：登录一次，模型就出现在对话框的模型选择器里。凭据只写入本机凭据库，页面永远拿不到明文。',
+        'chan.title': '账号渠道',
+        'chan.sub': '把各家账号的免费额度接进来：登录一次，模型就出现在对话框的模型选择器里。凭据只写入本机凭据库，页面永远拿不到明文。',
         'chan.pack.failed': '渠道包未挂载：{reason}（免费车道与 EAC 不受影响）',
         'chan.pack.hint': '渠道包由本插件内置（vendor/channel-pack），随插件一起升级。',
         'chan.state.on': '已接入',
@@ -513,7 +600,7 @@ window.__ModuleLoader__.load({
         'gw.relayKey': '中继密钥',
         'gw.rotate': '轮换',
         'gw.relayNote': '中继只放行模型接口（/v1/*），并要求携带中继密钥；局域网绑定意味着同网段的设备都能访问到这个端口。',
-        'gw.freeLaneNote': '免费车道（Our Free Model）自己的转发端口在「免费模型」页的「本地转发」分区。',
+        'gw.freeLaneNote': '免费车道（Model Manager）自己的转发端口在「免费模型」页的「本地转发」分区。',
         'chan.credits.left': '剩余积分',
         'chan.credits.tokens': '剩余 Token',
         'chan.credits.dollars': '剩余余额（USD）',
@@ -696,6 +783,91 @@ window.__ModuleLoader__.load({
         'routing.delete': '删除',
         'routing.deleteConfirm': '确认删除',
         'routing.deleteWarn': '删除后这个模型 ID 立即从清单消失，正在引用它的客户端会拿到 404。',
+        'route.title': '路由分组',
+        'route.sub': '优先级、时段、当日熔断与并发闸门：失败只切换一次，切换发生在链内，不再挂第二层拦截。',
+        'route.groups': '分组',
+        'route.groupsHint': '每个分组是一个可选中的虚拟模型；成员按优先级从小到大尝试。',
+        'route.gateTitle': '并发与冷却',
+        'route.gateHint': '这两个值是全局默认；单模型可在 route.concurrencyByModel 里覆盖。',
+        'route.newGroup': '新建分组',
+        'route.name': '分组名',
+        'route.namePlaceholder': '主力',
+        'route.enabled': '启用',
+        'route.memberCount': '{n} 个成员',
+        'route.memberEmpty': '还没有成员；至少加一个模型，分组才会出现在选择器里。',
+        'route.addMember': '添加模型',
+        'route.priority': '优先级',
+        'route.priorityHint': '数字越小越先尝试；迁移过来的值保持原样。',
+        'route.effort': '档位',
+        'route.effortPlaceholder': '跟随',
+        'route.effortFollow': '跟随会话',
+        'route.effortNone': '该模型没有思考档位',
+        'route.windows': '时段',
+        'route.windowsPlaceholder': '18-8,12-14',
+        'route.windowsHint': '24 小时制，逗号分隔；跨零点写成 18-8，0-24 表示全天。',
+        'route.removeMember': '移除',
+        'route.enable': '启用',
+        'route.disable': '停用',
+        'route.unavailable': '目录缺失',
+        'route.save': '保存',
+        'route.saved': '分组已保存',
+        'route.savedBody': '选择器已更新，下一轮请求就按新顺序走。',
+        'route.failed': '保存失败',
+        'route.cancel': '取消',
+        'route.edit': '编辑',
+        'route.delete': '删除',
+        'route.deleteConfirm': '再点一次删除',
+        'route.deleteWarn': '删除后这个分组 ID 立即从选择器消失；绑在它上面的会话要重新选模型。',
+        'route.usable': '可选',
+        'route.notUsable': '无可用成员',
+        'route.legacyTag': '迁移',
+        'route.bindings': '{n} 个旧会话绑定',
+        'route.missingHint': '{n} 个成员在目录里找不到；渠道启用后自动恢复。',
+        'route.todayFailed': '今日熔断 {n} 个',
+        'route.resetFailed': '重置熔断',
+        'route.resetFailedHint': '成功一次会自动解除，也可以手动重置。',
+        'route.resetAll': '重置全部熔断',
+        'route.resetDone': '熔断已重置',
+        'route.resetDoneBody': '所有成员回到候选池。',
+        'route.concurrency': '默认并发',
+        'route.cooldown': '限流冷却（秒）',
+        'route.concurrencyHint': '每个模型同时进行的请求上限；0 = 不限。满了不排队，直接换组内下一个。',
+        'route.saveSettings': '保存并发设置',
+        'route.settingsSaved': '并发设置已保存',
+        'route.settingsSavedBody': '下一轮请求开始生效。',
+        'route.import': '从旧插件导入',
+        'route.importConfirm': '确认覆盖现有分组',
+        'route.importHint': '读取 model-failover-manager 的 groups / session-bindings / failed；优先级保持原值。导入前会先备份现有分组。',
+        'route.legacyMissing': '旧插件的数据目录不存在；没有可导入的配置。',
+        'route.imported': '已导入旧配置',
+        'route.importedBody': '导入 {groups} 个分组、{members} 个成员。',
+        'route.importSkip': '没有导入',
+        'route.importFailed': '导入失败',
+        'route.bindingNote': '旧插件里有 {n} 条会话绑定记录在这里。宿主会话保存的是旧门面模型 id，卸载后这些 id 不在目录里；需要在会话里重新选择「route:分组」。',
+        'route.loadFailed': '读取分组失败',
+        'route.modelsCount': '可加入的模型 {n}',
+
+        'effort.label': '插件档位',
+        'effort.follow': '跟随会话',
+        'effort.hint': '选定后优先于会话里的档位；「跟随会话」= 不干预。',
+        'effort.light': '精简',
+        'effort.balanced': '均衡',
+        'effort.deep': '深思',
+
+        'compaction.title': '上下文压缩',
+        'compaction.hint': '对话越长，发给模型的内容越大。开启后，上下文用到阈值就先把旧内容压成摘要再继续，避免撞上限报错；阈值越低越早压缩、越省额度，但细节丢得越早。',
+        'compaction.enabled': '自动压缩',
+        'compaction.threshold': '触发阈值',
+        'compaction.engines': '检测到 {n} 个压缩引擎',
+        'compaction.effective': '当前生效 {n}%',
+        'compaction.followDefault': '跟随宿主默认',
+        'compaction.floor': '下限 {n}%：引擎要保留一段余量，低于它压不出内容。',
+        'compaction.advice': '建议 75%：留四分之一给工具输出和下一轮回复。想更省额度可降到 65%，重要长任务建议 85%。',
+        'compaction.unsupported': '当前 preset 里没有压缩引擎（compaction 隔离组未挂载），滑块不会生效。',
+        'compaction.apply': '应用',
+        'compaction.restoreDefault': '恢复默认',
+        'compaction.legacy': '已从 dsh-compaction-threshold 导入 {n}%。',
+        'compaction.saveFailed': '保存压缩阈值失败',
         'routing.enabled': '启用',
         'routing.channel.free': '免费车道',
         'routing.channel.eac': 'EAC 协付',
@@ -709,11 +881,96 @@ window.__ModuleLoader__.load({
         'gw.clientsModels': '可转发模型 {n} 个',
       },
       en: {
-        'meta.title': 'Our Free Model',
+        'meta.title': 'Model Manager',
         'meta.description': 'Free no-key models inside DeepSeek Harness: a roster that follows upstream, live regional availability, genuinely enforced thinking levels, a token dashboard and an OpenAI-compatible local forward port.',
         'ann.pitch': 'All you do is install this plugin in dsh — no login, no sign-up, no API key, no other step of any kind. The frontier models are simply there, Muse Spark 1.3 and MiMo V2.6 among them. Completely free, with no usage cap.',
-        nav: 'Our Free Model',
-        title: 'Our Free Model',
+        nav: 'Model Manager',
+        'nav.panel': 'Models',
+        'panel.open': 'Model panel',
+        'panel.title': 'Model panel',
+        'panel.providers': 'Providers',
+        'panel.allModels': 'Free models',
+        'panel.providerModels': '{n} models in this channel',
+        'panel.searchProvider': 'Search providers',
+        'panel.searchModel': 'Search model name or ID',
+        'panel.noProvider': 'No matching provider',
+        'panel.noMatch': 'No matching model',
+        'panel.noModel': 'No models in this channel yet',
+        'panel.noModelHint': 'Sign in or refresh the catalog from Settings → Account channels.',
+        'panel.selectModel': 'Select a model',
+        'panel.noModels': 'No models for this provider.',
+        'panel.tab.models': 'Models',
+        'panel.tab.routes': 'Route groups',
+        'panel.tab.failed': 'Failed models',
+        'panel.routes.empty': 'No route groups yet. Create one on the Routing tab; it will appear here and in the model list.',
+        'panel.routes.use': 'Use this group',
+        'panel.routes.edit': 'Edit',
+        'panel.routes.failedMark': 'failed',
+        'panel.routes.groups': 'Groups',
+        'panel.routes.nameHint': 'New group name',
+        'panel.routes.create': 'Create',
+        'panel.routes.delete': 'Delete group',
+        'panel.routes.remap': 'Repair stale members',
+        'panel.routes.remapDone': 'Rewrote the co-ordinates of {n} member(s).',
+        'panel.routes.remapLeft': '{n} member(s) are not in the local catalog; they were kept as-is.',
+        'panel.routes.noMembers': 'This group has no members yet.',
+        'panel.routes.addHint': 'Use “Add model” at the bottom right to pick from the catalog.',
+        'panel.routes.add': 'Add model',
+        'panel.routes.addClose': 'Close add',
+        'panel.routes.addSearch': 'Search model name or ID',
+        'panel.routes.added': 'Added',
+        'panel.routes.missing': 'not in catalog',
+        'panel.routes.priority': 'Priority (lower runs first)',
+        'panel.routes.enable': 'Enable',
+        'panel.routes.disable': 'Disable',
+        'panel.routes.members': '{n} members',
+        'panel.failed.empty': 'No model is benched today.',
+        'panel.failed.why': '{code} · {reason}',
+        'panel.failed.reset': 'Recover',
+        'panel.failed.resetAll': 'Recover all',
+        'panel.failed.cooldown': 'Clear cooldowns',
+        'panel.failed.hint': 'A member that fails inside a route group is benched for the rest of the day; recovering it makes it selectable again.',
+        'panel.tab.dashboard': 'Dashboard',
+        'panel.settingsTitle': 'Model settings',
+        'panel.close': 'Close',
+        'panel.current': 'Current',
+        'panel.sessionRequired': 'Open a conversation first, then pick a model.',
+        'panel.settingsLink': 'All settings',
+        'panel.failedProviders': '{n} provider catalog(s) failed to load; the rest still work.',
+        'panel.dockOpen': 'Models',
+        'compact.chip': 'Auto compact',
+        'compact.quickHint': 'Compact when context use reaches this share of the window. Releasing the slider saves and applies immediately.',
+        'compact.restore': 'Restore default',
+        'compact.openPanel': 'Adjust in pipeline',
+        'compact.saved': 'Threshold saved',
+        'compact.saveFailed': 'Could not save threshold',
+        'ann.openPanel': 'Open model panel',
+        'llmretry.title': 'Request retry',
+        'llmretry.hint': 'Sleep and resend when a rule matches. Rules accept HTTP status, machine code, field=value and msg~fragments.',
+        'llmretry.rules': 'Rules',
+        'llmretry.code': 'Match expression',
+        'llmretry.delay': 'Sleep (s)',
+        'llmretry.maxRetries': 'Max retries',
+        'llmretry.add': 'Add rule',
+        'llmretry.save': 'Save',
+        'llmretry.saved': 'Saved and active',
+        'llmretry.saveFailed': 'Save failed',
+        'llmretry.source': 'Source',
+        'llmretry.waiting': 'Sleeping',
+        'llmretry.events': 'Recent activity',
+        'llmretry.noEvents': 'No events yet',
+        'llmretry.honor': 'Retry-After cap (s)',
+        'llmretry.honorHint': '0 ignores upstream hints; default 10s.',
+        'llmretry.firstToken': 'First-token timeout',
+        'llmretry.firstTokenHint': 'Abort when no first output arrives within this time.',
+        'llmretry.enabled': 'Enabled',
+        'llmretry.seconds': 'sec',
+        'llmretry.notMultimodal': 'When the model rejects multimodal input',
+        'llmretry.offload': 'Offload images automatically',
+        'llmretry.maxNotices': 'Max notices per turn',
+        'llmretry.emptyRules': 'No rules: every failure is reported directly.',
+        'llmretry.badNumber': 'Enter a valid number.',
+        title: 'Model Manager',
         refresh: 'Refresh roster',
         reprobe: 'Re-probe availability',
         probing: 'Probing…',
@@ -908,7 +1165,7 @@ window.__ModuleLoader__.load({
         'ann.p1': 'No credentials: install and use it — no sign-up, no API key to paste.',
         'ann.p2': 'The roster follows upstream: models, context lengths and capabilities are re-fetched on every refresh.',
         'ann.p3': 'Honest capability claims: anything a probe cannot confirm stays hidden, and each effort level is a real output budget.',
-        'ann.s1': 'Pick any model under the “Our Free Model” group in the composer’s model selector.',
+        'ann.s1': 'Pick any model under the “Model Manager” group in the composer’s model selector.',
         'ann.s2': 'For harder reasoning, open the Effort menu — it sends a real budget, not a prompt hint.',
         'ann.s3': 'To serve other local tools: Settings → Local forward → enable, then copy the base URL and key.',
         'ann.s4': 'Region-limited models reclassify themselves once your network egress changes.',
@@ -959,11 +1216,13 @@ window.__ModuleLoader__.load({
         'toast.annTitle': 'New announcement',
         'toast.updateTitle': 'Plugin update available',
         'toast.updateBody': 'Version {latest} is out (installed {current}). Upgrade from the settings page.',
-        'nav.tab.pipeline': 'Pipeline',
-        'nav.tab.observe': 'Observe',
+        'nav.tab.pipeline': 'Compaction & saving',
+        'nav.tab.routing': 'Model routing',
+        'nav.tab.observe': 'Dashboard',
+        'nav.tab.retry': 'Request retry',
         'nav.tab.free': 'Free models',
         'nav.tab.eac': 'EAC models',
-        'nav.tab.channels': 'Free channels',
+        'nav.tab.channels': 'Account channels',
         'star.cta': 'Star',
         'star.title': 'Star this repository on GitHub',
         'free.title': 'Free models',
@@ -974,8 +1233,8 @@ window.__ModuleLoader__.load({
         'eac.title': 'EAC models',
         'eac.sub': 'The desktop co-paid lane: unlocked by a GitHub login plus a star, independent of the free lane.',
         'eac.tankLabel': 'Co-paid pool pressure',
-        'chan.title': 'Free channel access',
-        'chan.sub': 'Bring each vendor\'s free quota in: sign in once and its models appear in the composer\'s model picker. Credentials are written to the local credential store only — this page never sees them.',
+        'chan.title': 'Account channels',
+        'chan.sub': 'Bring each account\'s free quota in: sign in once and its models appear in the composer\'s model picker. Credentials are written to the local credential store only — this page never sees them.',
         'chan.pack.failed': 'Channel pack not mounted: {reason} (the free and EAC lanes are unaffected)',
         'chan.pack.hint': 'The pack ships inside this plugin (vendor/channel-pack) and upgrades with it.',
         'chan.state.on': 'Connected',
@@ -1180,7 +1439,7 @@ window.__ModuleLoader__.load({
         'gw.relayKey': 'Relay key',
         'gw.rotate': 'Rotate',
         'gw.relayNote': 'The relay forwards only the model routes (/v1/*) and demands the relay key; binding to the LAN means every device on the network can reach that port.',
-        'gw.freeLaneNote': 'The free lane (Our Free Model) has its own forward port under "Local forward" on the Free models page.',
+        'gw.freeLaneNote': 'The free lane (Model Manager) has its own forward port under "Local forward" on the Free models page.',
         'chan.credits.left': 'Credits left',
         'chan.credits.tokens': 'Tokens left',
         'chan.credits.dollars': 'Balance left (USD)',
@@ -1363,6 +1622,91 @@ window.__ModuleLoader__.load({
         'routing.delete': 'Delete',
         'routing.deleteConfirm': 'Confirm delete',
         'routing.deleteWarn': 'Deleting it drops this model id from the roster immediately; a client still pointing at it gets a 404.',
+        'route.title': 'Route groups',
+        'route.sub': 'Priority, time windows, a daily circuit-breaker and a concurrency gate — one hop per failure, inside the chain, never a second interceptor.',
+        'route.groups': 'Groups',
+        'route.groupsHint': 'Each group is a selectable virtual model; members are tried by ascending priority.',
+        'route.gateTitle': 'Concurrency and cooldown',
+        'route.gateHint': 'These two are global defaults; a single model can override them in route.concurrencyByModel.',
+        'route.newGroup': 'New group',
+        'route.name': 'Group name',
+        'route.namePlaceholder': 'primary',
+        'route.enabled': 'Enabled',
+        'route.memberCount': '{n} members',
+        'route.memberEmpty': 'No members yet. Add at least one model or the group will not appear in the picker.',
+        'route.addMember': 'Add model',
+        'route.priority': 'Priority',
+        'route.priorityHint': 'Lower is tried first; imported values are kept as they were.',
+        'route.effort': 'Effort',
+        'route.effortPlaceholder': 'follow',
+        'route.effortFollow': 'Follow session',
+        'route.effortNone': 'This model has no effort levels',
+        'route.windows': 'Window',
+        'route.windowsPlaceholder': '18-8,12-14',
+        'route.windowsHint': '24-hour clock, comma separated. Crossing midnight is 18-8; 0-24 means all day.',
+        'route.removeMember': 'Remove',
+        'route.enable': 'Enable',
+        'route.disable': 'Disable',
+        'route.unavailable': 'not in roster',
+        'route.save': 'Save',
+        'route.saved': 'Group saved',
+        'route.savedBody': 'The picker is updated; the next request follows the new order.',
+        'route.failed': 'Could not save',
+        'route.cancel': 'Cancel',
+        'route.edit': 'Edit',
+        'route.delete': 'Delete',
+        'route.deleteConfirm': 'Click again to delete',
+        'route.deleteWarn': 'Deleting it drops this group id from the picker immediately; a session pinned to it must pick another model.',
+        'route.usable': 'Usable',
+        'route.notUsable': 'No usable member',
+        'route.legacyTag': 'migrated',
+        'route.bindings': '{n} legacy bindings',
+        'route.missingHint': '{n} members are not in the roster; they come back when the channel is enabled.',
+        'route.todayFailed': '{n} tripped today',
+        'route.resetFailed': 'Reset breaker',
+        'route.resetFailedHint': 'One success clears it automatically; this is the manual reset.',
+        'route.resetAll': 'Reset all breakers',
+        'route.resetDone': 'Breakers reset',
+        'route.resetDoneBody': 'Every member is back in the candidate pool.',
+        'route.concurrency': 'Default concurrency',
+        'route.cooldown': 'Rate-limit cooldown (s)',
+        'route.concurrencyHint': 'In-flight requests per model; 0 = unlimited. When full it does not queue — it moves to the next member.',
+        'route.saveSettings': 'Save concurrency',
+        'route.settingsSaved': 'Concurrency saved',
+        'route.settingsSavedBody': 'Takes effect from the next request.',
+        'route.import': 'Import from old plugin',
+        'route.importConfirm': 'Confirm replacing the groups',
+        'route.importHint': 'Reads model-failover-manager groups / session-bindings / failed; priorities are kept as-is. Existing groups are backed up first.',
+        'route.legacyMissing': 'The old plugin data directory is missing; nothing to import.',
+        'route.imported': 'Legacy config imported',
+        'route.importedBody': '{groups} groups, {members} members.',
+        'route.importSkip': 'Nothing imported',
+        'route.importFailed': 'Import failed',
+        'route.bindingNote': '{n} legacy session bindings are recorded here. The host stored the old facade model id, which no longer exists after uninstall; reselect "route:group" in those sessions.',
+        'route.loadFailed': 'Could not load groups',
+        'route.modelsCount': '{n} models available',
+
+        'effort.label': 'Plugin effort',
+        'effort.follow': 'Follow session',
+        'effort.hint': 'A value here overrides the session effort; "Follow session" writes nothing.',
+        'effort.light': 'Light',
+        'effort.balanced': 'Balanced',
+        'effort.deep': 'Deep',
+
+        'compaction.title': 'Context compaction',
+        'compaction.hint': 'The longer the chat, the bigger the prompt. When on, the old turns are summarized once context crosses the threshold, so the next request does not hit the window limit. Lower thresholds compact earlier and save more quota, but lose detail sooner.',
+        'compaction.enabled': 'Auto-compact',
+        'compaction.threshold': 'Trigger threshold',
+        'compaction.engines': '{n} compaction engines found',
+        'compaction.effective': 'effective {n}%',
+        'compaction.followDefault': 'following host default',
+        'compaction.floor': 'Floor {n}%: the engine keeps a reserve, and below it there is nothing to compact.',
+        'compaction.advice': '75% is a good default: a quarter stays for tool output and the next reply. 65% saves more quota; 85% is safer for long tasks.',
+        'compaction.unsupported': 'No compaction engine in the current preset (compaction realm not mounted); the slider has no effect.',
+        'compaction.apply': 'Apply',
+        'compaction.restoreDefault': 'Restore default',
+        'compaction.legacy': 'Imported {n}% from dsh-compaction-threshold.',
+        'compaction.saveFailed': 'Could not save the compaction threshold',
         'routing.enabled': 'Enabled',
         'routing.channel.free': 'Free lane',
         'routing.channel.eac': 'EAC co-paid',
@@ -1427,7 +1771,7 @@ window.__ModuleLoader__.load({
 .ofm_sec{display:flex;flex-direction:column;gap:10px}
 .ofm_sechead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .ofm_sec_title{font-size:14px;font-weight:680;letter-spacing:-.2px}
-.ofm_sec_hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-left:auto}
+.ofm_sec_hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-left:auto;flex:1 1 340px;min-width:0;max-width:100%;text-align:right;line-height:1.5}
 .ofm_grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:10px}
 /* ══ 卡片（双层 bezel：hairline 边框 + 顶部内高光 + 柔和外阴影） ═══════ */
 .ofm_card{position:relative;display:flex;flex-direction:column;gap:8px;padding:12px 13px;border-radius:13px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 80%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 6%),0 1px 2px color-mix(in srgb,var(--dsw-alias-state-business-primary) 7%,transparent),0 3px 10px color-mix(in srgb,var(--dsw-alias-state-business-primary) 4%,transparent);transition:transform .2s cubic-bezier(.32,.72,0,1),box-shadow .24s ease,border-color .18s ease}
@@ -1611,6 +1955,125 @@ window.__ModuleLoader__.load({
 @keyframes ofm-toast-rise{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
 /* ══ 模态 ══════════════════════════════════════════════════════════════ */
 .ofm_modal{width:min(520px,92vw);max-height:min(80vh,600px);border-radius:18px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 95%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 8%),0 28px 80px rgb(0 0 0 / 42%);display:flex;flex-direction:column;overflow:hidden;animation:ofm-popin .34s cubic-bezier(.16,1,.3,1)}
+/* ══ 模型面板对话框与输入栏快捷条 ══════════════════════════════════════ */
+.ofm_panelscrim{z-index:1400;padding:16px}
+.ofm_panelmodal{width:min(1120px,96vw);height:min(90vh,900px);max-height:calc(100vh - 32px);border-radius:20px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);box-shadow:inset 0 1px 0 rgb(255 255 255 / 8%),0 30px 90px rgb(0 0 0 / 44%);overflow:hidden;animation:ofm-popin .34s cubic-bezier(.16,1,.3,1)}
+.ofm_panelmodal .ofm_shell{max-width:none;height:100%;overflow:hidden;padding:16px 18px 22px;box-sizing:border-box}
+.ofm_dlgtabbar{padding:2px 2px 10px}
+.ofm_dlghead{display:flex;align-items:center;gap:10px;min-height:34px;padding:0 2px 8px}
+.ofm_dlgspacer{flex:1}
+.ofm_dlgbody{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:18px;padding:0 2px 4px}
+.ofm_dlgbody::-webkit-scrollbar{width:9px}
+.ofm_dlgbody::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px}
+/* ── 模型选择器（对话框）：左提供商、右模型行，点一行即切换 ─────────────── */
+.ofm_mpicker{display:flex;flex-direction:column;width:min(94vw,880px);height:min(84vh,640px);max-height:calc(100vh - 32px);border-radius:18px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);box-shadow:inset 0 1px 0 rgb(255 255 255 / 8%),0 30px 90px rgb(0 0 0 / 44%);overflow:hidden;animation:ofm-popin .3s cubic-bezier(.16,1,.3,1)}
+.ofm_mpickerhead{display:flex;align-items:center;gap:10px;padding:12px 14px 10px 18px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.ofm_mpickertitle{font-size:14px;font-weight:700;letter-spacing:-.2px}
+.ofm_mpickerspacer{flex:1}
+.ofm_mpickerbody{display:flex;flex:1;min-height:0}
+.ofm_mpickerrail{flex:none;width:196px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 46%,transparent)}
+.ofm_mpickerrailtitle{padding:12px 14px 6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-caption)}
+.ofm_mpickerraillist{flex:1;min-height:0;overflow:auto;padding:0 8px 10px;display:flex;flex-direction:column;gap:2px}
+.ofm_mpickerraillist::-webkit-scrollbar{width:7px}
+.ofm_mpickerraillist::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px}
+.ofm_mpickerrailrow{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;font:inherit;font-size:12.5px;text-align:left;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color .16s ease,background .16s ease}
+.ofm_mpickerrailrow:hover{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickerrailrow[data-on="true"]{color:var(--dsw-alias-label-primary);font-weight:600;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,var(--dsw-alias-bg-layer-3));border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 32%,transparent)}
+.ofm_mpickerrailname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickerrailcount{flex:none;font-size:10.5px;color:var(--dsw-alias-label-caption);font-variant-numeric:tabular-nums}
+.ofm_mpickerpane{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.ofm_mpickertools{padding:10px 14px 4px}
+.ofm_mpickerlist{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px 10px 12px}
+.ofm_mpickerlist::-webkit-scrollbar{width:8px}
+.ofm_mpickerlist::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px}
+.ofm_mpickgroup{display:flex;align-items:center;gap:8px;padding:10px 8px 4px;font-size:10.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-caption)}
+.ofm_mpickgroupcount{font-weight:500;letter-spacing:0;text-transform:none;color:var(--dsw-alias-label-dimmed)}
+.ofm_mpickitem{display:flex;flex-direction:column}
+.ofm_mpickrow{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;font:inherit;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;transition:background .14s ease,border-color .14s ease}
+.ofm_mpickrow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 66%,transparent)}
+.ofm_mpickrow[data-current="true"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 9%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 26%,transparent)}
+.ofm_mpickrow:disabled{opacity:.55;cursor:default}
+.ofm_mpickmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ofm_mpicknamerow{display:flex;align-items:center;gap:7px;min-width:0}
+.ofm_mpickname{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickbadge{flex:none;font-size:9.5px;font-weight:650;padding:1px 6px;border-radius:999px;color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent)}
+.ofm_mpickdesc{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickid{flex:none;max-width:38%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;color:var(--dsw-alias-label-tertiary);opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickcurrent{flex:none;font-size:10px;font-weight:650;padding:1px 7px;border-radius:999px;color:var(--dsw-alias-state-success-primary);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent)}
+.ofm_mpickspinner{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.ofm_mpickefforts{display:flex;gap:5px;flex-wrap:wrap;padding:0 10px 6px 34px}
+.ofm_minibtn[data-on="true"]{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,transparent)}
+.ofm_mpickerfoot{display:flex;align-items:center;gap:8px;padding:9px 16px;border-top:1px solid var(--dsw-alias-border-l1)}
+.ofm_mpickerfoot .ofm_note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickempty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:32px 16px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.ofm_mpickempty b{font-size:13px;color:var(--dsw-alias-label-secondary)}
+/* 面板顶部三个页签：模型 / 路由分组 / 失败模型 */
+.ofm_mpicktabs{display:flex;gap:2px;padding:3px;border-radius:10px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 80%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 70%,transparent)}
+.ofm_mpicktab{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;font:inherit;font-size:12px;font-weight:600;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.ofm_mpicktab:hover{color:var(--dsw-alias-label-primary)}
+.ofm_mpicktab[data-on="true"]{color:var(--dsw-alias-label-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,var(--dsw-alias-bg-layer-1));border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 30%,transparent)}
+.ofm_mpicktabnum{font-size:10.5px;font-weight:550;color:var(--dsw-alias-label-tertiary)}
+.ofm_mpickgrouprow{display:flex;flex-direction:column;gap:4px;padding:9px 11px;border-radius:10px;border:1px solid transparent;min-width:0;width:100%;box-sizing:border-box;overflow:hidden}
+.ofm_mpickgrouprow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickgrouprow[data-current="true"]{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 9%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 26%,transparent)}
+.ofm_mpickgrouptop{display:flex;align-items:center;gap:8px;min-width:0}
+.ofm_mpickgroupname{font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.ofm_mpickgroupmeta{flex:none;font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.ofm_mpickgroupmembers{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;width:100%;box-sizing:border-box}
+.ofm_mpickfailedrow{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:10px}
+.ofm_mpickfailedrow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickfailedmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ofm_mpickfailedname{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_mpickfailedwhy{font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 分组编辑（模型面板内）：一条成员一行，优先级/档位/启停/移出都在右手边 */
+.ofm_mpickerrailnew{display:flex;gap:6px;padding:8px;border-top:1px solid var(--dsw-alias-border-l1)}
+.ofm_mpickerrailnew .ofm_input{flex:1;min-width:0;font-size:11.5px;padding:5px 8px}
+.ofm_mpickmember{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:9px;border:1px solid transparent}
+.ofm_mpickmember:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickmember[data-off="true"]{opacity:.5}
+.ofm_mpickmembermain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ofm_mpickmembertools{flex:none;display:flex;align-items:center;gap:6px}
+.ofm_mpicknum{width:62px;padding:4px 6px;font-size:11.5px;text-align:center}
+.ofm_mpickeffort{width:104px;padding:4px 6px;font-size:11px}
+.ofm_mpickbadge[data-tone="warn"]{color:var(--dsw-alias-state-error-primary,#c0392b);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 32%,transparent)}
+.ofm_mpickadd{padding:10px 4px 2px;display:flex;flex-direction:column;gap:4px;border-top:1px dashed var(--dsw-alias-border-l1);margin-top:8px}
+.ofm_mpickaddrow{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:8px}
+.ofm_mpickaddrow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 55%,transparent)}
+.ofm_mpickaddmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ofm_panelsearch{width:100%;max-width:360px;box-sizing:border-box;margin:0 0 10px;padding:8px 10px;font:inherit;font-size:12px;border-radius:9px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 80%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);color:var(--dsw-alias-label-primary);outline:none}
+.ofm_panelsearch::placeholder{color:var(--dsw-alias-label-caption)}
+.ofm_panelsearch:focus{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 48%,transparent);background:var(--dsw-alias-bg-layer-1)}
+.ofm_skeleton{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.ofm_skeletonrow{height:34px;border-radius:9px;background:linear-gradient(90deg,color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent),color-mix(in srgb,var(--dsw-alias-bg-layer-1) 85%,transparent),color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent));background-size:200% 100%;animation:ofm_shimmer 1.4s ease-in-out infinite}
+@keyframes ofm_shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.ofm_empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:38px 12px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.ofm_empty b{font-size:13px;color:var(--dsw-alias-label-secondary)}
+.ofm_modellaunch:focus-visible,.ofm_mpickerrailrow:focus-visible,.ofm_mpickrow:focus-visible,.ofm_panelsearch:focus-visible{outline:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);outline-offset:1px}
+@media (prefers-reduced-motion: reduce){.ofm_skeletonrow{animation:none}.ofm_mpickerrailrow,.ofm_mpickrow,.ofm_modellaunch{transition:none}}
+.ofm_nav .ofm_navact{grid-column:2;grid-row:1;justify-self:end;display:flex;align-items:center;gap:6px}
+.ofm_close{width:28px;height:28px;display:grid;place-items:center;font:inherit;font-size:17px;line-height:1;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 66%,transparent);color:var(--dsw-alias-label-secondary);cursor:pointer;transition:color .16s ease,border-color .16s ease,background .16s ease}
+.ofm_close:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 76%,transparent)}
+.ofm_dock{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:24px}
+.ofm_autochip,.ofm_dockbtn{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:11.5px;font-weight:540;padding:3px 9px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 72%,transparent);color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;transition:color .16s ease,border-color .16s ease,background .16s ease}
+.ofm_autochip:hover,.ofm_dockbtn:hover{color:var(--dsw-alias-label-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 7%,var(--dsw-alias-bg-layer-2))}
+.ofm_autochip .ofm_dot{width:5px;height:5px}
+.ofm_autochipcaret{font-size:9px;opacity:.55;margin-left:1px}
+.ofm_dockbtn{border-color:transparent;background:transparent;padding-inline:6px}
+.ofm_modelseat{position:relative;display:flex;align-items:center}
+.ofm_modellaunch{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;font:inherit;font-size:12px;font-weight:500;white-space:nowrap;border-radius:8px;border:.5px solid var(--dsw-alias-border-l4,var(--dsw-alias-border-l1));background:var(--dsw-alias-bg-module-platform,transparent);color:var(--dsw-alias-label-secondary);cursor:pointer;line-height:1;transition:color .16s ease,border-color .16s ease}
+.ofm_modellaunch:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2)}
+.ofm_quickpop{position:fixed;z-index:1500;width:308px;padding:13px 14px;display:flex;flex-direction:column;gap:10px;border-radius:16px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 96%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 8%),0 22px 60px rgb(0 0 0 / 38%);animation:ofm-popin .24s cubic-bezier(.16,1,.3,1)}
+.ofm_quickpophead{display:flex;flex-direction:column;gap:3px}
+.ofm_quickpophead b{font-size:13px;font-weight:680;letter-spacing:-.1px}
+.ofm_quickval{display:flex;align-items:baseline;gap:2px;font-variant-numeric:tabular-nums}
+.ofm_quickval b{font-size:28px;font-weight:740;letter-spacing:-1px;line-height:1}
+.ofm_quickval span{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ofm_quickslider{width:100%;margin:2px 0;accent-color:var(--dsw-alias-state-business-primary)}
+.ofm_quickpopfoot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.ofm_retryevents{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+.ofm_retryevent{display:flex;align-items:center;gap:8px;min-width:0;padding:4px 0;border-bottom:1px dashed color-mix(in srgb,var(--dsw-alias-border-l1) 60%,transparent)}
+.ofm_retryevent b{font-size:11.5px;font-weight:620;white-space:nowrap}
+.ofm_retryevent .ofm_note{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ofm_modalhead{padding:17px 20px 11px;display:flex;align-items:center;gap:10px;font-size:15px;font-weight:720;letter-spacing:-.2px}
 .ofm_modalbody{padding:4px 20px 16px;overflow:auto;font-size:12.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
 .ofm_modalbody p{margin:0 0 6px}
@@ -1658,6 +2121,7 @@ window.__ModuleLoader__.load({
 .ofm_tankrays{position:absolute;inset:-30% -12%;pointer-events:none;opacity:.5;background:repeating-linear-gradient(104deg,rgb(255 255 255 / 7%) 0 9px,transparent 9px 30px);mix-blend-mode:soft-light;animation:ofmrays 11s ease-in-out infinite alternate}
 @keyframes ofmrays{from{transform:translateX(-14px) rotate(-.4deg)}to{transform:translateX(14px) rotate(.4deg)}}
 .ofm_tankshine{position:absolute;inset:0;pointer-events:none;background:linear-gradient(196deg,rgb(255 255 255 / 13%) 0%,transparent 32%)}
+.ofm_tankempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:560;letter-spacing:.04em;color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 80%,transparent)}
 @media (prefers-reduced-motion:reduce){.ofm_wave,.ofm_bubble,.ofm_fish,.ofm_tankrays{animation:none}}
 /* ══ 三页外壳：极光底 · 毛玻璃导航 · 页过渡 ═════════════════════════════
    The aurora is a fixed layer *inside* our root: a flat shell background gives
@@ -1665,7 +2129,10 @@ window.__ModuleLoader__.load({
    plain translucent box. It sits at z-index:-1 with isolation:isolate on the
    shell, which keeps it behind our content and above the app background without
    ever escaping into the shell's own stacking order. */
-.ofm_shell{position:relative;display:flex;flex-direction:column;gap:18px;max-width:1120px;isolation:isolate}
+.ofm_shell{position:relative;display:flex;flex-direction:column;gap:18px;max-width:1120px;width:100%;height:100%;overflow-y:auto;overflow-x:hidden;margin:0 auto;padding:10px 26px 34px;box-sizing:border-box;isolation:isolate}
+.ofm_shell::-webkit-scrollbar{width:10px}
+.ofm_shell::-webkit-scrollbar-thumb{background:var(--dsw-alias-border-l2);border-radius:8px}
+.ofm_shell::-webkit-scrollbar-track{background:transparent}
 .ofm_aurora{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
 .ofm_aurora i{position:absolute;display:block;border-radius:50%;filter:blur(70px);opacity:.42;animation:ofmdrift 44s ease-in-out infinite alternate}
 .ofm_aurora i:nth-child(1){width:46vw;height:46vw;left:-12vw;top:-14vw;background:radial-gradient(circle,color-mix(in srgb,var(--dsw-alias-state-business-primary) 62%,transparent),transparent 68%)}
@@ -1697,7 +2164,7 @@ window.__ModuleLoader__.load({
 .ofm_tank.xl{width:264px;height:148px;border-radius:20px;box-shadow:inset 0 0 0 1px rgb(255 255 255 / 12%),0 16px 40px rgb(0 0 0 / 14%)}
 .ofm_tank.xl .ofm_tankglass{border-radius:20px}
 /* ══ 渠道接入页 ════════════════════════════════════════════════════════ */
-.ofm_chanwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.ofm_chanwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:start}
 .ofm_chan{position:relative;display:flex;flex-direction:column;gap:12px;padding:16px 17px 15px;border-radius:16px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-3) 78%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 5%),0 1px 2px rgb(0 0 0 / 5%);overflow:hidden;transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .24s ease,border-color .2s ease}
 .ofm_chan::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,var(--chan-accent,var(--dsw-alias-state-business-primary)),transparent 78%);opacity:.95}
 .ofm_chan:hover{transform:translateY(-3px);box-shadow:inset 0 1px 0 rgb(255 255 255 / 8%),0 18px 40px rgb(0 0 0 / 15%);border-color:color-mix(in srgb,var(--chan-accent,var(--dsw-alias-state-business-primary)) 55%,transparent)}
@@ -1722,10 +2189,27 @@ window.__ModuleLoader__.load({
 .ofm_balanceerror{flex-basis:100%;overflow-wrap:anywhere;color:var(--dsw-alias-state-error-primary);font-size:11px}
 .ofm_acctacts{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap}
 .ofm_modellist{display:flex;flex-direction:column;gap:4px;max-height:238px;overflow:auto;padding-right:2px}
+.ofm_modellist.tall{max-height:none}
+.ofm_cataloghero{padding:14px 18px !important}
+.ofm_cataloghead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ofm_cataloghead h2{margin:0;font-size:19px;letter-spacing:-.02em}
+.ofm_catalogsub{margin:2px 0 0;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+.ofm_cataloglist{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:8px;max-height:none}
+.ofm_catalogrow{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:10px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 62%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 48%,transparent);transition:border-color .15s ease,background .15s ease}
+.ofm_catalogrow:hover{border-color:color-mix(in srgb,var(--dsw-alias-border-l1) 92%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 75%,transparent)}
+.ofm_catalogrow.off{opacity:.55}
+.ofm_catalogmain{min-width:0}
+.ofm_catalogname{font-size:12.5px;font-weight:560;color:var(--dsw-alias-label-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ofm_catalogid{margin-top:1px;font-size:10px;color:var(--dsw-alias-label-caption);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ofm_catalogtags{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.ofm_catalogrow .ofm_badge{margin-left:0}
+.ofm_catalogtools{display:flex}
+.ofm_cataloghead .ofm_btn{padding:7px 13px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 80%,transparent);border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent)}
+.ofm_cataloghead .ofm_btn:hover{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 40%,transparent)}
 .ofm_modelrow{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);font-size:11.5px;transition:background .15s ease}
 .ofm_modelrow:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 85%,transparent)}
 .ofm_modelrow.off{opacity:.5}
-.ofm_modelrow .ofm_id{flex:1;min-width:0}
+.ofm_modelrow .ofm_id{flex:1;min-width:0;color:var(--dsw-alias-label-secondary);font-size:11.5px}
 .ofm_tagpill{font-size:10px;font-weight:560;padding:1px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 90%,transparent);color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .ofm_tagpill.free{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 8%,transparent)}
 .ofm_tagpill.dead{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 8%,transparent)}
@@ -2294,6 +2778,34 @@ window.__ModuleLoader__.load({
     })
 
     /**
+     * The merged retry engine keeps the old package's own route.
+     *
+     * It is not nested under `/api/our-free-model` on purpose: a user who tuned
+     * rules under the old plugin can still open its fallback HTML page and the
+     * same rules file is served. This helper only prefixes with the host's base
+     * so a reverse-proxied DSH still resolves it.
+     */
+    const RETRY_API = (() => {
+      try { return new URL('llm-error-retry/api/config', document.baseURI).pathname } catch { return '/llm-error-retry/api/config' }
+    })()
+
+    async function retryApi(options) {
+      const { timeout = 8000, ...fetchOptions } = options ?? {}
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), timeout)
+      try {
+        const response = await fetch(RETRY_API, { ...fetchOptions, redirect: 'error', signal: ctrl.signal })
+        const text = await response.text()
+        let payload
+        try { payload = text === '' ? {} : JSON.parse(text) } catch { payload = { error: text.slice(0, 200) } }
+        if (!response.ok || payload?.ok === false) throw new Error(payload?.error ?? `HTTP ${response.status}`)
+        return payload
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+
+    /**
      * Whether the shell is showing `#root` to the user right now.
      *
      * A slot step lives inside `#root`, so the desktop shell's own first-run
@@ -2830,11 +3342,23 @@ window.__ModuleLoader__.load({
     }
 
     // ── model roster ──────────────────────────────────────────────────────────
+    /** 档位 id → 文案；未知 id（上游自定义档）原样显示，不编造翻译。 */
+    const EFFORT_TEXT = { light: 'effort.light', balanced: 'effort.balanced', deep: 'effort.deep' }
+    const effortLabel = (t, id) => typeof EFFORT_TEXT[id] === 'string' ? t(EFFORT_TEXT[id]) : String(id)
+
     function ModelCard(props) {
-      const { model: m, t, onBench, bench } = props
+      const { model: m, t, onBench, bench, effort, onEffort, busy } = props
       const stateKey = `state.${m.availability}`
       const dim = m.availability !== 'available'
       const rung = (m.budgets ?? []).find(row => row.isDefault === true)
+      // 档位菜单的两个来源：显式 efforts 清单（真菜单，行可能是 `{id,name}`），
+      // 或预算阶梯（真阶梯）。两者都没有的模型不渲染下拉。
+      const declared = Array.isArray(m.efforts)
+        ? m.efforts.map(row => typeof row === 'string' ? row : row?.id).filter(id => typeof id === 'string' && id !== '')
+        : []
+      const effortIds = declared.length > 0
+        ? declared
+        : (m.budgets ?? []).map(row => row.id).filter(id => typeof id === 'string' && id !== '')
       return h('article', { className: 'ofm_card' + (dim ? ' dim' : '') },
         h('div', { className: 'ofm_cardhead' },
           m.channel === 'kilo' ? h('span', { className: 'ofm_chantag', title: t('tag.kiloChannel') }, 'Kilo') : null,
@@ -2854,6 +3378,18 @@ window.__ModuleLoader__.load({
               : h('div', { className: 'ofm_metrics' },
                 m.ttftMs === undefined || m.ttftMs === 0 ? null : h('span', null, t('tag.latency'), ' ', h('b', null, Math.round(m.ttftMs)), ' ms'),
                 h('span', null, t('pref.probedAt'), ' ', h('b', null, ago(m.probedAt, t.locale)))),
+        // 档位下拉：面板里选的档优先于会话里的 reasoningEffort（adapter 里的
+        // `modelEffort[entry.id]` 覆盖），空值 = 跟随会话，不写任何东西。
+        effortIds.length === 0 || onEffort === undefined ? null : h('div', { className: 'ofm_row', style: { marginTop: 4 } },
+          h('span', { className: 'ofm_note', title: t('effort.hint') }, t('effort.label')),
+          h('select', {
+            className: 'ofm_input', style: { maxWidth: 150 }, value: effort ?? '', disabled: busy === true,
+            'aria-label': t('effort.label'),
+            onChange: event => onEffort(m, event.target.value),
+          },
+            h('option', { value: '' }, t('effort.follow')),
+            effortIds.map(id => h('option', { key: id, value: id }, effortLabel(t, id)))),
+          h('span', { className: 'ofm_note' }, t('effort.hint'))),
         m.canDisableThinking === false ? h('p', { className: 'ofm_note' }, t('hint.sharedBudget')) : null,
         onBench === undefined ? null : h('div', { className: 'ofm_row' },
           h(Button, { disabled: bench?.running === true, onClick: () => onBench(m) }, bench?.running === true ? t('bench.running') : t('bench.run')),
@@ -2861,7 +3397,7 @@ window.__ModuleLoader__.load({
     }
 
     function Roster(props) {
-      const { summary, t, onBench, benches } = props
+      const { summary, t, onBench, benches, effortTable, onEffort, busy } = props
       // 免费车道页：catalog 里已经不含 EAC 行（车道在运行时被摘除）。
       const roster = summary.catalog
       const available = roster.filter(m => m.route === 'our-free-model')
@@ -2872,6 +3408,8 @@ window.__ModuleLoader__.load({
             hint === undefined ? null : h('span', { className: 'ofm_sec_hint' }, hint)),
           h('div', { className: 'ofm_grid' }, list.map(m => h(ModelCard, {
             key: m.id, model: m, t, onBench,
+            effort: (effortTable ?? {})[m.id] ?? '',
+            onEffort, busy,
             bench: { running: benches[m.id]?.running === true, ...benches[m.id]?.result === undefined ? {} : { result: benches[m.id].result } },
           }))))
       // 暂不可用的模型不再单独成组展示（用户要求移除「不在选择器中」区块）：
@@ -2920,6 +3458,7 @@ window.__ModuleLoader__.load({
           h('i', { className: 'ofm_wave w2' })),
         h('i', { className: 'ofm_tankrays' }),
         h('i', { className: 'ofm_tankshine' }),
+        pct <= 0 ? h('span', { className: 'ofm_tankempty' }, `${pct}%`) : null,
         h('div', { className: 'ofm_tankglass' }))
     }
 
@@ -3420,7 +3959,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The plugin's own brand mark (user-supplied artwork, 128px JPEG). */
-    const BRAND_ICON = 'data:image/jpeg;base64,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'
+    const BRAND_ICON = 'data:image/x-icon;base64,﻿AAABAAEAICAAAAEAIACoEAAAFgAAACgAAAAgAAAAQAAAAAEAIAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAKQAAAGwAAACqAAAAwwAAAOsAAADjAAAA8gAAAPMAAADaAAAArQAAAGwAAAAoAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAANwAAAJcAAADiAAAA/wAAAP0AAACqAAAAhQAAAHQAAACMAAAA5QAAAPAAAADtAAAA9QAAAOEAAACXAAAANgAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGQAAAIkAAADrAAAA/wAAAMIAAACVAAAAXwAAAEAAAAAbAAAAUAAAAEoAAABZAAAAjgAAAJMAAACTAAAArAAAAO8AAADsAAAAiAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADQAAADDAAAA/wAAAPsAAAC1AAAAnQAAAJQAAABzAAAAewAAAI4AAAA1AAAANwAAALEAAAD6AAAA/AAAAO4AAACaAAAASAAAAMMAAAD/AAAAwQAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAA2AAAAPQAAADqAAAAqgAAAMUAAAD/AAAA/wAAAP8AAAD/AAAA/wAAAOoAAADrAAAA/wAAAP8AAAD/AAAA/wAAAPoAAAB0AAAAUwAAAOgAAAD/AAAA2QAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANAAAANkAAAD5AAAAlQAAAHYAAADPAAAA/wAAAP8AAAD/AAAA/wAAAOAAAADWAAAA/wAAAP8AAADxAAAA6AAAAO8AAAD8AAAA/wAAAPoAAADJAAAA2gAAAPUAAAD5AAAA2AAAADMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABkAAADBAAAA/wAAAPQAAACOAAAAlwAAAP8AAAD/AAAA/wAAAPsAAACjAAAAlQAAAOQAAAC5AAAAbgAAAGoAAACUAAAAwwAAAPQAAAD/AAAA/wAAAP8AAAC0AAAAkgAAAJYAAAD0AAAAwQAAABgAAAAAAAAAAAAAAAAAAAABAAAAiQAAAP8AAADpAAAA2wAAALQAAADVAAAA/wAAAOAAAAD5AAAAjwAAAGwAAADVAAAAZAAAADAAAACPAAAAxwAAAL8AAACyAAAAvAAAAN0AAAD7AAAA/wAAANMAAACTAAAAdgAAAOsAAAD/AAAAhwAAAAEAAAAAAAAAAAAAADYAAADsAAAAwwAAAFoAAADQAAAA/wAAAP8AAADQAAAAvAAAAL0AAAA4AAAAugAAAEcAAAAcAAAAegAAAF8AAAAlAAAAGwAAADYAAABPAAAAXAAAAIEAAADQAAAA/wAAAP8AAADNAAAAqQAAAPwAAADqAAAANQAAAAAAAAACAAAAmAAAAO8AAABJAAAAfAAAAPwAAAD/AAAA+wAAAIEAAADPAAAAUwAAAF8AAABYAAAAAAAAABUAAAANAAAAAAAAAAMAAAA0AAAAbAAAAJgAAADBAAAAzwAAALwAAADgAAAA/wAAAP8AAADDAAAAtQAAAP8AAACUAAAAAQAAACkAAADhAAAArwAAAKAAAAD7AAAA/wAAAP8AAADdAAAAXAAAAMIAAAAbAAAAOwAAAAcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAABsAAABTAAAAvgAAAPoAAAD/AAAA/wAAAP8AAACcAAAAwwAAAOAAAAAnAAAAbAAAAPQAAACcAAAA8gAAAP8AAAD8AAAA8wAAAL4AAABOAAAAmgAAAAMAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAQAAAAGAAAAA4AAAAkgAAAPwAAAD/AAAA/wAAAJUAAACWAAAA/wAAAGkAAACtAAAA7QAAAJ8AAAD+AAAA/wAAAO8AAADEAAAAtAAAADYAAABvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAXQAAALoAAABpAAAAqAAAAP8AAAD/AAAAdAAAAGAAAAD9AAAAqAAAANoAAADwAAAAmgAAAPwAAAD/AAAA6AAAAJYAAADBAAAAHAAAADYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATQAAANUAAACTAAAA4wAAAP8AAAB6AAAAQQAAAKwAAADBAAAA8wAAAOUAAABfAAAAuwAAAP8AAADwAAAAagAAAMkAAAAmAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABcAAAAbAAAAawAAAOQAAADYAAAA/wAAAI8AAAAaAAAAgwAAAOgAAADyAAAAjwAAAEgAAABAAAAA8AAAAP8AAABsAAAAkAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAHwAAAAvAAAAwAAAAP8AAADqAAAANgAAAEYAAAB1AAAA5AAAAOMAAABzAAAASgAAADwAAADuAAAA/wAAALcAAAAvAAAAegAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZwAAAIwAAAB2AAAA/wAAAOoAAAA1AAAASwAAAJgAAADxAAAA6gAAAIIAAAAbAAAAmAAAAP8AAADSAAAA5QAAAGIAAAAbAAAAFQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAArAAAAyAAAAG4AAAD0AAAA/wAAAK4AAABiAAAA6wAAAPIAAADCAAAAqgAAADwAAACGAAAA/wAAANwAAACTAAAA1QAAAEUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANgAAAB4AAADFAAAAlgAAAO0AAAD/AAAA+QAAAJUAAAD0AAAA1wAAAKoAAAD8AAAAWQAAAH0AAAD/AAAA/wAAAJ0AAABtAAAAugAAAFcAAAAHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABxAAAANQAAALoAAADFAAAA8wAAAP8AAAD7AAAAnAAAAPIAAACrAAAAbQAAAP8AAACQAAAAnQAAAP8AAAD/AAAA+QAAAIkAAAA3AAAAYAAAADoAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAABAAAAJ0AAABNAAAAxAAAAPQAAAD9AAAA/wAAAO4AAACdAAAA9wAAAGoAAAAqAAAA4wAAAL4AAACkAAAA/wAAAP8AAAD/AAAA+AAAALgAAABOAAAAGAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAADsAAAAdAAAAwwAAAFwAAADhAAAA/wAAAP8AAAD7AAAAnQAAALcAAADhAAAAKAAAAAIAAACYAAAA/gAAALMAAADLAAAA/wAAAP8AAADeAAAAvAAAAM4AAAC/AAAAlgAAAGwAAAAyAAAAAQAAAAAAAAAPAAAAFAAAAAAAAABdAAAAWwAAAFcAAADMAAAAhAAAAP0AAAD/AAAA+gAAAHYAAABSAAAA8wAAAJcAAAACAAAAAAAAADcAAADrAAAA+gAAAKkAAADVAAAA/wAAAP4AAADOAAAAfwAAAFwAAABPAAAANQAAABsAAAAmAAAAYgAAAHcAAAAZAAAATAAAALkAAAA3AAAAwAAAALkAAADUAAAA/wAAAP8AAADKAAAAWQAAAMoAAADsAAAANQAAAAAAAAAAAAAAAQAAAIkAAAD/AAAA5wAAAHgAAACaAAAA2QAAAP8AAAD6AAAA2wAAALsAAACyAAAAvwAAAMYAAACLAAAALgAAAGkAAADVAAAAaAAAAJMAAAD5AAAA4AAAAP8AAADVAAAAtAAAANoAAADsAAAA/wAAAIgAAAABAAAAAAAAAAAAAAAAAAAAGQAAAMMAAADyAAAAkgAAAI0AAAC3AAAA/wAAAP8AAAD/AAAA9AAAAMQAAACUAAAAawAAAHEAAAC8AAAA4wAAAJAAAAClAAAA/AAAAP8AAAD/AAAA/wAAAJcAAACOAAAA9AAAAP8AAADBAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAANkAAAD4AAAA9AAAANgAAADIAAAA+QAAAP8AAAD8AAAA8AAAAOkAAADyAAAA/wAAAP4AAADTAAAA4QAAAP8AAAD/AAAA/wAAAP8AAADPAAAAdwAAAJUAAAD4AAAA2gAAADQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQQAAANoAAAD/AAAA6AAAAFEAAABzAAAA+gAAAP8AAAD/AAAA/wAAAP8AAADrAAAA6gAAAP8AAAD/AAAA/wAAAP8AAAD/AAAAxQAAAKkAAADqAAAA9AAAANkAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANQAAAMIAAAD/AAAAwwAAAEcAAACYAAAA7gAAAPwAAAD5AAAAsQAAADcAAAA2AAAAjwAAAHwAAABzAAAAlAAAAJ0AAAC1AAAA+wAAAP8AAADDAAAANQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGQAAAIoAAADtAAAA7wAAAKwAAACRAAAAkgAAAIwAAABZAAAASgAAAFAAAAAbAAAAQAAAAF8AAACVAAAAwgAAAP8AAADrAAAAiQAAABkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAADcAAACYAAAA4gAAAPUAAADtAAAA8AAAAOUAAACMAAAAdAAAAIUAAACqAAAA/QAAAP8AAADiAAAAlwAAADcAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAqAAAAbQAAAK0AAADaAAAA9AAAAPIAAADjAAAA6gAAAMMAAACqAAAAbAAAACkAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+AAAH/AAAA/gAAAHwAAAA4AAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8AAAAPgAAAP4AAAD/gAAB/4AAAf+AAAH/AAAAfwAAAHwAAAA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAcAAAAPgAAAH8AAAD/gAAB8='
 
     /**
      * The thirteen account channels enabled by OFM. Identity is static (it is
@@ -6422,7 +6961,7 @@ window.__ModuleLoader__.load({
      * with is preferred when it is there.
      */
     function RoutingPage(props) {
-      const { t } = props
+      const { t, bare = false } = props
       const panel = usePanel(() => api('/combos'), [])
       const [editing, setEditing] = useState(null)
       const [confirm, setConfirm] = useState('')
@@ -6459,16 +6998,13 @@ window.__ModuleLoader__.load({
       // member list and the validation are identical, only the id is absent.
       const blank = { name: '', models: [], strategy: 'fallback', stickyLimit: 1, enabled: true }
 
-      return h('div', { className: 'ofm_page' },
-        h(PageHero, { title: t('routing.title'), sub: t('routing.sub') },
-          h('div', { className: 'ofm_pills' },
-            h(Pill, null, t('routing.chains') + ' ' + String(chains.length)))),
-        panel.status === 'loading' ? h(PanelSkeleton) : null,
+      const body = [
+        panel.status === 'loading' ? h(PanelSkeleton, { key: 'loading' }) : null,
         panel.status === 'error'
-          ? h(PanelError, { t, title: t('routing.loadFailed'), message: panel.error, onRetry: panel.reload })
+          ? h(PanelError, { key: 'error', t, title: t('routing.loadFailed'), message: panel.error, onRetry: panel.reload })
           : null,
         panel.status === 'ready'
-          ? h(Section, { title: t('routing.chains'), hint: t('routing.chainsHint') },
+          ? h(Section, { key: 'ready', title: t('routing.chains'), hint: t('routing.chainsHint') },
             // The editor renders full width above the list rather than inside a
             // grid cell: a chain's member list and its picker need the room, and a
             // form squeezed into a 252 px column is a form nobody can order.
@@ -6493,10 +7029,1295 @@ window.__ModuleLoader__.load({
               onDelete: () => { if (confirm === chain.id) void remove(chain.id); else setConfirm(chain.id) },
             }))),
             confirm === '' ? null : h('p', { className: 'ofm_note' }, t('routing.deleteWarn')))
+          : null,
+      ]
+      // `bare`：作为「路由」页签的第二段渲染，页头与大标题由 RoutesPage 出。
+      return bare
+        ? h(Fragment, null, ...body)
+        : h('div', { className: 'ofm_page' },
+          h(PageHero, { title: t('routing.title'), sub: t('routing.sub') },
+            h('div', { className: 'ofm_pills' },
+              h(Pill, null, t('routing.chains') + ' ' + String(chains.length)))),
+          ...body)
+    }
+
+    // ── 路由分组（原 model-failover-manager 的面板部分）──────────────────────
+    /** `[{from,to}]` → 「18-8,12-14」；空数组 → 空串。 */
+    function windowsTextOf(windows) {
+      return Array.isArray(windows) ? windows.map(item => `${item.from}-${item.to}`).join(',') : ''
+    }
+    /** 「18-8,12-14」→ `[{from,to}]`。无法解析的片段直接丢弃，不阻塞保存。 */
+    function parseWindowsText(text) {
+      const rows = []
+      for (const raw of String(text ?? '').split(/[,，;；\s]+/)) {
+        if (raw === '') continue
+        const match = /^(\d{1,2})\s*[-~—－]\s*(\d{1,2})$/.exec(raw)
+        if (match === null) continue
+        rows.push({ from: Math.max(0, Math.min(23, Number(match[1]))), to: Math.max(0, Math.min(24, Number(match[2]))) })
+      }
+      return rows
+    }
+
+    /**
+     * 分组编辑器。成员一行四个字段：优先级 / 档位 / 时段 / 启停。
+     *
+     * 优先级是「越小越先试」，和旧插件一致：迁移过来的 15 就是 15，不会被面板
+     * 按顺序悄悄改写——慢模型留在原位是用户明确要求的行为。
+     */
+    function GroupEditor(props) {
+      const { t, group, models, onSave, onCancel } = props
+      const [name, setName] = useState(group.name ?? '')
+      const [enabled, setEnabled] = useState(group.enabled !== false)
+      const [members, setMembers] = useState(() => (group.models ?? []).map(member => ({
+        model: member.model,
+        provider: member.provider ?? '',
+        priority: String(member.priority ?? 99),
+        effort: member.effort ?? '',
+        windowsText: windowsTextOf(member.windows),
+        disabled: member.disabled === true,
+        note: member.note ?? '',
+      })))
+      const [picking, setPicking] = useState(false)
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const byId = new Map(models.map(row => [row.id, row]))
+      const patchMember = (index, patch) => setMembers(current => current.map((row, at) => at === index ? { ...row, ...patch } : row))
+      const submit = async () => {
+        setBusy(true)
+        setError('')
+        try {
+          const priorityOf = value => {
+            if (String(value ?? '').trim() === '') return '99'
+            const number = Number(value)
+            return Number.isFinite(number) ? Math.max(0, Math.min(999, Math.trunc(number))).toString() : '99'
+          }
+          await onSave({
+            ...group.id === undefined ? {} : { id: group.id },
+            name: name.trim(),
+            enabled,
+            models: members.map(row => {
+              // 优先级统一成字符串再回写：`normalizeGroups` 只认有限数字，
+              // 而输入框里永远是文本，这里不做转换会在保存时被静默改成 99。
+              const priority = priorityOf(row.priority)
+              const windows = parseWindowsText(row.windowsText)
+              return {
+                model: row.model,
+                ...row.provider === '' ? {} : { provider: row.provider },
+                priority: Number(priority),
+                ...row.effort.trim() === '' ? {} : { effort: row.effort.trim() },
+                ...windows.length === 0 ? {} : { windows },
+                ...row.disabled === true ? { disabled: true } : {},
+                ...row.note === '' ? {} : { note: row.note },
+              }
+            }),
+          })
+        } catch (failure) {
+          setError(String(failure?.message ?? failure))
+        } finally { setBusy(false) }
+      }
+
+      return h('div', { className: 'ofm_panel ofm_rise' },
+        h('div', { className: 'ofm_row' },
+          h('div', { className: 'ofm_field', style: { flex: '1 1 180px' } },
+            h('span', null, t('route.name')),
+            h('input', {
+              className: 'ofm_input', value: name, placeholder: t('route.namePlaceholder'), disabled: busy,
+              onChange: event => setName(event.target.value),
+            })),
+          h(Switch, {
+            checked: enabled, label: t('route.enabled'), disabled: busy,
+            onChange: () => { if (!busy) setEnabled(value => !value) },
+          }),
+          h('span', { className: 'ofm_note', style: { marginLeft: 'auto' } },
+            t('route.memberCount').replace('{n}', String(members.length))),
+          h(Button, { kind: 'ghost', disabled: busy, onClick: () => setPicking(value => !value) },
+            picking ? t('route.cancel') : t('route.addMember'))),
+        members.length === 0
+          ? h('p', { className: 'ofm_note' }, t('route.memberEmpty'))
+          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, members.map((row, index) => {
+            const known = byId.get(row.model)
+            return h('div', { key: `${row.model}#${index}`, className: 'ofm_member' },
+              h('span', { className: 'ofm_id', title: row.model, style: { flex: '1 1 180px' } },
+                known?.name ?? row.model,
+                known === undefined ? h('span', { className: 'ofm_tag', style: { marginLeft: 6, opacity: 0.65 } }, t('route.unavailable')) : null),
+              h('input', {
+                className: 'ofm_input', type: 'number', min: 0, max: 999, title: t('route.priority'),
+                style: { width: 64 }, value: row.priority, disabled: busy,
+                onChange: event => patchMember(index, { priority: event.target.value }),
+              }),
+              (() => {
+                // 档位下拉只列这个模型真认的 id：旧插件迁来的 xhigh / Extra High /
+                // 默认（高）这类词汇在下拉里没有对应项时单独留一行，避免静默降级。
+                const levels = Array.isArray(known?.efforts) && known.efforts.length > 0
+                  ? known.efforts.map(level => String(level))
+                  : known?.reasoning === true ? ['light', 'balanced', 'deep'] : []
+                if (levels.length === 0) {
+                  return h('span', { className: 'ofm_tag', title: t('route.effortNone'), style: { opacity: 0.6 } }, t('route.effortFollow'))
+                }
+                const stale = row.effort !== '' && !levels.includes(row.effort)
+                return h('select', {
+                  className: 'ofm_input', title: t('route.effort'), style: { width: 118 }, value: row.effort, disabled: busy,
+                  onChange: event => patchMember(index, { effort: event.target.value }),
+                },
+                  h('option', { value: '' }, t('route.effortFollow')),
+                  levels.map(level => h('option', { key: level, value: level }, level)),
+                  stale ? h('option', { value: row.effort }, `${row.effort} (?)`) : null)
+              })(),
+              h('input', {
+                className: 'ofm_input', placeholder: t('route.windowsPlaceholder'), title: t('route.windowsHint'),
+                style: { width: 118 }, value: row.windowsText, disabled: busy,
+                onChange: event => patchMember(index, { windowsText: event.target.value }),
+              }),
+              miniBtn(row.disabled === true ? t('route.enable') : t('route.disable'), () => patchMember(index, { disabled: !row.disabled }), { disabled: busy }),
+              miniBtn(t('route.removeMember'), () => setMembers(current => current.filter((_, at) => at !== index)), { danger: true, disabled: busy }))
+          })),
+        h('p', { className: 'ofm_note' }, t('route.windowsHint')),
+        picking ? h(ModelPicker, {
+          t, models,
+          chosen: members.map(row => row.model),
+          onPick: id => setMembers(current => [...current, {
+            model: id, provider: '', priority: '99', effort: '', windowsText: '', disabled: false, note: '',
+          }]),
+        }) : null,
+        h('div', { className: 'ofm_row' },
+          h(Button, { kind: 'primary', disabled: busy || name.trim() === '' || members.length === 0, onClick: submit }, t('route.save')),
+          h(Button, { kind: 'ghost', disabled: busy, onClick: onCancel }, t('route.cancel'))),
+        error === '' ? null : h('div', { className: 'ofm_callout ofm_error' },
+          h('div', null, h('b', null, t('route.failed')), h('div', null, error))))
+    }
+
+    /** 一张分组卡：成员按优先级列出，标出今日熔断与目录缺失。 */
+    function GroupCard(props) {
+      const { t, group, index, onEdit, onDelete, confirming } = props
+      const usable = group.enabled !== false && group.models.some(member => member.available && member.failed !== true && member.disabled !== true)
+      const failed = group.models.filter(member => member.failed === true).length
+      const missing = group.models.filter(member => member.available !== true).length
+      return h('div', { className: 'ofm_card ofm_rise', style: { animationDelay: `${Math.min(index, 8) * 22}ms` } },
+        h('div', { className: 'ofm_cardhead' },
+          h('span', { className: 'ofm_cardname', title: group.name }, group.name),
+          h(Pill, { tone: usable ? 'ok' : 'warn' }, usable ? t('route.usable') : t('route.notUsable')),
+          group.legacyId === '' ? null : h('span', { className: 'ofm_tag' }, t('route.legacyTag'))),
+        h('div', { className: 'ofm_metrics' },
+          h('span', null, group.id),
+          h('span', null, `${t('route.memberCount').replace('{n}', String(group.models.length))}${group.bindings === 0 ? '' : ` · ${t('route.bindings').replace('{n}', String(group.bindings))}`}`)),
+        h('div', { className: 'ofm_row' },
+          group.models.map(member => h('span', {
+            key: member.model + member.priority,
+            className: 'ofm_tag',
+            title: member.model,
+            style: member.disabled === true || member.available !== true || member.failed === true ? { opacity: 0.55 } : undefined,
+          }, `${member.name} · ${member.priority}${member.windows !== undefined && member.windows.length > 0 ? ` · ${windowsTextOf(member.windows)}` : ''}${member.failed === true ? ' · 熔断' : ''}`))),
+        missing === 0 ? null : h('p', { className: 'ofm_note' }, t('route.missingHint').replace('{n}', String(missing))),
+        failed === 0 ? null : h('p', { className: 'ofm_note' },
+          t('route.todayFailed').replace('{n}', String(failed)) + ' — ' + t('route.resetFailedHint')),
+        h('div', { className: 'ofm_row' },
+          miniBtn(t('route.edit'), onEdit),
+          failed === 0 ? null : miniBtn(t('route.resetFailed'), () => props.onResetFailed(group), { disabled: props.busy === true }),
+          miniBtn(confirming === true ? t('route.deleteConfirm') : t('route.delete'), onDelete, { danger: true })))
+    }
+
+    /**
+     * 「路由」页：分组优先于组合链。
+     *
+     * 这里是 failover 的能力落点——优先级、时段、当日熔断、并发闸门——但读写走
+     * 本插件自己的 `/routes`，旧插件的 JSON 只作为导入源，不再被两边同时写。
+     */
+    function RoutesPage(props) {
+      const { t } = props
+      const panel = usePanel(() => api('/routes'), [])
+      const [editing, setEditing] = useState(null)
+      const [confirm, setConfirm] = useState('')
+      const [confirmImport, setConfirmImport] = useState(false)
+      const [busy, setBusy] = useState(false)
+      const [draft, setDraft] = useState(null)
+      const groups = panel.data?.groups ?? []
+      const models = panel.data?.models ?? []
+      const routeSettings = panel.data?.settings ?? { defaultConcurrency: 0, capacityCooldownMs: 30_000, concurrencyByModel: {} }
+      const bindingCount = (panel.data?.bindings ?? []).length
+      useEffect(() => {
+        setDraft({
+          concurrency: String(routeSettings.defaultConcurrency ?? 0),
+          cooldown: String(Math.round((routeSettings.capacityCooldownMs ?? 30_000) / 1000)),
+        })
+      }, [routeSettings.defaultConcurrency, routeSettings.capacityCooldownMs])
+
+      const save = async row => {
+        const raw = group => ({
+          id: group.id,
+          name: group.name,
+          enabled: group.enabled !== false,
+          models: (group.models ?? []).map(member => ({
+            model: member.model,
+            ...member.provider === '' || member.provider === undefined ? {} : { provider: member.provider },
+            priority: member.priority,
+            ...member.effort === undefined || member.effort === '' ? {} : { effort: member.effort },
+            ...Array.isArray(member.windows) && member.windows.length > 0 ? { windows: member.windows } : {},
+            ...member.disabled === true ? { disabled: true } : {},
+            ...member.note === undefined || member.note === '' ? {} : { note: member.note },
+            ...member.legacy === undefined || member.legacy === null ? {} : { legacy: member.legacy },
+          })),
+          ...group.legacyId === undefined || group.legacyId === '' ? {} : { legacyId: group.legacyId },
+          ...group.importedFrom === undefined || group.importedFrom === '' ? {} : { importedFrom: group.importedFrom },
+        })
+        const known = groups.some(group => group.id === row.id)
+        const rows = known ? groups.map(group => group.id === row.id ? row : group) : [...groups, row]
+        await post('/routes', { groups: rows.map(raw) })
+        panel.reload()
+        setEditing(null)
+        showToast({ title: t('route.saved'), body: t('route.savedBody'), holdMs: 3200 })
+      }
+      const remove = async id => {
+        await post('/routes', { groups: groups.filter(group => group.id !== id) })
+        panel.reload()
+        setConfirm('')
+        showToast({ title: t('route.saved'), body: t('route.savedBody'), holdMs: 3200 })
+      }
+      const saveSettings = async () => {
+        setBusy(true)
+        try {
+          const seconds = Number(draft?.cooldown)
+          await post('/settings', {
+            route: {
+              defaultConcurrency: Number(draft?.concurrency) || 0,
+              capacityCooldownMs: Number.isFinite(seconds) ? Math.max(0, Math.min(600, Math.round(seconds))) * 1000 : 30_000,
+            },
+          })
+          panel.reload()
+          showToast({ title: t('route.settingsSaved'), body: t('route.settingsSavedBody'), holdMs: 3000 })
+        } catch (error) {
+          showToast({ title: t('route.failed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      const runImport = async () => {
+        setBusy(true)
+        try {
+          const answer = await post('/routes/import', { force: true })
+          const result = answer.result ?? {}
+          panel.reload()
+          setConfirmImport(false)
+          showToast({ title: result.imported === true ? t('route.imported') : t('route.importSkip'), body: result.imported === true ? t('route.importedBody').replace('{groups}', String(result.groups ?? 0)).replace('{members}', String(result.members ?? 0)) : String(result.reason ?? ''), holdMs: 4000 })
+        } catch (error) {
+          showToast({ title: t('route.importFailed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      const resetAll = async () => {
+        setBusy(true)
+        try {
+          const answer = await post('/routes/failed/reset', {})
+          panel.patch({ groups: answer.groups, failed: answer.failed })
+          showToast({ title: t('route.resetDone'), body: t('route.resetDoneBody'), holdMs: 3000 })
+        } catch (error) {
+          showToast({ title: t('route.failed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      const blank = { name: '', models: [], enabled: true }
+
+      const hero = h(PageHero, { title: t('route.title'), sub: t('route.sub') },
+        h('div', { className: 'ofm_pills' },
+          h(Pill, null, t('route.groups') + ' ' + String(groups.length)),
+          h(Pill, null, `${t('route.modelsCount').replace('{n}', String(models.length))}${bindingCount === 0 ? '' : ` · ${t('route.bindings').replace('{n}', String(bindingCount))}`}`)))
+
+      const gateSection = h(Section, { title: t('route.gateTitle'), hint: t('route.gateHint') },
+        h('div', { className: 'ofm_panel' },
+          h('div', { className: 'ofm_row' },
+            h('div', { className: 'ofm_field' },
+              h('span', null, t('route.concurrency')),
+              h('input', {
+                className: 'ofm_input', type: 'number', min: 0, max: 64, style: { width: 96 },
+                value: draft?.concurrency ?? '0', disabled: busy,
+                onChange: event => setDraft(current => ({ ...current, concurrency: event.target.value })),
+              })),
+            h('div', { className: 'ofm_field' },
+              h('span', null, t('route.cooldown')),
+              h('input', {
+                className: 'ofm_input', type: 'number', min: 0, max: 600, style: { width: 96 },
+                value: draft?.cooldown ?? '30', disabled: busy,
+                onChange: event => setDraft(current => ({ ...current, cooldown: event.target.value })),
+              })),
+            h(Button, { kind: 'primary', disabled: busy || draft === null, onClick: saveSettings }, t('route.saveSettings')),
+            h(Button, { kind: 'ghost', disabled: busy, onClick: resetAll }, t('route.resetAll')),
+            h(Button, {
+              kind: 'ghost', disabled: busy || (panel.data?.legacy?.available !== true && groups.length === 0),
+              onClick: () => {
+                if (confirmImport || groups.length === 0) void runImport()
+                else setConfirmImport(true)
+              },
+            }, confirmImport ? t('route.importConfirm') : t('route.import')),
+            confirmImport ? h(Button, { kind: 'ghost', onClick: () => setConfirmImport(false) }, t('route.cancel')) : null),
+          h('p', { className: 'ofm_note' }, t('route.concurrencyHint')),
+          h('p', { className: 'ofm_note' }, panel.data?.legacy?.available === true ? t('route.importHint') : t('route.legacyMissing')),
+          bindingCount === 0 ? null : h('p', { className: 'ofm_note' }, t('route.bindingNote').replace('{n}', String(bindingCount)))))
+
+      const groupCards = groups.length === 0 ? null : h('div', { className: 'ofm_grid' }, groups.map((group, index) => h(GroupCard, {
+        key: group.id, t, index, group, busy,
+        confirming: confirm === group.id,
+        onEdit: () => setEditing({ group }),
+        onResetFailed: async target => {
+          setBusy(true)
+          try {
+            const ids = target.models.filter(member => member.failed === true).map(member => member.id ?? member.model)
+            for (const id of ids) await post('/routes/failed/reset', { key: id })
+            panel.reload()
+          } catch (error) {
+            showToast({ title: t('route.failed'), body: String(error?.message ?? error), tone: 'warn' })
+          } finally { setBusy(false) }
+        },
+        onDelete: () => { if (confirm === group.id) void remove(group.id); else setConfirm(group.id) },
+      })))
+
+      const groupsSection = h(Section, { title: t('route.groups'), hint: t('route.groupsHint') },
+        editing !== null
+          ? h(GroupEditor, { t, models, group: editing.group, onSave: save, onCancel: () => setEditing(null) })
+          : h('div', { className: 'ofm_row' },
+            h(Button, { kind: 'primary', onClick: () => setEditing({ group: blank }) }, t('route.newGroup')),
+            h('span', { className: 'ofm_note' }, t('route.priorityHint'))),
+        groupCards,
+        confirm === '' ? null : h('p', { className: 'ofm_note' }, t('route.deleteWarn')))
+
+      return h(Fragment, null,
+        hero,
+        panel.status === 'loading' ? h(PanelSkeleton) : null,
+        panel.status === 'error'
+          ? h(PanelError, { t, title: t('route.loadFailed'), message: panel.error, onRetry: panel.reload })
+          : null,
+        panel.status === 'ready' ? h(Fragment, null, gateSection, groupsSection) : null)
+    }
+
+    // ── 上下文压缩阈值（原 dsh-compaction-threshold 的滑块）──────────────────
+    /**
+     * 压缩阈值卡。
+     *
+     * 数字有三个来源，界面必须分清：配置值（本插件存的）、下限（引擎保留比例
+     * 推出来的）、实际值（引擎里现在真的在用的）。三个不一致时，只有最后一个
+     * 能解释"为什么没压"。
+     */
+    function CompactionCard(props) {
+      const { t } = props
+      const panel = usePanel(() => api('/compaction'), [])
+      const data = panel.data
+      const [ratio, setRatio] = useState(75)
+      const [busy, setBusy] = useState(false)
+      useEffect(() => {
+        if (data === undefined) return
+        setRatio(Math.round((data.thresholdRatio ?? 0.75) * 100))
+      }, [data?.thresholdRatio])
+      const save = async patch => {
+        setBusy(true)
+        try {
+          const answer = await post('/compaction', patch)
+          panel.patch(answer)
+        } catch (error) {
+          showToast({ title: t('compaction.saveFailed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      if (panel.status === 'error') {
+        return h(Section, { title: t('compaction.title') },
+          h(PanelError, { t, title: t('compaction.title'), message: panel.error, onRetry: panel.reload }))
+      }
+      if (data === undefined) return h(PanelSkeleton)
+      const floor = Math.round((data.floor ?? 0.2) * 100)
+      const max = Math.round((data.max ?? 0.95) * 100)
+      return h(Section, { title: t('compaction.title'), hint: t('compaction.hint') },
+        h('div', { className: 'ofm_panel' },
+          h('div', { className: 'ofm_row' },
+            h(Switch, {
+              checked: data.enabled === true, label: t('compaction.enabled'), disabled: busy,
+              onChange: () => { if (!busy) void save({ enabled: data.enabled !== true }) },
+            }),
+            h('span', { className: 'ofm_note' }, t('compaction.engines').replace('{n}', String(data.engineCount ?? 0)),
+            data.effectiveRatio === null || data.effectiveRatio === undefined ? null : h('span', { className: 'ofm_note' }, ' · ' + t('compaction.effective').replace('{n}', String(Math.round(data.effectiveRatio * 100))))),
+            data.followDefault === true ? h('Pill', null, t('compaction.followDefault')) : null),
+          h('div', { className: 'ofm_row' },
+            h('input', {
+              type: 'range', min: floor, max, step: 1, value: ratio, disabled: busy,
+              style: { flex: '1 1 220px' }, 'aria-label': t('compaction.threshold'),
+              onChange: event => setRatio(Number(event.target.value)),
+            }),
+            h('span', { className: 'ofm_mono', style: { width: 52, textAlign: 'right' } }, `${ratio}%`)),
+          h('p', { className: 'ofm_note' }, t('compaction.floor').replace('{n}', String(floor))),
+          h('p', { className: 'ofm_note' }, t('compaction.advice')),
+          data.supported === false ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, t('compaction.unsupported'))) : null,
+          h('div', { className: 'ofm_row' },
+            h(Button, { kind: 'primary', disabled: busy, onClick: () => void save({ thresholdRatio: ratio / 100 }) }, t('compaction.apply')),
+            h(Button, { kind: 'ghost', disabled: busy, onClick: () => void save({ thresholdRatio: null }) }, t('compaction.restoreDefault'))),
+          data.legacy === null || data.legacy === undefined ? null : h('p', { className: 'ofm_note' }, t('compaction.legacy').replace('{n}', String(Math.round(data.legacy.thresholdRatio * 100)))))
+      )
+    }
+
+    // ── request retry (merged dsh-llm-error-retry) ───────────────────────────
+    /**
+     * 重试设置页。
+     *
+     * 旧插件只有一张设置卡；合并后放在模型面板里，位置仍然显眼。规则表沿用旧
+     * 插件的四类匹配写法，但数值校验交给宿主（`host.js`），浏览器只负责把
+     * 输入整理成它认识的结构，避免两套校验规则打架。
+     */
+    function RetryPage(props) {
+      const { t } = props
+      const panel = usePanel(() => retryApi(), [])
+      const [rules, setRules] = useState([])
+      const [honorSec, setHonorSec] = useState(10)
+      const [firstEnabled, setFirstEnabled] = useState(true)
+      const [firstSec, setFirstSec] = useState(90)
+      const [nmEnabled, setNmEnabled] = useState(true)
+      const [nmOffload, setNmOffload] = useState(true)
+      const [nmMax, setNmMax] = useState(3)
+      const [busy, setBusy] = useState(false)
+      const [notice, setNotice] = useState({ tone: '', text: '' })
+
+      useEffect(() => {
+        const data = panel.data
+        if (data === undefined) return
+        setRules((data.rules ?? []).map(rule => ({ code: rule.code, delaySec: Math.round((Number(rule.delayMs) || 0) / 1000), maxRetries: Number(rule.maxRetries) || 0 })))
+        setHonorSec(Math.round((Number(data.honorRetryAfterMaxMs) || 0) / 1000))
+        const first = data.firstTokenTimeout ?? {}
+        setFirstEnabled(first.enabled !== false)
+        setFirstSec(Math.max(1, Math.round((Number(first.timeoutMs) || 90_000) / 1000)))
+        const nm = data.notMultimodal ?? {}
+        setNmEnabled(nm.enabled !== false)
+        setNmOffload(nm.offloadImages !== false)
+        setNmMax(Math.max(1, Number(nm.maxNotices) || 3))
+      }, [panel.data])
+
+      const save = async () => {
+        const number = (value, label) => {
+          const parsed = Number(value)
+          if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${label}: ${t('llmretry.badNumber')}`)
+          return parsed
+        }
+        setBusy(true); setNotice({ tone: '', text: '' })
+        try {
+          const payload = {
+            rules: rules
+              .filter(rule => String(rule.code).trim() !== '')
+              .map(rule => ({
+                code: String(rule.code).trim(),
+                delayMs: Math.round(number(rule.delaySec, t('llmretry.delay')) * 1000),
+                maxRetries: Math.round(number(rule.maxRetries, t('llmretry.maxRetries'))),
+              })),
+            honorRetryAfterMaxMs: Math.round(number(honorSec, t('llmretry.honor')) * 1000),
+            firstTokenTimeout: { enabled: firstEnabled, timeoutMs: Math.round(number(firstSec, t('llmretry.firstToken')) * 1000) },
+            notMultimodal: { enabled: nmEnabled, offloadImages: nmOffload, maxNotices: Math.round(number(nmMax, t('llmretry.maxNotices'))) },
+          }
+          await retryApi({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+          panel.reload()
+          setNotice({ tone: 'ok', text: t('llmretry.saved') })
+          showToast({ title: t('llmretry.title'), body: t('llmretry.saved') })
+        } catch (error) {
+          const message = String(error?.message ?? error)
+          setNotice({ tone: 'err', text: message })
+          showToast({ title: t('llmretry.saveFailed'), body: message, tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+
+      const patchRule = (index, key, value) => setRules(current => current.map((rule, cursor) => cursor === index ? { ...rule, [key]: value } : rule))
+
+      if (panel.status === 'error') {
+        return h('div', { className: 'ofm_page' },
+          h(PanelError, { t, title: t('llmretry.title'), message: panel.error, onRetry: panel.reload }))
+      }
+      if (panel.data === undefined) return h('div', { className: 'ofm_page' }, h(PanelSkeleton))
+
+      const data = panel.data
+      const events = data.lastEvents ?? []
+      return h('div', { className: 'ofm_page' },
+        h('header', { className: 'ofm_hero ofm_glass' },
+          h('div', { className: 'ofm_pagehead' },
+            h('div', { className: 'ofm_pagetitle' },
+              h('h2', null, t('llmretry.title')),
+              h('p', { className: 'ofm_pagesub' }, t('llmretry.hint')))),
+          h('div', { className: 'ofm_pills' },
+            h(Pill, { strong: true, tone: 'ok' }, `${t('llmretry.rules')} ${rules.length}`),
+            h(Pill, null, `${t('llmretry.source')} ${data.source ?? '—'}`),
+            h(Pill, null, `${t('llmretry.waiting')} ${data.waiting ?? 0}`))),
+
+        h(Section, { title: t('llmretry.rules'), hint: t('llmretry.hint') },
+          h('div', { className: 'ofm_panel' },
+            h('div', { className: 'ofm_tablewrap' },
+              h('table', { className: 'ofm_table' },
+                h('thead', null, h('tr', null,
+                  h('th', null, t('llmretry.code')),
+                  h('th', { className: 'ofm_num' }, t('llmretry.delay')),
+                  h('th', { className: 'ofm_num' }, t('llmretry.maxRetries')),
+                  h('th', null, ''))),
+                h('tbody', null,
+                  rules.length === 0
+                    ? h('tr', null, h('td', { colSpan: 4 }, t('llmretry.emptyRules')))
+                    : rules.map((rule, index) => h('tr', { key: index },
+                      h('td', null, h('input', {
+                        className: 'ofm_input', value: rule.code, spellCheck: false,
+                        placeholder: '429 / TRANSPORT / msg~…',
+                        onChange: event => patchRule(index, 'code', event.target.value),
+                      })),
+                      h('td', { className: 'ofm_num' }, h('input', {
+                        className: 'ofm_input', type: 'number', min: 0, step: 1, value: rule.delaySec,
+                        style: { width: 92, textAlign: 'right' },
+                        onChange: event => patchRule(index, 'delaySec', event.target.value),
+                      })),
+                      h('td', { className: 'ofm_num' }, h('input', {
+                        className: 'ofm_input', type: 'number', min: 0, step: 1, value: rule.maxRetries,
+                        style: { width: 92, textAlign: 'right' },
+                        onChange: event => patchRule(index, 'maxRetries', event.target.value),
+                      })),
+                      h('td', { className: 'ofm_num' },
+                        h('button', {
+                          type: 'button', className: 'ofm_minibtn danger',
+                          onClick: () => setRules(current => current.filter((_, cursor) => cursor !== index)),
+                        }, '×')))))),
+            h('div', { className: 'ofm_row' },
+              h(Button, { onClick: () => setRules(current => [...current, { code: '', delaySec: 5, maxRetries: 5 }]) }, t('llmretry.add'))))),
+
+        h(Section, { title: t('llmretry.firstToken'), hint: t('llmretry.firstTokenHint') },
+          h('div', { className: 'ofm_panel' },
+            h('div', { className: 'ofm_row' },
+              h(Switch, { checked: firstEnabled, label: t('llmretry.enabled'), onChange: () => setFirstEnabled(value => !value) }),
+              h('label', { className: 'ofm_field', style: { maxWidth: 180 } },
+                h('span', null, t('llmretry.seconds')),
+                h('input', { className: 'ofm_input', type: 'number', min: 1, step: 1, value: firstSec, disabled: !firstEnabled, onChange: event => setFirstSec(event.target.value) }))),
+            h('div', { className: 'ofm_row' },
+              h('label', { className: 'ofm_field', style: { maxWidth: 220 } },
+                h('span', null, t('llmretry.honor')),
+                h('input', { className: 'ofm_input', type: 'number', min: 0, step: 1, value: honorSec, onChange: event => setHonorSec(event.target.value) })),
+              h('span', { className: 'ofm_note' }, t('llmretry.honorHint'))))),
+
+        h(Section, { title: t('llmretry.notMultimodal') },
+          h('div', { className: 'ofm_panel' },
+            h('div', { className: 'ofm_row' },
+              h(Switch, { checked: nmEnabled, label: t('llmretry.enabled'), onChange: () => setNmEnabled(value => !value) }),
+              h(Switch, { checked: nmOffload, label: t('llmretry.offload'), disabled: !nmEnabled, onChange: () => setNmOffload(value => !value) })),
+            h('label', { className: 'ofm_field', style: { maxWidth: 220 } },
+              h('span', null, t('llmretry.maxNotices')),
+              h('input', { className: 'ofm_input', type: 'number', min: 1, step: 1, value: nmMax, disabled: !nmEnabled, onChange: event => setNmMax(event.target.value) })))),
+
+        h('div', { className: 'ofm_row' },
+          h(Button, { kind: 'primary', disabled: busy, onClick: save }, busy ? t('loading') : t('llmretry.save')),
+          notice.text === '' ? null : h('span', { className: notice.tone === 'err' ? 'ofm_note' : 'ofm_note', style: notice.tone === 'err' ? { color: 'var(--dsw-alias-state-error-primary)' } : undefined }, notice.text)),
+
+        h(Section, { title: t('llmretry.events') },
+          h('div', { className: 'ofm_panel' },
+            events.length === 0
+              ? h('p', { className: 'ofm_note' }, t('llmretry.noEvents'))
+              : h('div', { className: 'ofm_retryevents' },
+                events.map((event, index) => h('div', { key: index, className: 'ofm_retryevent' },
+                  h('span', { className: 'ofm_note' }, event.at === undefined ? '' : new Date(event.at).toLocaleTimeString()),
+                  h('b', null, event.type ?? 'event'),
+                  event.rule === undefined ? null : h('span', { className: 'ofm_id' }, event.rule),
+                  event.failure === undefined ? null : h('span', { className: 'ofm_note' }, String(event.failure).slice(0, 90)))))))))
+    }
+
+    // ── model panel: a working, session-scoped picker ────────────────────────
+    /** Sidebar glyph: a small sparkle, drawn inline so no asset is required. */
+    function ModelSidebarIcon(props) {
+      const size = Number(props.size) || 16
+      return h('svg', {
+        width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': 'true',
+      },
+        h('path', { d: 'M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1L6 12.5l5.1-1.9z' }),
+        h('path', { d: 'M18.5 3.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z' }))
+    }
+
+    /**
+     * 聊天框的闪光按钮打开「模型面板」；侧栏「模型」打开完整设置。
+     *
+     * 模型选择是**会话级**状态，唯一可靠来源是宿主的 `modelDirectories`
+     * 服务（原生选择器与 model-failover-manager 的模型位共用它），所以面板
+     * 必须带着 `sessionId` 打开：`conversation.input.right` 的标准 props 里
+     * 就有 sessionId，点按钮时一并带进事件。从公告等没有会话的入口打开时，
+     * 面板会明确说「先打开一个会话」，而不是画一个点了没反应的列表。
+     */
+    function openModelPanel(tab, sessionId) {
+      try {
+        window.dispatchEvent(new CustomEvent('ofm:open-panel', { detail: { tab: tab ?? 'models', scope: 'model', sessionId } }))
+      } catch { /* a host without window events is already unusable */ }
+    }
+
+    /** 设置页里的压缩/重试入口仍走完整设置面，不进模型面板。 */
+    function openSettingsPanel(tab) {
+      try {
+        window.dispatchEvent(new CustomEvent('ofm:open-panel', { detail: { tab: tab ?? 'pipeline', scope: 'settings' } }))
+      } catch { /* a host without window events is already unusable */ }
+    }
+
+    /** The directory's pre-load shape, so the first paint is a loading state, not a crash. */
+    const EMPTY_DIRECTORY = { current: null, routable: null, groups: [], failures: [], status: 'idle', pending: null, error: null }
+
+    /**
+     * 会话的模型目录 —— 宿主 model-selection 的同一份状态。
+     *
+     * `ctx.get` 是可选查找：宿主没有该服务、或这个会话还没有 binding 时，
+     * 面板显示具体原因（服务缺失 / 会话未就绪），而不是空白或假选项。
+     */
+    function useModelDirectory(ctx, sessionId) {
+      const [directory, setDirectory] = useState(undefined)
+      const [state, setState] = useState(EMPTY_DIRECTORY)
+      const [error, setError] = useState('')
+      useEffect(() => {
+        setDirectory(undefined)
+        setState(EMPTY_DIRECTORY)
+        setError('')
+        if (typeof sessionId !== 'string' || sessionId === '') return undefined
+        const service = ctx !== undefined && typeof ctx.get === 'function' ? ctx.get('modelDirectories') : undefined
+        if (service === undefined || typeof service.directoryFor !== 'function') {
+          setError('model-selection service is unavailable in this shell')
+          return undefined
+        }
+        let found
+        try { found = service.directoryFor(sessionId) } catch (cause) {
+          setError(String(cause?.message ?? cause))
+          return undefined
+        }
+        setDirectory(found)
+        const sync = () => setState(found.store.getSnapshot())
+        sync()
+        const off = found.store.subscribe(sync)
+        found.load().catch(cause => { setError(String(cause?.message ?? cause)) })
+        return off
+      }, [ctx, sessionId])
+      return { directory, state, error }
+    }
+
+    /** 徽章文案可能是字符串，也可能是按语言分键的对象（LocalizedText）。 */
+    function badgeTextOf(badge) {
+      const text = badge?.text
+      if (typeof text === 'string') return text
+      if (text === null || typeof text !== 'object') return ''
+      return text.zh ?? text['zh-CN'] ?? text.en ?? Object.values(text)[0] ?? ''
+    }
+
+    /**
+     * 模型选择器。
+     *
+     * 目录、当前选择与提交全部走宿主 `modelDirectories`：这里只负责把
+     * provider 组、模型行与思考档渲染出来，点一行就真的切过去 —— 旧版只画
+     * 列表、点了没反应，正是「对话框模型面板做的不好」的根源。
+     */
+    /**
+     * 路由分组编辑器（模型面板内）。
+     *
+     * 设置页那张表太宽、加模型还要来回滚动；这里按 failover 的同款结构做成
+     * 「左边分组、右边成员」，成员行直接带优先级、档位、失败/启停与移出，
+     * 加模型在同一个面板里搜索 + 一键加入。每次改动都整表 POST /routes，
+     * 服务端是唯一权威，面板跟着 reload。
+     */
+    function RouteGroupPanel(props) {
+      const { t, routes, catalogGroups, current, busy, setBusy, setNotice, notice, onUse, onClose, openSettings } = props
+      const groups = routes.data?.groups ?? []
+      const [selected, setSelected] = useState(null)
+      const [adding, setAdding] = useState(false)
+      const [query, setQuery] = useState('')
+      const [newName, setNewName] = useState('')
+      const active = groups.find(group => group.id === selected) ?? groups[0]
+      const shape = group => ({
+        id: group.id,
+        name: group.name,
+        enabled: group.enabled !== false,
+        models: (group.models ?? []).map(member => ({
+          model: member.model,
+          provider: member.provider,
+          priority: member.priority,
+          effort: member.effort,
+          windows: member.windows,
+          legacy: member.legacy,
+          disabled: member.disabled === true ? true : undefined,
+        })),
+      })
+      const save = async nextGroups => {
+        if (busy !== '') return
+        setBusy('routes')
+        setNotice('')
+        try {
+          await post('/routes', { groups: nextGroups.map(shape) })
+          routes.reload()
+        } catch (cause) {
+          setNotice(String(cause?.message ?? cause))
+        } finally {
+          setBusy('')
+        }
+      }
+      const patchMember = (group, index, patch) => save(groups.map(item => item.id !== group.id
+        ? shape(item)
+        : { ...shape(item), models: shape(item).models.map((member, at) => at === index ? { ...member, ...patch } : member) }))
+      const removeMember = (group, index) => save(groups.map(item => item.id !== group.id
+        ? shape(item)
+        : { ...shape(item), models: shape(item).models.filter((member, at) => at !== index) }))
+      const addMember = (group, entry) => {
+        if ((group.models ?? []).some(member => member.model === entry.id)) return
+        save(groups.map(item => item.id !== group.id
+          ? shape(item)
+          : { ...shape(item), models: [...shape(item).models, { model: entry.id, provider: entry.provider, priority: 50 }] }))
+      }
+      const createGroup = () => {
+        const name = newName.trim()
+        if (name === '') return
+        setNewName('')
+        save([...groups.map(shape), { name, models: [] }])
+      }
+      const deleteGroup = group => {
+        if (groups.length <= 1) return
+        setSelected(null)
+        save(groups.filter(item => item.id !== group.id).map(shape))
+      }
+      const remap = async () => {
+        if (busy !== '') return
+        setBusy('remap')
+        setNotice('')
+        try {
+          const result = await post('/routes/remap', {})
+          const unresolved = result?.unresolved ?? []
+          setNotice(unresolved.length === 0
+            ? t('panel.routes.remapDone').replace('{n}', String(result?.changed ?? 0))
+            : t('panel.routes.remapLeft').replace('{n}', String(unresolved.length)))
+          routes.reload()
+        } catch (cause) {
+          setNotice(String(cause?.message ?? cause))
+        } finally {
+          setBusy('')
+        }
+      }
+      const rows = catalogGroups.flatMap(group => group.models.map(model => ({
+        id: model.id,
+        name: model.name ?? model.id,
+        provider: group.id,
+        description: model.description ?? '',
+      })))
+      const needle = query.trim().toLowerCase()
+      const matches = needle === ''
+        ? rows.slice(0, 30)
+        : rows.filter(row => `${row.name} ${row.id} ${row.provider}`.toLowerCase().includes(needle)).slice(0, 40)
+      if (routes.status === 'error') {
+        return h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loadFailed')), h('span', null, routes.error))
+      }
+      if (routes.status !== 'ready') {
+        return h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loading')))
+      }
+      if (groups.length === 0) {
+        return h('div', { className: 'ofm_mpickempty' },
+          h('b', null, t('panel.tab.routes')),
+          h('span', null, t('panel.routes.empty')),
+          h('div', { className: 'ofm_row' },
+            h('input', {
+              className: 'ofm_input', placeholder: t('panel.routes.nameHint'), value: newName,
+              onChange: event => setNewName(event.currentTarget.value),
+            }),
+            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create'))),
+          h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))
+      }
+      const members = active?.models ?? []
+      return h('div', { className: 'ofm_mpickerbody' },
+        h('aside', { className: 'ofm_mpickerrail' },
+          h('div', { className: 'ofm_mpickerrailtitle' }, t('panel.routes.groups')),
+          h('div', { className: 'ofm_mpickerraillist' }, groups.map(group => h('button', {
+            key: group.id, type: 'button', className: 'ofm_mpickerrailrow',
+            'data-on': active?.id === group.id ? 'true' : 'false',
+            onClick: () => { setSelected(group.id); setAdding(false) },
+          },
+            h('span', { className: 'ofm_mpickerrailname', title: group.name }, group.name),
+            h('span', { className: 'ofm_mpickerrailcount' }, String((group.models ?? []).length))))),
+          h('div', { className: 'ofm_mpickerrailnew' },
+            h('input', {
+              className: 'ofm_input', placeholder: t('panel.routes.nameHint'), value: newName,
+              onChange: event => setNewName(event.currentTarget.value),
+              onKeyDown: event => { if (event.key === 'Enter') createGroup() },
+            }),
+            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create')))),
+        h('div', { className: 'ofm_mpickerpane' },
+          h('div', { className: 'ofm_mpickertools ofm_row' },
+            h('b', { className: 'ofm_pickertitle' }, active?.name ?? ''),
+            current !== null && current.model === active?.id
+              ? h('span', { className: 'ofm_mpickcurrent' }, t('panel.current'))
+              : null,
+            h('span', { className: 'ofm_mpickerspacer' }),
+            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: () => onUse(active) }, t('panel.routes.use')),
+            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: remap }, t('panel.routes.remap')),
+            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: () => deleteGroup(active) }, t('panel.routes.delete'))),
+          h('div', { className: 'ofm_mpickerlist' },
+            members.length === 0
+              ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.routes.noMembers')), h('span', null, t('panel.routes.addHint')))
+              : members.map((member, index) => h('div', { key: `${member.model}-${index}`, className: 'ofm_mpickmember', 'data-off': member.disabled === true ? 'true' : 'false' },
+                h('span', { className: 'ofm_mpickmembermain' },
+                  h('span', { className: 'ofm_mpicknamerow' },
+                    h('span', { className: 'ofm_mpickname' }, member.name ?? member.model),
+                    member.available === false
+                      ? h('span', { className: 'ofm_mpickbadge', title: member.model }, t('panel.routes.missing'))
+                      : null,
+                    member.failed === true ? h('span', { className: 'ofm_mpickbadge', 'data-tone': 'warn' }, t('panel.routes.failedMark')) : null),
+                  h('span', { className: 'ofm_mpickdesc' }, member.model)),
+                h('span', { className: 'ofm_mpickmembertools' },
+                  h('input', {
+                    className: 'ofm_input ofm_mpicknum', type: 'number', min: 0, max: 999, title: t('panel.routes.priority'),
+                    defaultValue: member.priority ?? 50,
+                    onBlur: event => {
+                      const value = Number(event.currentTarget.value)
+                      if (!Number.isFinite(value) || value === (member.priority ?? 50)) return
+                      patchMember(active, index, { priority: value })
+                    },
+                  }),
+                  (member.efforts ?? []).length === 0
+                    ? h('span', { className: 'ofm_note' }, t('route.effortFollow'))
+                    : h('select', {
+                      className: 'ofm_input ofm_mpickeffort', title: t('route.effort'),
+                      value: member.effort ?? '',
+                      onChange: event => patchMember(active, index, { effort: event.currentTarget.value }),
+                    },
+                      h('option', { value: '' }, t('route.effortFollow')),
+                      (member.efforts ?? []).map(level => h('option', { key: level, value: level }, level)),
+                      member.effort !== undefined && member.effort !== '' && !(member.efforts ?? []).includes(member.effort)
+                        ? h('option', { value: member.effort }, `${member.effort} (?)`)
+                        : null),
+                  member.failed === true
+                    ? h('button', {
+                      type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                      onClick: async () => {
+                        try { await post('/routes/failed/reset', { key: member.id ?? member.model }); routes.reload() } catch (cause) { setNotice(String(cause?.message ?? cause)) }
+                      },
+                    }, t('panel.failed.reset'))
+                    : null,
+                  h('button', {
+                    type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                    onClick: () => patchMember(active, index, { disabled: member.disabled === true ? undefined : true }),
+                  }, member.disabled === true ? t('panel.routes.enable') : t('panel.routes.disable')),
+                  h('button', {
+                    type: 'button', className: 'ofm_minibtn', disabled: busy !== '',
+                    onClick: () => removeMember(active, index),
+                  }, '×')))),
+            adding
+              ? h('div', { className: 'ofm_mpickadd' },
+                h('input', {
+                  className: 'ofm_panelsearch', type: 'search', value: query,
+                  placeholder: t('panel.routes.addSearch'), autoFocus: true,
+                  onChange: event => setQuery(event.currentTarget.value),
+                }),
+                matches.map(row => h('div', { key: row.id, className: 'ofm_mpickaddrow' },
+                  h('span', { className: 'ofm_mpickaddmain' },
+                    h('span', { className: 'ofm_mpickname' }, row.name),
+                    h('span', { className: 'ofm_mpickdesc' }, `${row.provider} · ${row.id}`)),
+                  h('button', {
+                    type: 'button', className: 'ofm_minibtn',
+                    disabled: busy !== '' || (members ?? []).some(member => member.model === row.id),
+                    onClick: () => addMember(active, row),
+                  }, (members ?? []).some(member => member.model === row.id) ? t('panel.routes.added') : '+'))))
+              : null),
+          h('div', { className: 'ofm_mpickerfoot' },
+            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { setAdding(!adding); setQuery('') } }, adding ? t('panel.routes.addClose') : t('panel.routes.add')),
+            h('span', { className: 'ofm_note' }, notice !== '' ? notice : t('panel.failed.hint')),
+            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))))
+    }
+
+    function ModelPickerDialog(props) {
+      const { t, ctx, sessionId, onClose } = props
+      const { directory, state, error } = useModelDirectory(ctx, sessionId)
+      const [mode, setMode] = useState('models')
+      const [query, setQuery] = useState('')
+      const [provider, setProvider] = useState(undefined)
+      const [busy, setBusy] = useState('')
+      const [notice, setNotice] = useState('')
+      // 路由分组与失败名单来自本插件自己的宿主路由（`/routes`），与设置页同一个
+      // 数据源；模型页只读宿主会话目录。两者都不用轮询。
+      const routes = usePanel(() => api('/routes'), [])
+      const routeGroups = routes.data?.groups ?? []
+      const failed = routes.data?.failed ?? []
+      const current = state.pending ?? state.current
+      const groups = state.groups ?? []
+      const needle = query.trim().toLowerCase()
+      // 搜索框一有内容就跨全部提供商（否则要先去左边点一家才能搜别家）；空搜索时
+      // 只看左侧选中的那一家。左栏不再放「免费模型 / 全部」这一行——它和「所有
+      // 提供商」是同义重复，默认跟随当前模型所属的那家即可。
+      const searchAll = needle !== ''
+      const matches = (group, model) => `${model.name ?? ''} ${model.id ?? ''} ${model.description ?? ''} ${group.name ?? ''}`.toLowerCase().includes(needle)
+      const followed = provider === undefined ? (current?.provider ?? null) : provider
+      const activeProvider = followed !== null && groups.some(group => group.id === followed) ? followed : null
+      const visible = searchAll
+        ? groups.map(group => ({ group, models: group.models.filter(model => matches(group, model)) })).filter(entry => entry.models.length > 0)
+        : groups.filter(group => group.id === activeProvider).map(group => ({ group, models: group.models }))
+      const loading = (state.status === 'loading' || state.status === 'idle') && groups.length === 0 && error === ''
+      const choose = async (providerId, modelId, effort) => {
+        if (directory === undefined || busy !== '') return false
+        const key = `${providerId}/${modelId}`
+        setBusy(key)
+        setNotice('')
+        const selection = { provider: providerId, model: modelId }
+        if (effort !== undefined) selection.reasoningEffort = effort
+        try {
+          const result = await directory.select(selection)
+          if (result !== undefined && result.ok === false) {
+            setNotice(`${result.error?.code ?? 'error'}: ${result.error?.message ?? ''}`)
+            return false
+          }
+          onClose()
+          return true
+        } catch (cause) {
+          setNotice(String(cause?.message ?? cause))
+          return false
+        } finally {
+          setBusy('')
+        }
+      }
+      // `route:*` 也是模型：在会话目录里找到它所属的提供商，走同一条 select。
+      const useRouteGroup = group => {
+        const owner = groups.find(entry => entry.models.some(model => model.id === group.id))
+        if (owner === undefined) {
+          setNotice(t('panel.routes.empty'))
+          return
+        }
+        void choose(owner.id, group.id)
+      }
+      const resetFailed = async key => {
+        if (routes.status === 'loading') return
+        setBusy(`failed:${key ?? 'all'}`)
+        setNotice('')
+        try {
+          await post('/routes/failed/reset', key === undefined ? {} : { key })
+          routes.reload()
+        } catch (cause) {
+          setNotice(String(cause?.message ?? cause))
+        } finally {
+          setBusy('')
+        }
+      }
+      const resetCooldown = async () => {
+        setBusy('cooldown')
+        setNotice('')
+        try {
+          await post('/routes/cooldown/reset', {})
+          routes.reload()
+        } catch (cause) {
+          setNotice(String(cause?.message ?? cause))
+        } finally {
+          setBusy('')
+        }
+      }
+      const tab = (id, label, count) => h('button', {
+        key: id, type: 'button', className: 'ofm_mpicktab',
+        'data-on': mode === id ? 'true' : 'false',
+        'aria-selected': mode === id ? 'true' : 'false', role: 'tab',
+        onClick: () => setMode(id),
+      }, label, count === null || count === undefined || count === 0 ? null : h('span', { className: 'ofm_mpicktabnum' }, String(count)))
+      const head = h('div', { className: 'ofm_mpickerhead' },
+        h('span', { className: 'ofm_mpickertitle' }, t('panel.selectModel')),
+        h('div', { className: 'ofm_mpicktabs', role: 'tablist' },
+          tab('models', t('panel.tab.models'), null),
+          tab('routes', t('panel.tab.routes'), routeGroups.length),
+          tab('failed', t('panel.tab.failed'), failed.length)),
+        h('span', { className: 'ofm_mpickerspacer' }),
+        h('button', {
+          type: 'button', className: 'ofm_close',
+          'aria-label': t('panel.close'), title: t('panel.close'), onClick: onClose,
+        }, '×'))
+      if (typeof sessionId !== 'string' || sessionId === '') {
+        return h('div', { className: 'ofm_mpicker', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('panel.selectModel') },
+          head,
+          h('div', { className: 'ofm_mpickempty' },
+            h('b', null, t('panel.sessionRequired')),
+            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettingsPanel('free') } }, t('panel.settingsLink'))))
+      }
+      const modelBody = h('div', { className: 'ofm_mpickerbody' },
+        h('aside', { className: 'ofm_mpickerrail' },
+          h('div', { className: 'ofm_mpickerrailtitle' }, t('panel.providers')),
+          h('div', { className: 'ofm_mpickerraillist' }, groups.map(group => h('button', {
+            key: group.id, type: 'button', className: 'ofm_mpickerrailrow',
+            'data-on': activeProvider === group.id ? 'true' : 'false',
+            onClick: () => setProvider(group.id),
+          },
+            h('span', { className: 'ofm_mpickerrailname', title: group.name }, group.name),
+            h('span', { className: 'ofm_mpickerrailcount' }, String(group.models.length)))))),
+        h('div', { className: 'ofm_mpickerpane' },
+          h('div', { className: 'ofm_mpickertools' },
+            h('input', {
+              className: 'ofm_panelsearch', type: 'search', value: query,
+              placeholder: t('panel.searchModel'), 'aria-label': t('panel.searchModel'),
+              onChange: event => setQuery(event.currentTarget.value),
+            })),
+          h('div', { className: 'ofm_mpickerlist' },
+            error !== ''
+              ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loadFailed')), h('span', null, error))
+              : loading
+                ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loading')))
+                : visible.length === 0
+                  ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.noMatch')))
+                  : visible.map(entry => h(Fragment, { key: entry.group.id },
+                    activeProvider === null || searchAll
+                      ? h('div', { className: 'ofm_mpickgroup' },
+                        entry.group.name,
+                        h('span', { className: 'ofm_mpickgroupcount' }, String(entry.models.length)))
+                      : null,
+                    entry.models.map(model => {
+                      const isCurrent = current !== null && current.provider === entry.group.id && current.model === model.id
+                      const key = `${entry.group.id}/${model.id}`
+                      const efforts = Array.isArray(model.reasoning?.efforts) ? model.reasoning.efforts : []
+                      const activeEffort = current?.reasoningEffort ?? model.reasoning?.defaultEffort
+                      const badge = badgeTextOf(model.badge)
+                      return h('div', { key, className: 'ofm_mpickitem' },
+                        h('button', {
+                          type: 'button', className: 'ofm_mpickrow',
+                          'data-current': isCurrent ? 'true' : 'false',
+                          disabled: busy !== '',
+                          title: model.id,
+                          onClick: () => void choose(entry.group.id, model.id),
+                        },
+                          h('span', { className: 'ofm_mpickmain' },
+                            h('span', { className: 'ofm_mpicknamerow' },
+                              h('span', { className: 'ofm_mpickname' }, model.name ?? model.id),
+                              badge === '' ? null : h('span', { className: 'ofm_mpickbadge' }, badge)),
+                            model.description === undefined || model.description === ''
+                              ? null
+                              : h('span', { className: 'ofm_mpickdesc' }, model.description)),
+                          h('span', { className: 'ofm_mpickid' }, model.id),
+                          isCurrent ? h('span', { className: 'ofm_mpickcurrent' }, t('panel.current')) : null,
+                          busy === key ? h('span', { className: 'ofm_mpickspinner' }, '…') : null),
+                        // 档位跟着模型走：不先把模型切过去也能直接「这个模型 + 这一档」。
+                        // 当前模型的档位高亮，其余模型只做入口，点一下即切换。
+                        efforts.length > 1
+                          ? h('div', { className: 'ofm_mpickefforts' }, efforts.map(effort => h('button', {
+                            key: effort.id, type: 'button', className: 'ofm_minibtn',
+                            'data-on': isCurrent && activeEffort === effort.id ? 'true' : 'false',
+                            disabled: busy !== '',
+                            title: effort.description ?? '',
+                            onClick: () => void choose(entry.group.id, model.id, effort.id),
+                          }, effort.name)))
+                          : null)
+                    }))))))
+      const routeBody = h(RouteGroupPanel, {
+        t, routes, catalogGroups: groups, current, busy, setBusy, setNotice, notice,
+        onUse: useRouteGroup, onClose, openSettings: openSettingsPanel,
+      })
+
+      const failedBody = h('div', { className: 'ofm_mpickerbody' },
+        h('div', { className: 'ofm_mpickerpane' },
+          routes.status === 'error'
+            ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loadFailed')), h('span', null, routes.error))
+            : routes.status !== 'ready'
+              ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loading')))
+              : failed.length === 0
+                ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.failed.empty')), h('span', null, t('panel.failed.hint')))
+                : h('div', { className: 'ofm_mpickerlist' }, failed.map(item => h('div', {
+                  key: item.key, className: 'ofm_mpickfailedrow',
+                },
+                  h('div', { className: 'ofm_mpickfailedmain' },
+                    h('span', { className: 'ofm_mpickfailedname' }, item.provider === undefined || item.provider === '' ? (item.model ?? item.key) : `${item.provider} · ${item.model}`),
+                    h('span', { className: 'ofm_mpickfailedwhy' }, t('panel.failed.why')
+                      .replace('{code}', item.code ?? 'error')
+                      .replace('{reason}', item.reason ?? ''))),
+                  h('button', {
+                    type: 'button', className: 'ofm_minibtn',
+                    disabled: busy !== '',
+                    onClick: () => void resetFailed(item.key),
+                  }, t('panel.failed.reset'))))),
+          h('div', { className: 'ofm_mpickerfoot' },
+            h('span', { className: 'ofm_note' }, notice !== '' ? notice : t('panel.failed.hint')),
+            failed.length === 0
+              ? null
+              : h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: () => void resetFailed() }, t('panel.failed.resetAll')),
+            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: () => void resetCooldown() }, t('panel.failed.cooldown')))))
+      return h('div', { className: 'ofm_mpicker', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('panel.selectModel') },
+        head,
+        mode === 'routes' ? routeBody : mode === 'failed' ? failedBody : modelBody,
+        mode === 'models'
+          ? h('div', { className: 'ofm_mpickerfoot' },
+            h('span', { className: 'ofm_note' }, notice !== ''
+              ? notice
+              : (state.failures ?? []).length > 0
+                ? t('panel.failedProviders').replace('{n}', String(state.failures.length))
+                : ''),
+            h('button', {
+              type: 'button', className: 'ofm_minibtn',
+              onClick: () => { onClose(); openSettingsPanel('routing') },
+            }, t('panel.tab.routes')),
+            h('button', {
+              type: 'button', className: 'ofm_minibtn',
+              onClick: () => { onClose(); openSettingsPanel('free') },
+            }, t('panel.settingsLink')))
           : null)
     }
 
-    // ── settings page ─────────────────────────────────────────────────────────
+    function ModelPanelOverlay(props) {
+      const { t, ctx, locale } = props
+      const [state, setState] = useState({ open: false, tab: undefined, scope: 'model', sessionId: undefined })
+      // 面板由「指针按下」打开，同一次点击的 mouseup/click 会落在刚挂载的遮罩上。
+      // 记录打开时刻，250ms 内的遮罩点击一律忽略，否则面板会开完立刻被自己关掉。
+      const openedAt = useRef(0)
+      useEffect(() => {
+        const onOpen = event => {
+          const detail = event?.detail ?? {}
+          openedAt.current = Date.now()
+          setState({
+            open: true,
+            tab: detail.tab,
+            scope: detail.scope === 'settings' ? 'settings' : 'model',
+            sessionId: typeof detail.sessionId === 'string' ? detail.sessionId : undefined,
+          })
+        }
+        window.addEventListener('ofm:open-panel', onOpen)
+        return () => window.removeEventListener('ofm:open-panel', onOpen)
+      }, [])
+      useEffect(() => {
+        if (!state.open) return undefined
+        const onKey = event => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          setState(current => ({ ...current, open: false }))
+        }
+        document.addEventListener('keydown', onKey, true)
+        return () => document.removeEventListener('keydown', onKey, true)
+      }, [state.open])
+      if (!state.open) return null
+      const close = () => setState(current => ({ ...current, open: false }))
+      return h('div', {
+        className: 'ofm_scrim ofm_panelscrim',
+        onClick: event => {
+          if (event.target !== event.currentTarget) return
+          if (Date.now() - openedAt.current < 250) return
+          close()
+        },
+      },
+        state.scope === 'model'
+          ? h(ModelPickerDialog, { t, ctx, sessionId: state.sessionId, onClose: close })
+          : h('div', { className: 'ofm_panelmodal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('panel.open') },
+            h(SettingsPage, { t, locale, ctx, onClose: close, initialTab: state.tab })))
+    }
+
+
+    /**
+     * Composer dock: threshold chip plus the panel launcher.
+     *
+     * `conversation.composer.dock` is the closest documented seat in front of the
+     * native context meter. The chip's popover portals to `body` because the
+     * dock sits inside the composer's overflow context.
+     */
+    function CompactionQuick(props) {
+      const { t } = props
+      const panel = usePanel(() => api('/compaction'), [])
+      const [open, setOpen] = useState(false)
+      const [ratio, setRatio] = useState(75)
+      const [busy, setBusy] = useState(false)
+      const [anchor, setAnchor] = useState(undefined)
+      const chipRef = useRef(null)
+      const popRef = useRef(null)
+      useEffect(() => {
+        if (panel.data === undefined) return
+        setRatio(Math.round((panel.data.thresholdRatio ?? 0.75) * 100))
+      }, [panel.data?.thresholdRatio])
+      useEffect(() => {
+        if (!open) return undefined
+        const onDown = event => {
+          if (popRef.current?.contains(event.target) === true) return
+          if (chipRef.current?.contains(event.target) === true) return
+          setOpen(false)
+        }
+        const onScroll = () => setOpen(false)
+        document.addEventListener('pointerdown', onDown, true)
+        window.addEventListener('scroll', onScroll, true)
+        return () => {
+          document.removeEventListener('pointerdown', onDown, true)
+          window.removeEventListener('scroll', onScroll, true)
+        }
+      }, [open])
+      const place = () => {
+        const node = chipRef.current
+        if (node === null || node === undefined) return
+        const rect = node.getBoundingClientRect()
+        setAnchor({
+          left: Math.max(12, Math.min(rect.left, window.innerWidth - 324)),
+          bottom: Math.max(12, window.innerHeight - rect.top + 8),
+        })
+      }
+      const toggle = () => {
+        if (!open) place()
+        setOpen(value => !value)
+      }
+      const save = async value => {
+        const next = Math.max(1, Math.min(100, Math.round(Number(value) || 0)))
+        setRatio(next); setBusy(true)
+        try {
+          const answer = await post('/compaction', { thresholdRatio: next / 100 })
+          panel.patch(answer)
+        } catch (error) {
+          showToast({ title: t('compact.saveFailed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      const restore = async () => {
+        setBusy(true)
+        try {
+          const answer = await post('/compaction', { thresholdRatio: null })
+          panel.patch(answer)
+          setRatio(Math.round((answer.thresholdRatio ?? 0.75) * 100))
+        } catch (error) {
+          showToast({ title: t('compact.saveFailed'), body: String(error?.message ?? error), tone: 'warn' })
+        } finally { setBusy(false) }
+      }
+      const data = panel.data
+      const disabled = busy || (data !== undefined && data.supported === false)
+      const popNode = open && anchor !== undefined ? h('div', {
+        className: 'ofm_quickpop', ref: popRef, style: { left: `${anchor.left}px`, bottom: `${anchor.bottom}px` },
+        role: 'dialog', 'aria-label': t('compact.chip'),
+      },
+        h('div', { className: 'ofm_quickpophead' },
+          h('b', null, t('compact.chip')),
+          h('span', { className: 'ofm_note' }, t('compact.quickHint'))),
+        h('div', { className: 'ofm_quickval' }, h('b', null, String(ratio)), h('span', null, '%')),
+        h('input', {
+          type: 'range', min: 20, max: 95, step: 1, value: ratio, disabled,
+          'aria-label': t('compact.chip'), className: 'ofm_quickslider',
+          onChange: event => setRatio(Number(event.target.value)),
+          onPointerUp: event => { if (!disabled) void save(event.currentTarget.value) },
+          onKeyUp: event => { if (!disabled && ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) void save(event.currentTarget.value) },
+        }),
+        h('div', { className: 'ofm_row' },
+          [50, 65, 75, 85].map(value => h('button', {
+            key: value, type: 'button', className: 'ofm_minibtn', disabled,
+            onClick: () => void save(value),
+          }, `${value}%`))),
+        h('div', { className: 'ofm_quickpopfoot' },
+          h('button', { type: 'button', className: 'ofm_minibtn', disabled, onClick: restore }, t('compact.restore')),
+          h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { setOpen(false); openSettingsPanel('pipeline') } }, t('compact.openPanel')))) : null
+      // The composer dock is mounted by a slot-level React root. A portal to
+      // `body` can paint correctly while its events still bubble through that
+      // root's container, not the body, which made the first version's buttons
+      // look alive but ignore clicks. Keep the node inside the slot root; fixed
+      // positioning already escapes the composer's normal flow.
+      const pop = popNode
+      return h(Fragment, null,
+        h('div', { className: 'ofm_dock' },
+          h('button', {
+            type: 'button', ref: chipRef, className: 'ofm_autochip', 'aria-expanded': open ? 'true' : 'false',
+            title: t('compact.quickHint'), onClick: toggle,
+          },
+            h('span', { className: 'ofm_dot ok' }),
+            `${t('compact.chip')} ${ratio}%`,
+            h('span', { className: 'ofm_autochipcaret', 'aria-hidden': 'true' }, '▴'))),
+        pop)
+    }
+
+    /**
+     * 原生选择器旁边只加一个入口，不动宿主自己的模型选择器。
+     *
+     * 旧 `model-failover-manager` 的做法是直接接管 `conversation.input.model`
+     * （priority -1），把原生模型选择器整个换掉。那会让我们被迫重做目录、搜索、
+     * 推理档和子代理选择，成本高且容易和宿主版本打架。
+     * `conversation.input.activity` 是单值槽，已被语音输入占用；再抢会让麦克风
+     * 消失，所以改用右侧的 `conversation.input.right` 列表，把入口排到模型选择器
+     * 左侧：原生选择器继续选模型，本插件只负责打开路由 / 管线 / 重试面板。
+     */
+    function ModelLauncherButton(props) {
+      const { t, sessionId } = props
+      const open = () => openModelPanel('models', sessionId)
+      return h('div', { className: 'ofm_modelseat' },
+        h('button', {
+          type: 'button', className: 'ofm_modellaunch', title: t('panel.open'),
+          'aria-label': t('panel.open'),
+          // 指针按下就打开：宿主输入框在 blur 时会重排右侧 seat，只靠 onClick
+          // 时 mousedown → blur 可能先把按钮换掉，mouseup 落不到同一个节点。
+          onPointerDown: e => {
+            if (e.button !== 0) return
+            e.preventDefault()
+            open()
+          },
+          onClick: open,
+        },
+        h(ModelSidebarIcon, { size: 14 })))
+    }
+
     function SettingsPage(props) {
       const tagged = props.locale === undefined ? props.t : Object.assign(x => props.t(x), { locale: props.locale })
       const t = tagged
@@ -6544,6 +8365,7 @@ window.__ModuleLoader__.load({
       return h(Shell, {
         t: tagged, data, counts, summary, stats,
         busy, setBusy, apply, bench, benches, ctx: props.ctx,
+        onClose: props.onClose, initialTab: props.initialTab,
       })
     }
 
@@ -6559,34 +8381,68 @@ window.__ModuleLoader__.load({
     // The active page lives in localStorage so a reload — or the hot reload the
     // upgrader triggers — comes back to the page the user was reading.
     const TAB_KEY = 'ofm.tab'
-    const TABS = ['free', 'aggregate', 'channels', 'pipeline', 'observe', 'gateway']
+    const TABS = ['free', 'aggregate', 'channels', 'pipeline', 'routing', 'observe', 'retry', 'gateway']
     /** 旧页签 → 新页：读回旧值时迁移，避免升级后落到默认页。 */
     const TAB_MIGRATION = {
       free: 'free', models: 'free',
       eac: 'aggregate', eacagg: 'aggregate', aggregate: 'aggregate',
       channels: 'channels',
-      saver: 'pipeline', routing: 'pipeline',
-      ledger: 'observe', logs: 'observe',
+      saver: 'pipeline', routing: 'routing',
+      ledger: 'observe', logs: 'observe', retry: 'retry',
       gateway: 'gateway',
     }
 
     function Shell(props) {
-      const { t, data, counts, summary, stats, busy, setBusy, apply, bench, benches, ctx } = props
+      const { t, data, counts, summary, stats, busy, setBusy, apply, bench, benches, ctx, onClose, initialTab } = props
       const [tab, setTab] = useState(() => {
+        if (initialTab !== undefined && TABS.includes(initialTab)) return initialTab
         try {
           const saved = window.localStorage?.getItem(TAB_KEY)
-          return TABS.includes(saved) ? saved : (TAB_MIGRATION[saved] ?? 'free')
+          return TABS.includes(saved) ? saved : (TABS.includes(TAB_MIGRATION[saved]) ? TAB_MIGRATION[saved] : 'free')
         } catch { return 'free' }
       })
       const tabRefs = useRef({})
       const [glider, setGlider] = useState({ left: 0, top: 0, width: 0, height: 0 })
       useEffect(() => {
         try { window.localStorage?.setItem(TAB_KEY, tab) } catch { /* storage unavailable */ }
-        const node = tabRefs.current[tab]
+        let alive = true
+        let frame = 0
+        const node = () => tabRefs.current[tab]
+        const measure = () => {
+          if (!alive) return
+          const target = node()
+          if (target === undefined || target === null) return
+          setGlider(current => current.left === target.offsetLeft
+            && current.top === target.offsetTop
+            && current.width === target.offsetWidth
+            && current.height === target.offsetHeight
+            ? current
+            : { left: target.offsetLeft, top: target.offsetTop, width: target.offsetWidth, height: target.offsetHeight })
+        }
+        const schedule = () => {
+          cancelAnimationFrame(frame)
+          frame = requestAnimationFrame(measure)
+        }
         // Tabs may wrap onto a second row inside the group, so the glider is
         // placed on both axes: translate alone would put it at the right
         // height and the wrong row.
-        if (node !== undefined && node !== null) setGlider({ left: node.offsetLeft, top: node.offsetTop, width: node.offsetWidth, height: node.offsetHeight })
+        //
+        // 首帧量出来的宽度是「字体还没就绪、侧栏/弹窗还在播入场动画」时的宽度，
+        // 游标会停在旧尺寸上（左边多出一截、右边盖住下一个页签）。字体就绪
+        // 与容器尺寸变化时各补量一次。
+        schedule()
+        try { document.fonts?.ready?.then(schedule, () => {}) } catch { /* no font API */ }
+        let observer
+        const host = node()?.parentElement
+        if (host !== undefined && host !== null && typeof ResizeObserver === 'function') {
+          observer = new ResizeObserver(schedule)
+          observer.observe(host)
+        }
+        return () => {
+          alive = false
+          cancelAnimationFrame(frame)
+          observer?.disconnect()
+        }
       }, [tab, t.locale])
 
       const refresh = async () => {
@@ -6604,49 +8460,98 @@ window.__ModuleLoader__.load({
         ['free', t('nav.tab.free'), data.catalog.filter(m => !m.channel).length],
         ['aggregate', t('nav.tab.aggregate'), data.catalog.filter(m => m.channel === 'aggregate').length],
         ['channels', t('nav.tab.channels'), CHANNEL_PROVIDERS.length],
-        ['pipeline', t('nav.tab.pipeline'), data.catalog.filter(m => m.channel === 'combo').length],
+        ['pipeline', t('nav.tab.pipeline'), null],
+        ['routing', t('nav.tab.routing'), data.catalog.filter(m => m.channel === 'combo' || m.channel === 'route').length],
         ['observe', t('nav.tab.observe'), null],
+        ['retry', t('nav.tab.retry'), null],
         ['gateway', t('nav.tab.gateway'), null],
       ]
+      // 聊天框的模型面板已经是独立的选择器（ModelPickerDialog），这里只剩完整设置页；
+      // 页签集合不再按入口裁剪，两个入口共用同一份 TABS。
+      const stepTab = delta => {
+        if (tabs.length === 0) return
+        const at = tabs.findIndex(([id]) => id === tab)
+        const next = tabs[(at + delta + tabs.length) % tabs.length]
+        if (!next) return
+        setTab(next[0])
+        requestAnimationFrame(() => tabRefs.current[next[0]]?.focus())
+      }
+      const tabKeyDown = event => {
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+        event.preventDefault()
+        stepTab(event.key === 'ArrowRight' ? 1 : -1)
+      }
+      const tabsBar = h('div', { className: 'ofm_tabs', role: 'tablist' },
+        h('span', { className: 'ofm_tabglider', style: { transform: `translate(${glider.left}px, ${glider.top}px)`, width: `${glider.width}px`, height: `${glider.height}px` } }),
+        tabs.map(([id, label, num]) => h('button', {
+          key: id, type: 'button', role: 'tab', 'aria-selected': tab === id ? 'true' : 'false', className: 'ofm_tab', 'data-on': tab === id ? 'true' : 'false',
+          tabIndex: tab === id ? 0 : -1,
+          ref: node => { tabRefs.current[id] = node },
+          onKeyDown: tabKeyDown,
+          onClick: () => setTab(id),
+        }, label, num === null ? null : h('span', { className: 'ofm_tabnum' }, String(num)))))
       const nav = h('nav', { className: 'ofm_nav' },
         h('span', { className: 'ofm_navbrand' },
           h('span', { className: 'ofm_navmark', 'aria-hidden': 'true' },
             h('img', { src: BRAND_ICON, alt: '' })),
-          t('title')),
-        h('div', { className: 'ofm_tabs', role: 'tablist' },
-          h('span', { className: 'ofm_tabglider', style: { transform: `translate(${glider.left}px, ${glider.top}px)`, width: `${glider.width}px`, height: `${glider.height}px` } }),
-          tabs.map(([id, label, num]) => h('button', {
-            key: id, type: 'button', role: 'tab', 'aria-selected': tab === id ? 'true' : 'false', className: 'ofm_tab', 'data-on': tab === id ? 'true' : 'false',
-            'aria-selected': tab === id ? 'true' : 'false',
-            ref: node => { tabRefs.current[id] = node },
-            onClick: () => setTab(id),
-          }, label, num === null ? null : h('span', { className: 'ofm_tabnum' }, String(num))))),
+          onClose === undefined ? t('title') : t('panel.title')),
+        tabsBar,
         h('span', { className: 'ofm_navspacer' }),
-        h(StarButton, { t }))
+        h('div', { className: 'ofm_navact' },
+          h(StarButton, { t }),
+          onClose === undefined ? null : h('button', {
+            type: 'button', className: 'ofm_close', 'aria-label': t('panel.close'), title: t('panel.close'),
+            onClick: onClose,
+          }, '×')))
 
       const page = tab === 'aggregate'
         ? h(AggregatePage, { t, summary })
         : tab === 'channels'
           ? h(ChannelsPage, { t, ctx, summary })
           : tab === 'pipeline'
-            ? h('div', { className: 'ofm_page' }, h(SaverPage, { t }), h(RoutingPage, { t }))
+            // 两段都是 Section 根节点：直接并列，外层不再套 .ofm_page（旧版双层
+            // page 会多出一圈内边距与入场动画，看着像排版错位）。
+            ? h(Fragment, null, h(CompactionCard, { t }), h(SaverPage, { t }))
+            : tab === 'routing'
+              ? h('div', { className: 'ofm_page' }, h(RoutesPage, { t }), h(RoutingPage, { t, bare: true }))
             : tab === 'observe'
-              ? h('div', { className: 'ofm_page' }, h(LedgerPage, { t, ctx }), h(LogsPage, { t, ctx }))
-              : tab === 'gateway'
+              ? h(Fragment, null, h(LedgerPage, { t, ctx }), h(LogsPage, { t, ctx }))
+              : tab === 'retry'
+                ? h(RetryPage, { t })
+                : tab === 'gateway'
                 ? h('div', { className: 'ofm_page' },
                   h(Section, { title: t('section.forward'), hint: t('section.forwardHint') }, h(Forward, { settings: data.settings, t, onApply: apply, busy })),
                   h(Section, { title: t('section.egress'), hint: t('section.egressHint') }, h(Egress, { settings: data.settings, t, onApply: apply, busy })),
                   h(GatewayPage, { t, ctx }))
                 : h(FreePage, { t, data, counts, summary, stats, busy, apply, bench, benches, refresh, reprobe })
 
-      return h('div', { className: 'ofm_root ofm_shell' },
+      const dialogNav = h('header', { className: 'ofm_dlghead' },
+        h('span', { className: 'ofm_navbrand' },
+          h('span', { className: 'ofm_navmark', 'aria-hidden': 'true' },
+            h('img', { src: BRAND_ICON, alt: '' })),
+          t('panel.settingsTitle')),
+        h('span', { className: 'ofm_dlgspacer' }),
+        h('button', {
+          type: 'button', className: 'ofm_close', 'aria-label': t('panel.close'), title: t('panel.close'),
+          onClick: onClose,
+        }, '×'))
+
+      return h('div', { className: 'ofm_root ofm_shell', 'data-dialog': onClose === undefined ? 'false' : 'true' },
         h('div', { className: 'ofm_aurora', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
-        nav,
-        page)
+        onClose === undefined
+          ? h(Fragment, null, nav, page)
+          : h(Fragment, null, dialogNav, h('div', { className: 'ofm_dlgtabbar' }, tabsBar), h('div', { className: 'ofm_dlgbody' }, page)))
     }
 
     function FreePage(props) {
       const { t, data, counts, summary, stats, busy, apply, bench, benches, refresh, reprobe } = props
+      // 档位表的写回是整表替换：`modelEffort` 是字典，不是单个开关。空档 = 删键。
+      const setEffort = async (model, level) => {
+        const table = { ...(data.settings?.modelEffort ?? {}) }
+        if (level === '') delete table[model.id]
+        else table[model.id] = level
+        await apply({ modelEffort: table })
+      }
       // The denominator is the free lane's own roster — the only slice the
       // verdicts describe. Dividing by the whole catalog (which also carries
       // the never-probed EAC and Kilo entries) read a 6-of-10 lane as ~17%.
@@ -6694,7 +8599,10 @@ window.__ModuleLoader__.load({
               h('div', { className: 'ofm_row' },
                 h(Button, { disabled: busy, onClick: refresh }, summary.status === 'loading' ? t('probing') : t('refresh')),
                 h(Button, { disabled: busy, onClick: reprobe }, t('reprobe')))))),
-        h(Section, { title: t('section.models'), hint: t('section.modelsHint') }, h(Roster, { summary: data, t, onBench: bench, benches })),
+        h(Section, { title: t('section.models'), hint: t('section.modelsHint') }, h(Roster, {
+          summary: data, t, onBench: bench, benches,
+          effortTable: data.settings?.modelEffort ?? {}, onEffort: setEffort, busy,
+        })),
         h(Section, { title: t('section.prefs'), hint: t('section.prefsHint') }, h(Preferences, { summary: data, t, onApply: apply, busy })))
     }
 
@@ -6774,7 +8682,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'spacer' }),
             page === 0 ? h(Button, { kind: 'ghost', onClick: finish }, t('ann.later')) : h(Button, { kind: 'ghost', onClick: () => setPage(p => Math.max(0, p - 1)) }, '‹'),
             last
-              ? h(Button, { kind: 'primary', onClick: async () => { await finish(); openSection?.('our-free-model') } }, t('ann.openSettings'))
+              ? h(Button, { kind: 'primary', onClick: async () => { await finish(); openModelPanel() } }, t('ann.openPanel'))
               : h(Button, { kind: 'primary', onClick: () => setPage(p => Math.min(PAGES.length - 1, p + 1)) }, '›'))))
       // Out of `#root` and onto the body: the shell hides `#root` (opacity/inert)
       // while its own first-run surface is up, and no descendant escapes that.
@@ -6932,7 +8840,7 @@ window.__ModuleLoader__.load({
 
       ctx.effect(() => {
         const style = document.createElement('style')
-        style.setAttribute('data-plugin', 'dsh-our-free-model')
+        style.setAttribute('data-plugin', 'dsh-model-manager')
         style.textContent = CSS
         document.head.appendChild(style)
         return () => style.remove()
@@ -7038,7 +8946,7 @@ window.__ModuleLoader__.load({
             if (String(at) === seen) return
             try { window.localStorage?.setItem('ofm.reloadedAt', String(at)) } catch { /* ignore */ }
             showToast({
-              title: meta.version !== '' ? `Our Free Model ${meta.version}` : 'Our Free Model',
+              title: meta.version !== '' ? `Model Manager ${meta.version}` : 'Model Manager',
               body: t('reload.done').replace('{n}', String(meta.reloadCount ?? 0)),
               actions: [{ label: t('reload.refresh'), onClick: () => { try { window.location.reload() } catch { /* top-level navigation refused */ } } }],
               holdMs: 12000,
@@ -7048,13 +8956,55 @@ window.__ModuleLoader__.load({
         return () => {}
       }, 'our-free-model: reload notice')
 
-      ctx.slots.inject('settings.section', () => ctx.slots.register({
-        name: 'settings.section',
-        id: 'our-free-model',
-        order: 35,
-        label: () => t('nav'),
-        locale: NS,
-      }, props => h(SettingsPage, { ...props, locale: localeTag(ctx), ctx })))
+      // 侧栏一级入口：与「插件」同一层级，order 5 插在 plugins(0) 和
+      // schedules(10) 之间。主面板用同一个 SettingsPage，不再把设置页当容器。
+      try {
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: 'our-free-model',
+          order: 5,
+          label: () => t('nav.panel'),
+          locale: NS,
+        }, ModelSidebarIcon))
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: 'our-free-model',
+          locale: NS,
+        }, props => h(SettingsPage, { ...props, locale: localeTag(ctx), ctx })))
+      } catch { /* older shells without a panel registry keep the composer entry */ }
+
+      // 真正的对话框：聊天框按钮通过 window 事件打开，shell.overlay 负责挂载。
+      // 用 portal 到 body，避免侧栏/会话布局的 overflow 把浮层裁掉。
+      try {
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay',
+          id: 'our-free-model-panel',
+          order: 40,
+          locale: NS,
+        }, props => h(ModelPanelOverlay, { ...props, locale: localeTag(ctx), ctx })))
+      } catch { /* 没有 overlay 槽位的宿主仍可从侧栏进入 */ }
+
+      // 输入卡下方只保留压缩阈值，不再把「模型」和它挤在同一排。
+      try {
+        ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+          name: 'conversation.composer.dock',
+          id: 'our-free-model-dock',
+          order: 0,
+          locale: NS,
+        }, props => h(CompactionQuick, { ...props, t: Object.assign(x => t(x), { locale: localeTag(ctx) }) })))
+      } catch { /* 宿主没有该槽位：快捷条缺席，侧栏入口仍在 */ }
+
+      // 与 `dsh-model-failover` 的 seat 同一个槽位：conversation.input.right，
+      // 用同样的 order 50 排到官方模型选择器紧左边，而不是跑到「回退」前面。
+      // 点击才打开本插件自己的面板。
+      try {
+        ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+          name: 'conversation.input.right',
+          id: 'our-free-model-launcher',
+          order: 1000,
+          locale: NS,
+        }, props => h(ModelLauncherButton, { ...props, t: Object.assign(x => t(x), { locale: localeTag(ctx) }) })))
+      } catch { /* 宿主没有 input.right 槽位：侧栏「模型」入口仍可用 */ }
 
       ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
         name: 'settings.onboarding',

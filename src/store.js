@@ -208,6 +208,13 @@ export const SETTINGS_INITIAL = {
   /** Named fallback chains. A combo is a virtual model whose answer comes from
    *  the first link that produces output; see src/combos.js. */
   combos: [],
+  /** 上下文压缩（宿主内置引擎的运行时接管）。`thresholdRatio: null` = 跟随引擎
+   *  默认（0.8）；false 的 `enabled` 把比例放到 1.0，等于只在窗口末尾触发。 */
+  compaction: { enabled: true, thresholdRatio: null },
+  /** 面板里按模型定死的思考档位（优先于会话选择；空值 = 跟随）。 */
+  modelEffort: {},
+  /** 路由分组的全局参数：并发上限与限流冷却。分组本身在 route/groups.json。 */
+  route: { defaultConcurrency: 0, capacityCooldownMs: 30000, concurrencyByModel: {} },
   /** The five local answers that avoid a provider call entirely: a quota probe,
    *  a shell command prefix, a session title, a suggestion, a filepath list.
    *  They are pure request-shape matches, so a false positive would answer a real

@@ -4,6 +4,7 @@ import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
 import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
+import { buildGroupRows, isRouteEntry } from '../route/groups.js'
 import { buildOwnCatalog } from '../channels/catalog.js'
 import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage } from '../store.js'
 import { STATE, detectEgress, probeCatalog } from '../probe.js'
@@ -53,6 +54,15 @@ export function createModelRuntime({
   sealedCredential = () => null,
   /** 自有渠道的凭据解析（provider → 凭据 JSON），由入口注入。 */
   ownCredential = async () => null,
+  /** 路由分组：配置存储、并发闸门与分组读取（虚拟目录项的来源）。 */
+  routeStore = null,
+  gate = null,
+  routeGroups = () => [],
+  /**
+   * 宿主 `llm.stream`，只用来把「别的渠道」的分组成员转发出去。
+   * 入口注入的是懒闭包：llm 服务可能在运行时创建之后才可见。
+   */
+  hostStream = null,
   onSealedUnavailable = () => {},
   onTopology = () => {},
 }) {
@@ -68,6 +78,18 @@ export function createModelRuntime({
   let ownCatalog = []
   /** The virtual rows a combo contributes; rebuilt last, after every real lane. */
   let comboCatalog = []
+  /** 路由分组投影出来的虚拟行（进 `catalog`，选择器里能选）。 */
+  let routeCatalog = []
+  /** 分组成员解析用的目录：本插件自己的行 + 宿主其它渠道的行。 */
+  let routeMembers = []
+  /**
+   * 宿主目录里其它渠道的模型行 —— **只**给路由分组成员当候选，不进本插件的
+   * 目录（否则这些模型会在选择器里出现两次，且都被算成我们的模型）。
+   *
+   * 分组要能像 model-failover-manager 一样覆盖全宿主的渠道，成员才不只是我们
+   * 自己供给的那几十个；这类成员由 `runForeign` 用宿主 `llm.stream` 转发。
+   */
+  let hostCatalog = []
   /** The free lane's own roster: the base every other lane is merged onto. */
   let freeCatalog = catalog
   let egress = availability.get().egress ?? null
@@ -104,6 +126,21 @@ export function createModelRuntime({
       seen.add(entry.id)
       merged.push(entry)
     }
+    // 分组排在最后：成员必须是上面已经成立的实模型行，否则组内会指向一个
+    // 不存在的东西；`buildGroupRows` 自己会把空组/全失效组丢掉。宿主目录的
+    // 行只在建组视图中参与（成员解析 + 投影），不并进 `catalog`。
+    const groupCatalog = hostCatalog.length === 0
+      ? merged
+      : [...merged, ...hostCatalog.filter(row => !seen.has(row.id))]
+    // `groups` 是投影出来的虚拟分组行（进 `catalog`），`routeMembers` 才是
+    // 成员解析用的目录（含宿主其它渠道）。两者别混：分组行本身不能当成员。
+    routeMembers = groupCatalog
+    routeCatalog = buildGroupRows(routeGroups(), groupCatalog)
+    for (const entry of routeCatalog) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      merged.push(entry)
+    }
     catalog = merged
   }
   const mergeCatalogs = () => {
@@ -113,6 +150,7 @@ export function createModelRuntime({
   mergeCatalogs()
   const state = () => ({
     catalog,
+    routeCatalog: routeMembers,
     membership: computeMembership(catalog, availability.get(), settings.get()),
     settings: settings.get(),
     attributionUserAgent,
@@ -129,6 +167,10 @@ export function createModelRuntime({
       stats.edit(value => pruneDays(value, 120))
     },
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
+    routeStore,
+    gate,
+    routeGroups,
+    hostStream,
     warn: message => logger.warn?.(message) ?? logger.log?.(message),
     onRegionBlocked: () => {
       if (disposed || reprobeTimer !== undefined) return
@@ -251,7 +293,8 @@ export function createModelRuntime({
     // 自有分组整组从 membership 消失（选择器空白）。它们是否有模型由目录/账号
     // 状态决定，见 `setOwnCatalog()`。
     const probeable = catalog.filter(entry => !isOwnRow(entry)
-      && !isEacEntry(entry) && !isKiloEntry(entry) && !isAggregateEntry(entry) && !isComboEntry(entry))
+      && !isEacEntry(entry) && !isKiloEntry(entry) && !isAggregateEntry(entry) && !isComboEntry(entry)
+      && !isRouteEntry(entry))
     const results = await probeCatalog(probeable, { attributionUserAgent, signal: lifetime.signal }, (id, result) => {
       if (disposed) return
       availability.edit(value => ({
@@ -323,6 +366,13 @@ export function createModelRuntime({
       emitTopology()
       return catalog
     },
+    /** 路由分组保存后重建虚拟行（与会话选择器同步）。 */
+    syncRouteCatalog() {
+      if (disposed) return catalog
+      rebuildCatalog()
+      emitTopology()
+      return catalog
+    },
     /** 自有渠道的目录由入口提供（账号表 + 权益查询的缓存），变更后重建视图。 */
     setOwnCatalog(rows) {
       ownCatalog = Array.isArray(rows) ? rows : []
@@ -331,7 +381,19 @@ export function createModelRuntime({
       emitTopology()
       return catalog
     },
+    /**
+     * 宿主其它渠道的目录（只作分组成员候选）。入口按需刷新，变更后重建分组
+     * 视图：已经失效的成员可能因此复活，也可能因为渠道下线而变回缺失。
+     */
+    setHostCatalog(rows) {
+      hostCatalog = Array.isArray(rows) ? rows : []
+      if (disposed) return catalog
+      rebuildCatalog()
+      emitTopology()
+      return catalog
+    },
     get catalog() { return catalog },
+    get routeCatalog() { return routeMembers },
     get egress() { return egress },
     get gatewayLatency() { return gatewayLatency },
     setAttributionUserAgent(value) { attributionUserAgent = value },

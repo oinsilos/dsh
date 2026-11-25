@@ -10,6 +10,8 @@ DeepSeek Harness（dsh）插件：把免费模型、账号渠道、自带 Key �
 - **十三个账号渠道**——CodeArts（华为云）、WorkBuddy / CodeBuddy（腾讯）、LobsterAI（有道）、Qoder / Qoder 中国版（阿里系）、TRAE（字节）、Cline、Loomy（讯飞）、Raccoon（商汤）、MiniMax Code、ZCode（智谱）、Gemini（Google Code Assist）、Kilo 免费池与原有匿名通道。登录流程、账号池、每日积分领取、模型黑名单随渠道包一起挂载。
 - **聚合渠道（自带 Key）**——内置 76 家提供商注册表（NVIDIA NIM、OpenRouter、Groq、Cerebras、Gemini、DeepSeek、Mistral、Together、Fireworks、SiliconFlow、Nebius、Chutes、Hugging Face、Cloudflare、Z.ai、Kimi、MiniMax、QwenCloud、Bedrock、Vertex、Vercel AI Gateway、Azure OpenAI，以及 Ollama、LM Studio、llama.cpp 等本机端点），写入 Key 后模型以 `provider/model` 出现在选择器与网关里。Key 只写入本机 `settings.json`（0600），接口只回显 `hasKey` 与指纹。
 - **路由（降级链）**——把任意车道的模型串成命名链，以 `combo:<name>` 作为虚拟模型；支持 `fallback` 与 `round-robin`。
+- **路由分组（接管 failover）**——`route:<group>` 是可选中的虚拟模型：成员按优先级从小到大尝试，支持时段窗口（如 `18-8` 跨零点）、当日熔断、按模型并发闸门与限流冷却。切换只发生在链内一次，不再叠第二层拦截；面板可增删成员、改优先级/档位/时段，并能一键导入 `model-failover-manager` 的旧配置。
+- **上下文压缩阈值**——接管宿主内置压缩引擎的 `thresholdRatio`（不自建压缩引擎、不改 preset 配置），面板滑块 20–95%，每个 `agent/pre-step` 重放一次，preset 切换或热重载后仍生效。
 - **省 Token**——工具输出压缩（RTK：git diff/status/log、grep、find、ls、tree、构建日志等）、提示词瘦身（默认关闭）与本地应答。
 - **观测**——Token 热力图、总量曲线、输出速度与首字延迟逐次采样；数据全部留在本机。
 - **OpenAI / Anthropic 兼容网关**——默认监听 `127.0.0.1:8326`，提供 `/v1/models`、`/v1/chat/completions`、`/v1/responses`、`/v1/messages`、`/v1/messages/count_tokens`、`/v1/reasoning-efforts`；密钥首次启动时自动生成，存于 `~/.dsh/openai-gateway/api-key`。
@@ -339,6 +341,8 @@ node tests/channel-manifest.mjs   # 渠道清单对账：面板卡片 == 宿主�
 node tests/doubao-inference.mjs   # 豆包推理腿：目录树解析、请求体路由（conversation_mode 字符串坑）、帧翻译
 node tests/pending-accounts.mjs   # 占位账号：没凭据 = 待登录（不是「查询失败」），启动时清掉
 node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲染一遍
+node tests/route-groups.mjs       # 分组/优先级/时段/投影、并发闸门、旧配置迁移、熔断、压缩三件套
+node tests/model-panel.mjs        # 对话框模型面板：走宿主 modelDirectories、带 sessionId、点选即切换
 ```
 
 合起来即 `pnpm test:client`。冒烟测试里的替身 React 只保证挂载期渲染与「点击 →
@@ -368,7 +372,7 @@ node tests/channels-smoke.mjs     # 用极小 React 替身把白嫖页整页渲�
 - **Loomy 首块慢**：上游 direct 通道实测首块 95–127s（同模型走 gateway 只 18s）。适配器超时已降到 85s（短于宿主 90s），慢时会明确报「上游首字超时，本次不重试」，而不是空白的「首字节为空」。
 - **每日自动签到默认开启**：默认值来自渠道包（`enabled: true`），不是本插件的选择；页面上已加提示，需要关闭请用「每日自动签到」开关。
 
-面板共六个页签：免费模型、聚合渠道、白嫖模型接入、管线、观测、对外服务。
+面板共七个页签：免费模型、聚合渠道、白嫖模型接入、管线、路由、观测、对外服务。
 
 ## 安装
 
@@ -381,6 +385,8 @@ dsh plugin add /path/to/our-free-model
 ```
 
 插件数据写在 `~/.dsh/our-free-model/`（设置与统计）、`~/.dsh/channel-pack/`（账号池与渠道状态）、`~/.dsh/openai-gateway/api-key`（网关密钥）。仓库本身不包含任何账号、Key 或运行时配置。
+
+**从 2.10 升级**：`model-failover-manager` 与 `dsh-compaction-threshold` 的能力已并入本插件，可以从 profile 卸载。首次启动时本插件会把旧分组/绑定/当日熔断迁到 `~/.dsh/our-free-model/route/`（也可在「路由」页手动重新导入）；旧阈值 `~/.dsh/compaction-threshold.json` 的 0.75 会作为初始值。旧会话里选过的 failover 门面模型 id 不会自动重绑，需要在会话里重新选择 `route:<分组>`。
 
 ## 网关接入
 
@@ -398,7 +404,7 @@ dsh plugin add /path/to/our-free-model
 
 ```
 index.js                 宿主侧：路由、模型运行时、转发/中继/出口代理
-client.js                设置页（六页签）与公告组件
+client.js                设置页（七页签）与公告组件
 src/                     免费车道、聚合渠道、省 Token、路由、网关适配等
 adapter/                 宿主内核适配层
 locale/                  面板语言包
