@@ -63,6 +63,8 @@ export function createModelRuntime({
    * 入口注入的是懒闭包：llm 服务可能在运行时创建之后才可见。
    */
   hostStream = null,
+  /** 一行一条的排障读数（分组这一轮选了谁、跳了谁、最后谁答的）。 */
+  trace = () => {},
   onSealedUnavailable = () => {},
   onTopology = () => {},
 }) {
@@ -171,6 +173,7 @@ export function createModelRuntime({
     gate,
     routeGroups,
     hostStream,
+    trace,
     warn: message => logger.warn?.(message) ?? logger.log?.(message),
     onRegionBlocked: () => {
       if (disposed || reprobeTimer !== undefined) return

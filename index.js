@@ -648,6 +648,8 @@ export function apply(ctx, config) {
     // 分组成员属于别的渠道时，这一轮交回宿主自己的路由（懒绑定：llm 服务在
     // 运行时创建之后才发布）。返回 null = 这个宿主没有转发能力。
     hostStream: options => (hostLlm !== null && typeof hostLlm.stream === 'function' ? hostLlm.stream(options) : null),
+    // 分组每一轮的选人/跳过/落地都留一行读数：线上「为什么没走 A」只有这里有答案。
+    trace: event => diagLog(event),
     onSealedUnavailable: () => logger.warn?.('our-free-model: the sealed lane is not available in this composition (no recognized host profile); its models stay hidden'),
     onTopology: () => emitTopology(),
   })

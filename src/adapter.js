@@ -286,6 +286,12 @@ export class FreeModelAdapter {
       failedKeys: this.deps.routeStore?.failedKeys() ?? new Set(),
       gate: this.deps.gate,
     })
+    this.deps.trace?.({
+      kind: 'route-turn',
+      group: group.id,
+      candidates: resolved.candidates.map(candidate => candidate.entry.id).join(' '),
+      skipped: resolved.skipped.map(item => `${item.model}:${item.reason}`).join(' '),
+    })
     if (resolved.candidates.length === 0) {
       const skipped = resolved.skipped.map(item => `${item.model} (${item.detail})`).join('; ')
       const message = resolved.allFailed
@@ -314,6 +320,7 @@ export class FreeModelAdapter {
       }),
       onCommit: (candidate, result) => {
         if (result?.ok === true) this.deps.routeStore?.clearFailed(candidate.entry.id)
+        this.deps.trace?.({ kind: 'route-commit', group: entry.id, model: candidate.entry.id, ok: result?.ok === true })
       },
       onAdvance: (candidate, result, reason) => {
         // 熔断键必须是目录 id，不是迁移前的成员写法：否则 `failedKeys.has(entry.id)`
@@ -387,13 +394,35 @@ export class FreeModelAdapter {
             recordTurn: false,
             allowAdvance: true,
           })
+        this.deps.trace?.({ kind: 'route-dispatch', model: candidate.entry.id, channel: candidate.entry.channel ?? 'local' })
         let committed = false
         let result
         const held = []
+        let settled = false
+        /**
+         * 收尾必须在**交出 `finish` 之前**完成。
+         *
+         * 宿主读到 `finish` 就认为这一轮结束，随即关闭生成器；写在循环之后的
+         * `onCommit` / 回合统计再也不会执行（真机表现：明细里没有这一轮、
+         * 熔断的成员永远不被清除）。
+         */
+        const settleCommitted = resultLike => {
+          if (settled) return
+          settled = true
+          hooks.onCommit?.(candidate, resultLike)
+          this.deps.recordTurn?.({ at: started, model: entry.id, ok: resultLike?.ok === true, recovered: resultLike?.recovered === true, attempts: index + 1, origin: 'harness' })
+        }
         while (true) {
           const row = await iterator.next()
           if (row.done === true) { result = row.value; break }
-          if (committed) { yield row.value; continue }
+          if (committed) {
+            if (row.value?.type === 'finish' && !settled) {
+              const kind = row.value.reason?.kind
+              settleCommitted({ ok: kind !== 'error' && kind !== 'aborted', recovered: false })
+            }
+            yield row.value
+            continue
+          }
           held.push(row.value)
           if (commitsAnswer(row.value)) {
             committed = true
@@ -402,16 +431,15 @@ export class FreeModelAdapter {
           }
         }
         if (committed) {
-          hooks.onCommit?.(candidate, result)
-          this.deps.recordTurn?.({ at: started, model: entry.id, ok: result?.ok === true, recovered: result?.recovered === true, attempts: index + 1, origin: 'harness' })
+          settleCommitted(result)
           return
         }
         if (result?.advance !== true) {
           // Not a candidate fault — an abort, or a failure that arrived after the
           // single-model recovery budget was spent. Hand the caller the real
           // ending instead of pretending another model could have saved it.
-          for (const chunk of held) yield chunk
           rejectedTurn(index + 1)
+          for (const chunk of held) yield chunk
           return
         }
         const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
@@ -459,6 +487,37 @@ export class FreeModelAdapter {
     let firstDeltaAt
     let failure = null
     let thrown = null
+    const shapes = []
+    let outcome = null
+    /**
+     * 记账 + 读数，**必须在交出 `finish` 之前**跑：宿主读到 finish 就关闭生成器，
+     * 循环之后的代码不会执行（曾导致转发的成员永远不记明细、不留读数）。
+     */
+    const settle = () => {
+      if (outcome !== null) return outcome
+      const ok = failure === null && thrown === null
+      outcome = ok
+      if (thrown !== null) {
+        this.deps.warn?.(`our-free-model: forwarding ${entry.id} failed — ${String(thrown?.message ?? thrown).slice(0, 200)}`)
+      }
+      this.deps.trace?.({ kind: 'route-forward', model: entry.id, ok, shapes: shapes.join(' ') })
+      this.deps.recordUsage?.({
+        at: started,
+        model: entry.id,
+        effort: typeof request.reasoningEffort === 'string' ? request.reasoningEffort : '',
+        ok,
+        input: usage.inputTokens,
+        output: usage.outputTokens,
+        reasoning: usage.reasoningTokens ?? 0,
+        cacheRead: usage.cacheReadTokens ?? 0,
+        decodeTokens: ok ? windowTokens(usage, false) : 0,
+        ttftMs: firstDeltaAt === undefined ? undefined : firstDeltaAt - started,
+        decodeMs: firstDeltaAt === undefined ? 0 : Date.now() - firstDeltaAt,
+        origin: 'harness',
+        elapsedMs: Date.now() - started,
+      })
+      return ok
+    }
     try {
       const stream = emit(request)
       // 宿主没有 llm 服务（或版本太老）时不能假装「这个成员挂了」：
@@ -467,6 +526,10 @@ export class FreeModelAdapter {
         throw Object.assign(new Error('this host exposes no llm.stream to forward a foreign route-group member'), { code: 'NO_HOST_STREAM' })
       }
       for await (const chunk of stream) {
+        if (shapes.length < 3 && chunk !== null && typeof chunk === 'object') {
+          const textish = typeof chunk.text === 'string' ? chunk.text : typeof chunk.delta?.text === 'string' ? chunk.delta.text : ''
+          shapes.push(`${chunk.type ?? '?'}${textish === '' ? '' : `(${textish.slice(0, 10)})`}[${Object.keys(chunk).filter(key => key !== 'type').slice(0, 5).join('+')}]`)
+        }
         if (chunk?.type === 'usage') {
           for (const key of ['inputTokens', 'outputTokens']) {
             const value = Number(chunk.usage?.[key])
@@ -479,31 +542,18 @@ export class FreeModelAdapter {
           && (chunk?.type === 'text-delta' || chunk?.type === 'reasoning-delta' || chunk?.type === 'tool-call-delta')) {
           firstDeltaAt = Date.now()
         }
-        if (chunk?.type === 'finish' && (chunk.reason?.kind === 'error' || chunk.reason?.kind === 'aborted')) failure = chunk.reason
+        if (chunk?.type === 'finish') {
+          if (chunk.reason?.kind === 'error' || chunk.reason?.kind === 'aborted') failure = chunk.reason
+          settle()
+          yield chunk
+          continue
+        }
         yield chunk
       }
     } catch (error) {
       thrown = error
     }
-    if (thrown !== null) {
-      this.deps.warn?.(`our-free-model: forwarding ${entry.id} failed — ${String(thrown?.message ?? thrown).slice(0, 200)}`)
-    }
-    const ok = failure === null && thrown === null
-    this.deps.recordUsage?.({
-      at: started,
-      model: entry.id,
-      effort: typeof request.reasoningEffort === 'string' ? request.reasoningEffort : '',
-      ok,
-      input: usage.inputTokens,
-      output: usage.outputTokens,
-      reasoning: usage.reasoningTokens ?? 0,
-      cacheRead: usage.cacheReadTokens ?? 0,
-      decodeTokens: ok ? windowTokens(usage, false) : 0,
-      ttftMs: firstDeltaAt === undefined ? undefined : firstDeltaAt - started,
-      decodeMs: firstDeltaAt === undefined ? 0 : Date.now() - firstDeltaAt,
-      origin: 'harness',
-      elapsedMs: Date.now() - started,
-    })
+    const ok = settle()
     if (ok) return { advance: false, verdict: null, ok: true, recovered: false }
     // 宿主没有转发能力是环境缺陷，换下一个成员也没用；但它发生在第一个 chunk
     // 之前，调用方至今没收到任何收尾，所以这里必须自己补一个。
