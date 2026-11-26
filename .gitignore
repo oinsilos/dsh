@@ -9,3 +9,6 @@ Thumbs.db
 docs/
 tests/
 scripts/
+
+# Local code index (codesight): regenerated per machine, never shared.
+.codesight/
