@@ -396,6 +396,8 @@ window.__ModuleLoader__.load({
         'free.tankLabel': '免费车道可用度',
         'free.tankNote': '水位 = 当前可用模型占比（{ok}/{total}）',
         'free.tankEmpty': '尚未探测，水位按已声明模型占位。',
+        'roster.showDead': '显示暂不可用（{n}）',
+        'roster.deadHint': '探测判定不可用或尚未探测；仍可手动选择，失败会如实报错。',
         'eac.title': 'EAC 模型',
         'eac.sub': '桌面端协付渠道：GitHub 登录并 star 本仓库后解锁，与免费车道互不影响。',
         'eac.tankLabel': '协付池压力',
@@ -1240,6 +1242,8 @@ window.__ModuleLoader__.load({
         'free.tankLabel': 'Free-lane availability',
         'free.tankNote': 'Water level = share of reachable models ({ok}/{total})',
         'free.tankEmpty': 'Not probed yet; the level stands at the declared roster.',
+        'roster.showDead': 'Show unavailable ({n})',
+        'roster.deadHint': 'Probed as unavailable, or not probed yet; still selectable, failures surface as real errors.',
         'eac.title': 'EAC models',
         'eac.sub': 'The desktop co-paid lane: unlocked by a GitHub login plus a star, independent of the free lane.',
         'eac.tankLabel': 'Co-paid pool pressure',
@@ -3437,10 +3441,17 @@ window.__ModuleLoader__.load({
 
     function Roster(props) {
       const { summary, t, onBench, benches, effortTable, onEffort, busy } = props
-      // 免费车道页：catalog 里已经不含 EAC 行（车道在运行时被摘除）。
-      const roster = summary.catalog
-      const available = roster.filter(m => m.route === 'our-free-model')
-      const limited = roster.filter(m => m.route === 'our-free-model-region')
+      const [showDead, setShowDead] = useState(false)
+      // 免费车道页只列**免费车道自己**的行：`channel` 字段是其它车道的标记
+      // （eac / kilo / aggregate / own / combo / route），没有它才是本车道。
+      // 虚拟行（路由分组、组合链）现在走独立路由，这里再挡一道以防旧宿主漏过来。
+      const roster = summary.catalog.filter(m => !m.channel)
+      const available = roster.filter(m => m.availability === 'available')
+      const limited = roster.filter(m => m.availability === 'region-blocked')
+      // 探测结论是「暂不可用 / 未探测」的行：过去它们在选择器里被 membership
+      // 滤掉，页面上也就看不到，用户没法提前知道哪个模型挂了。现在如实列出，
+      // 由下面的开关决定是否折叠。
+      const dead = roster.filter(m => m.availability !== 'available' && m.availability !== 'region-blocked')
       const group = (title, list, hint) => list.length === 0 ? null
         : h('div', { className: 'ofm_sec', style: { gap: 8 } },
           h('div', { className: 'ofm_row' }, h('span', { className: 'ofm_sec_title', style: { fontSize: 12.5 } }, title),
@@ -3451,11 +3462,16 @@ window.__ModuleLoader__.load({
             onEffort, busy,
             bench: { running: benches[m.id]?.running === true, ...benches[m.id]?.result === undefined ? {} : { result: benches[m.id].result } },
           }))))
-      // 暂不可用的模型不再单独成组展示（用户要求移除「不在选择器中」区块）：
-      // 它们的状态仍在上方统计芯片与每张卡的徽章里如实可见。
       return h(Fragment, null,
         group(t('state.available'), available),
-        group(t('state.region-blocked'), limited, t('hint.region')))
+        group(t('state.region-blocked'), limited, t('hint.region')),
+        dead.length === 0 ? null : h(Fragment, null,
+          h('div', { className: 'ofm_row', style: { marginTop: 10 } },
+            h(Switch, {
+              checked: showDead, label: t('roster.showDead').replace('{n}', String(dead.length)),
+              onChange: () => setShowDead(value => !value),
+            })),
+          showDead ? group(t('state.unavailable'), dead, t('roster.deadHint')) : null))
     }
 
     // ── dashboard ─────────────────────────────────────────────────────────────
@@ -7110,6 +7126,13 @@ window.__ModuleLoader__.load({
       const [members, setMembers] = useState(() => (group.models ?? []).map(member => ({
         model: member.model,
         provider: member.provider ?? '',
+        // 服务端 `describeGroup` 已经把可解析的成员折成目录 id：`member.id` 是
+        // 目录里真正命中的行，`available` 是解析结论。面板直接用它渲染，
+        // 不要再拿 `member.model` 精确查一次目录 —— 旧坐标（带 adapter 路由前缀、
+        // 双前缀、裸名 + provider）会被误画成「目录缺失」。
+        resolved: member.id ?? member.model,
+        displayName: member.name ?? member.model,
+        available: member.available !== false,
         priority: String(member.priority ?? 99),
         effort: member.effort ?? '',
         windowsText: windowsTextOf(member.windows),
@@ -7140,7 +7163,9 @@ window.__ModuleLoader__.load({
               const priority = priorityOf(row.priority)
               const windows = parseWindowsText(row.windowsText)
               return {
-                model: row.model,
+                // 解析得到目录 id 时按它存：旧坐标（带 adapter 路由前缀等）会在
+                // 保存时被就地修正，下次打开就不再显示「目录缺失」。
+                model: row.resolved !== undefined && byId.has(row.resolved) ? row.resolved : row.model,
                 ...row.provider === '' ? {} : { provider: row.provider },
                 priority: Number(priority),
                 ...row.effort.trim() === '' ? {} : { effort: row.effort.trim() },
@@ -7174,11 +7199,13 @@ window.__ModuleLoader__.load({
         members.length === 0
           ? h('p', { className: 'ofm_note' }, t('route.memberEmpty'))
           : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } }, members.map((row, index) => {
-            const known = byId.get(row.model)
+            const known = byId.get(row.resolved) ?? byId.get(row.model)
+            // 只有服务端也解析不到（`available === false`）且本地目录里没有时才标缺失。
+            const missing = row.available === false && known === undefined
             return h('div', { key: `${row.model}#${index}`, className: 'ofm_member' },
-              h('span', { className: 'ofm_id', title: row.model, style: { flex: '1 1 180px' } },
-                known?.name ?? row.model,
-                known === undefined ? h('span', { className: 'ofm_tag', style: { marginLeft: 6, opacity: 0.65 } }, t('route.unavailable')) : null),
+              h('span', { className: 'ofm_id', title: row.resolved, style: { flex: '1 1 180px' } },
+                known?.name ?? row.displayName ?? row.model,
+                missing ? h('span', { className: 'ofm_tag', style: { marginLeft: 6, opacity: 0.65 } }, t('route.unavailable')) : null),
               h('input', {
                 className: 'ofm_input', type: 'number', min: 0, max: 999, title: t('route.priority'),
                 style: { width: 64 }, value: row.priority, disabled: busy,
@@ -7823,6 +7850,18 @@ window.__ModuleLoader__.load({
       }
       // 「添加模型」的候选：按宿主目录的渠道分组，跨渠道搜索；已加入的置灰。
       // 多选 + 底部一次提交，加十几个模型只发一趟 POST（原来一个模型一趟）。
+      //
+      // ⚠️ 成员坐标必须是**本插件 `/routes` 目录里的 id**，不能拼「路由名/裸 id」：
+      // 免费车道的目录 id 是裸名（`deepseek-v4.1-flash-free`），Kilo 是
+      // `org/model:free`，聚合渠道已经是 `provider/model`。以前无条件拼
+      // `${group.id}/${model.id}`，于是免费车道与 Kilo 的成员变成
+      // `our-free-model/...`，`memberEntry` 精确匹配不到 ⇒ 面板显示「目录缺失」。
+      // `/routes` 返回的 `models[]` 就是权威目录，这里用它判断裸 id 是否已可用。
+      const canonical = new Set((routes.data?.models ?? []).map(row => String(row.id ?? '')))
+      const memberIdOf = rawId => {
+        const id = String(rawId ?? '')
+        return canonical.has(id) ? id : id
+      }
       const needle = query.trim().toLowerCase()
       const addGroups = catalogGroups.map(group => ({
         id: group.id,
@@ -7832,10 +7871,9 @@ window.__ModuleLoader__.load({
           // 列出来只会让人白点一次。
           .filter(model => !String(model.id).startsWith('route:') && !String(model.id).startsWith('combo:'))
           .map(model => ({
-            // 成员坐标必须是目录 id（`provider/modelId`），和 `/routes` 的
-            // `models[].id` 同一套；宿主目录里给的是 provider 内的裸 id，
-            // 直接存会导致「已加入」判不出来、分组里出现重复成员。
-            id: `${group.id}/${model.id}`,
+            // 目录 id 原样使用，和 `/routes` 的 `models[].id` 同一套；
+            // 拼前缀会让免费车道/Kilo 的成员永远解析不到。
+            id: memberIdOf(model.id),
             modelId: model.id,
             name: model.name ?? model.id,
             description: model.description ?? '',
@@ -7846,7 +7884,7 @@ window.__ModuleLoader__.load({
       const rowOf = new Map()
       for (const group of catalogGroups) {
         for (const model of group.models ?? []) {
-          const id = `${group.id}/${model.id}`
+          const id = memberIdOf(model.id)
           if (!rowOf.has(id)) rowOf.set(id, { id, provider: group.id })
         }
       }
@@ -7871,8 +7909,16 @@ window.__ModuleLoader__.load({
       const members = active?.models ?? []
       // 成员坐标可能有两种写法（目录 id，或迁移数据里的「裸名 + provider」），
       // 统一折算成目录 id 再比对，否则「已加入」判不出来、批量加会出现重复。
+      //
+      // 服务端 `describeGroup` 已经用 `memberEntry` 把可解析的成员折成了目录 id
+      // （`member.id`）—— 优先级最高。旧数据里 `our-free-model/<裸 id>` 这种带
+      // adapter 路由前缀的坐标，只有服务端知道该剥哪一层。
       const memberKeys = new Set()
       for (const member of members) {
+        if (typeof member.id === 'string' && member.id !== '') {
+          memberKeys.add(member.id)
+          continue
+        }
         if (typeof member.model !== 'string' || member.model === '') continue
         if (member.model.includes('/') || typeof member.provider !== 'string' || member.provider === '') memberKeys.add(member.model)
         else memberKeys.add(`${member.provider}/${member.model}`)

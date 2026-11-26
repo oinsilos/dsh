@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Our Free Model — plugin entry (Host half).
  *
  * Wiring: one adapter instance, two provider routes (usable now / region-limited
@@ -29,7 +29,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION } from './src/adapter.js'
+import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from './src/adapter.js'
 import { DATA_DIR_NAME, JsonStore, decodeWindow, resolveDshHome } from './src/store.js'
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
@@ -796,7 +796,7 @@ export function apply(ctx, config) {
    *
    * 故逐条注册、撞了就稍后重试：旧 fiber 一释放，下一次尝试就成功。
    */
-  const registration = ctx.llm.registerAdapter([ROUTE_MAIN, ROUTE_REGION], adapter)
+  const registration = ctx.llm.registerAdapter([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS], adapter)
   const ownRouteHandles = new Set()
   let ownRouteAttempt = 0
   function registerOwnProviderRoutes() {
@@ -826,7 +826,7 @@ export function apply(ctx, config) {
   registerOwnProviderRoutes()
   /** 主路由只换主路由的两条 id；自有路由的生命周期在各自的 handle 里。 */
   const routes = () => Object.keys(state().membership)
-    .filter(route => route === ROUTE_MAIN || route === ROUTE_REGION)
+    .filter(route => route === ROUTE_MAIN || route === ROUTE_REGION || route === ROUTE_GROUPS)
   ctx.llm.registerConfigurableProviders?.([
     { provider: ROUTE_MAIN, displayName: ROUTE_LABELS[ROUTE_MAIN], settingsNs: ctx.fiber?.entry?.options?.id ?? name, settingsPath: [] },
   ])
@@ -2028,7 +2028,7 @@ export function apply(ctx, config) {
     if (!force && Date.now() - hostCatalogAt < HOST_CATALOG_TTL) return
     if (hostCatalogRun !== null) return hostCatalogRun
     hostCatalogRun = (async () => {
-      const skip = new Set([ROUTE_MAIN, ROUTE_REGION, ...OWN_PROVIDERS])
+      const skip = new Set([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS, ...OWN_PROVIDERS])
       const rows = []
       const counts = []
       let providers = []

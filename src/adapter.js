@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The provider adapter.
  *
  * It satisfies the harness adapter contract structurally — `registerAdapter`
@@ -38,11 +38,20 @@ import { PIXEL_IMAGE_PRICING } from './image-pricing.js'
 
 export const ROUTE_MAIN = 'our-free-model'
 export const ROUTE_REGION = 'our-free-model-region'
+/**
+ * 虚拟行走一条独立路由：路由分组 + 组合链。
+ *
+ * 宿主的选择器按**路由**分组，一个路由一个标题。以前只有免费车道有路由，
+ * 这些虚拟行都并进 `ROUTE_MAIN`，于是「免费模型」这一组里混着 `route:主力`
+ * 和 `combo:xxx`。它们不是免费模型，给它们自己一条路由和方法名。
+ */
+export const ROUTE_GROUPS = 'our-free-model-route'
 
 /** Group headings — the only strings the picker shows as a section title. */
 export const ROUTE_LABELS = {
-  [ROUTE_MAIN]: 'Model Manager',
-  [ROUTE_REGION]: 'Model Manager · region-limited',
+  [ROUTE_MAIN]: '免费模型',
+  [ROUTE_REGION]: '免费模型 · 地区受限',
+  [ROUTE_GROUPS]: '路由分组与组合链',
 }
 
 const STYLE_FOR_WIRE = { chat: 'chat', responses: 'flat', messages: 'claude' }

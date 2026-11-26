@@ -22,6 +22,22 @@ export const MAX_GROUPS = 24
 export const MAX_MEMBERS = 24
 export const DEFAULT_PRIORITY = 99
 
+/**
+ * 本插件的 adapter 路由名。它们**不是**目录 id 的 provider 段：
+ *
+ * - 免费车道的目录 id 是裸模型名（`deepseek-v4.1-flash-free`）；
+ * - Kilo 的目录 id 是 `org/model:free`；
+ * - 聚合渠道的目录 id 已经是 `provider/model`。
+ *
+ * 但面板曾按「路由名/目录 id」拼成员坐标，于是免费车道与 Kilo 的成员被存成
+ * `our-free-model/<目录 id>`，`memberEntry` 精确匹配不到 ⇒ 面板永久显示
+ * 「目录缺失」。这里把这类前缀认出来并剥掉再匹配一次（**仍然不跨 provider 猜**）。
+ *
+ * ⚠️ 与 `src/adapter.js` 的 `ROUTE_MAIN` / `ROUTE_REGION` / `ROUTE_VIRTUAL`
+ * 必须一致；`tests/route-groups.mjs` 钉住这一点。
+ */
+export const ADAPTER_ROUTE_ALIASES = new Set(['our-free-model', 'our-free-model-region', 'our-free-model-route'])
+
 /** 撞名时加 `-2`、`-3`；只允许小写字母、数字、连字符。 */
 function slugify(name) {
   const slug = String(name ?? '')
@@ -123,6 +139,14 @@ export function memberEntry(member, catalog) {
       if (entry !== undefined) return entry
     }
   }
+  // 面板按宿主目录拼出来的坐标会带 adapter 路由名（`our-free-model/<目录 id>`）。
+  // 目录 id 本身形态各异：免费车道是裸名，Kilo 是 `org/model:free`，聚合渠道是
+  // `provider/model`；统一剥掉这一层再精确匹配。
+  const alias = [...ADAPTER_ROUTE_ALIASES].find(name => model.startsWith(`${name}/`))
+  if (alias !== undefined) {
+    entry = test(model.slice(alias.length + 1))
+    if (entry !== undefined) return entry
+  }
   if (provider !== '' && model.startsWith(`${provider}/${provider}/`)) {
     entry = test(model.slice(provider.length + 1))
     if (entry !== undefined) return entry
@@ -155,7 +179,11 @@ function normalizeMember(raw) {
   // 目录 id 的约定是 `provider/model`。旧数据/手写文件只给裸模型名 + provider
   // 时在这里补齐；已经是复合 id 的不动（`doubao/person-...` 那种双前缀写法）。
   // 带冒号的虚拟 id（`combo:xxx` / `route:xxx`）不能被拼前缀。
+  //
+  // ⚠️ adapter 路由名（`our-free-model` 等）也不能补：免费车道的目录 id 就是裸名，
+  // 补成 `our-free-model/<裸名>` 会永远匹配不上目录。
   const model = !rawModel.includes('/') && !rawModel.includes(':') && provider !== ''
+    && !ADAPTER_ROUTE_ALIASES.has(provider)
     ? `${provider}/${rawModel}` : rawModel
   const priority = Number.isFinite(Number(raw.priority))
     ? Math.min(999, Math.max(0, Math.trunc(Number(raw.priority))))
@@ -303,9 +331,12 @@ export function orderMembers(group) {
  *
  * @param {object[]} groups
  * @param {object[]} catalog
+ * @param {{provider?: string}} [options]
+ *   `provider` 是分组虚拟行的 adapter 路由名 —— 选择器按它分组，入口传自己的
+ *   路由名（`ROUTE_GROUPS`），分组才不会被画进「免费模型」那一组。
  * @returns {object[]}
  */
-export function buildGroupRows(groups, catalog) {
+export function buildGroupRows(groups, catalog, { provider = GROUP_CHANNEL } = {}) {
   const byId = new Map((catalog ?? []).map(entry => [entry.id, entry]))
   const rows = []
   for (const group of groups) {
@@ -325,7 +356,7 @@ export function buildGroupRows(groups, catalog) {
       channel: GROUP_CHANNEL,
       group: group.id,
       modelId: group.id,
-      provider: GROUP_CHANNEL,
+      provider,
       vision: resolved.every(entry => entry.vision === true),
       reasoning: false,
       contextWindow: windows.length > 0 ? Math.min(...windows) : 131072,

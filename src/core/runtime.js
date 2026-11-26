@@ -1,6 +1,6 @@
-import fs from 'node:fs'
+﻿import fs from 'node:fs'
 import path from 'node:path'
-import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION } from '../adapter.js'
+import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from '../adapter.js'
 import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
@@ -137,7 +137,7 @@ export function createModelRuntime({
     // `groups` 是投影出来的虚拟分组行（进 `catalog`），`routeMembers` 才是
     // 成员解析用的目录（含宿主其它渠道）。两者别混：分组行本身不能当成员。
     routeMembers = groupCatalog
-    routeCatalog = buildGroupRows(routeGroups(), groupCatalog)
+    routeCatalog = buildGroupRows(routeGroups(), groupCatalog, { provider: ROUTE_GROUPS })
     for (const entry of routeCatalog) {
       if (seen.has(entry.id)) continue
       seen.add(entry.id)
@@ -447,9 +447,16 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
    * `FreeModelAdapter.providerInfo()` 从 `OWN_LABELS` 取。
    */
   const own = {}
+  const virtual = []
   for (const entry of usable) {
     if (isOwnRow(entry)) {
       ;(own[entry.provider] ??= []).push(entry.id)
+      continue
+    }
+    // 虚拟行（路由分组 / 组合链）不是免费模型：它们有自己的路由，否则选择器
+    // 会把 `route:主力` / `combo:xxx` 画在「免费模型」这一组下面。
+    if (isRouteEntry(entry) || isComboEntry(entry)) {
+      virtual.push(entry.id)
       continue
     }
     if (verdictOf(entry) === STATE.regionBlocked) {
@@ -461,6 +468,7 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
   const membership = {}
   if (main.length > 0) membership[ROUTE_MAIN] = main
   if (region.length > 0) membership[ROUTE_REGION] = region
+  if (virtual.length > 0) membership[ROUTE_GROUPS] = virtual
   for (const [provider, ids] of Object.entries(own)) membership[provider] = ids
   return membership
 }
