@@ -1,8 +1,17 @@
-# dsh-our-free-model
+# dsh-model-manager（Model Manager）
 
 DeepSeek Harness（dsh）插件：把免费模型、账号渠道、自带 Key 的聚合渠道收进同一个模型清单，并提供一个本机 OpenAI / Anthropic 兼容网关。
 
 纯插件挂载，不改内核、无构建步骤。
+
+## 安装与更新
+
+代码仓库：[github.com/oinsilos/dsh](https://github.com/oinsilos/dsh)，插件位于 **`main`** 分支根部。
+
+- **安装**：克隆 `main` 分支，把本目录放进 profile 的 `node_modules/dsh-model-manager`，或在 profile 的 `package.json` 中列出 `dsh-model-manager`。
+- **更新**：插件自带签名清单更新器。清单发布在 `releases/latest/manifest.json`（`main` 分支），用 Ed25519 签名，公钥内嵌于 [src/updater.js](src/updater.js)。设置页点「检查更新」即可拉取并应用，无需重新克隆。仓库是公开的，`raw.githubusercontent.com` 可直接匿名拉取，无需任何 token。
+- **发布新版本**：改 `package.json` 的 `version` → `npm run manifest -- --key <私钥路径> --notes "…"` → 提交并推送。`npm run manifest:check -- --key <私钥路径>` 可在推送前确认清单与工作区一致。
+- **签名私钥**：Ed25519 私钥保存在发布本机 `D:\AAA_soft\1_prods\dsh-model-manager-keys\update-manifest.key`，不入库。若更换密钥对，必须同步修改 `PINNED_MANIFEST_PUBLIC_KEY`，否则旧安装会拒绝新清单（这是预期行为，不是缺陷）。
 
 ## 功能
 
@@ -315,7 +324,7 @@ dsh plugin --profile desktop add "link:D:/Desktop/dsh插件/work/our-free-model"
 node scripts/check-install-drift.mjs     # linked / ok / drift
 ```
 
-`node_modules/dsh-our-free-model` 是 junction 时，改动即刻生效、任何一次
+`node_modules/dsh-model-manager` 是 junction 时，改动即刻生效、任何一次
 「安装/升级」都无法回滚本地补丁；脚本是这条保证的探针。
 
 > 移植进度与接续说明（每家的硬判据、还缺什么、下一个动作）见 [docs/PORT-STATUS.md](docs/PORT-STATUS.md)。
@@ -376,12 +385,12 @@ node tests/model-panel.mjs        # 对话框模型面板：走宿主 modelDirec
 
 ## 安装
 
-桌面版：把本目录放进 profile 的 `node_modules/dsh-our-free-model`（例如 `~/.dsh/profiles/desktop/node_modules/`），并在 profile 的 `package.json` 中列出 `dsh-our-free-model`。
+桌面版：把本目录放进 profile 的 `node_modules/dsh-model-manager`（例如 `~/.dsh/profiles/desktop/node_modules/`），并在 profile 的 `package.json` 中列出 `dsh-model-manager`。
 
 命令行：
 
 ```bash
-dsh plugin add /path/to/our-free-model
+dsh plugin add /path/to/dsh-model-manager
 ```
 
 插件数据写在 `~/.dsh/our-free-model/`（设置与统计）、`~/.dsh/channel-pack/`（账号池与渠道状态）、`~/.dsh/openai-gateway/api-key`（网关密钥）。仓库本身不包含任何账号、Key 或运行时配置。

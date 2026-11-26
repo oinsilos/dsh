@@ -2062,10 +2062,23 @@ window.__ModuleLoader__.load({
 .ofm_mpickaddmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .ofm_mpickaddfoot{display:flex;align-items:center;gap:8px;padding-top:2px}
 .ofm_mpickaddfoot .ofm_note{flex:1;min-width:0}
-.ofm_chiplabel{display:inline-flex;align-items:center;white-space:nowrap;max-width:100%}
-.ofm_chiplabelprovider{opacity:.62}
-.ofm_chiplabelname{overflow:hidden;text-overflow:ellipsis}
-.ofm_chiplabelbadge{margin-left:4px;font-size:10px;line-height:14px;padding:0 4px;border-radius:4px;background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4a6cf7) 14%,transparent);color:inherit}
+.ofm_chiplabel{display:inline-flex;align-items:center;white-space:nowrap;max-width:100%;min-width:0}
+.ofm_chiplabelprovider{opacity:.62;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ofm_chiplabelname{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ofm_chiplabelbadge{flex:none;margin-left:4px;font-size:10px;line-height:14px;padding:0 4px;border-radius:4px;background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4a6cf7) 14%,transparent);color:inherit}
+/* 输入框右侧的余额读数。宿主按「整行需求宽度」二选一：要么全名，要么只剩图标
+   （observeControlRow，没有中间档），所以这一行里多出来的每段宽度都直接决定模型名
+   能活多久。让位按级进行：读数里的渠道名 → 读数本身 → 芯片的渠道前缀，模型名最后
+   消失。容器是宿主 .row 的匿名 inline-size 容器。 */
+.ofm_composercredits{display:inline-flex;align-items:center;min-width:0;flex:0 1 auto;overflow:hidden;font-size:12px;line-height:20px;opacity:.72;white-space:nowrap;font-variant-numeric:tabular-nums;margin-right:8px;user-select:none}
+.ofm_composercreditlabel,.ofm_composercreditsep,.ofm_composercreditvalue{flex:none}
+/* 让位顺序：读数里的渠道名 → 读数整块 → 芯片的渠道前缀，模型名最后消失。
+   阈值刻意取在「宿主开始嫌挤」之前：一旦它判定超宽就没有中间档，会直接把
+   模型名换成图标，回头再靠 CSS 抢回来只会和它的测量来回抖动。 */
+@container (max-width: 860px){.ofm_composercreditlabel,.ofm_composercreditsep{display:none}}
+@container (max-width: 700px){.ofm_composercredits{display:none}}
+@container (max-width: 680px){.ofm_chiplabelprovider,.ofm_chiplabelsep{display:none}}
+@container (max-width: 520px){.ofm_chiplabelbadge{display:none}}
 .ofm_panelsearch{width:100%;max-width:360px;box-sizing:border-box;margin:0 0 10px;padding:8px 10px;font:inherit;font-size:12px;border-radius:9px;border:1px solid color-mix(in srgb,var(--dsw-alias-border-l1) 80%,transparent);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);color:var(--dsw-alias-label-primary);outline:none}
 .ofm_panelsearch::placeholder{color:var(--dsw-alias-label-caption)}
 .ofm_panelsearch:focus{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 48%,transparent);background:var(--dsw-alias-bg-layer-1)}
@@ -8980,10 +8993,16 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true; clearInterval(timer); };
       }, [scope.join("|"), canLoad, rpc]);
       if (!canLoad || segments === undefined || segments.length === 0) return null;
-      return h("span", {
-        title: t("chan.credits.left"),
-        style: { fontSize: "12px", lineHeight: "20px", opacity: 0.72, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", marginRight: "8px", userSelect: "none" },
-      }, segments.map((pair) => `${CHIP_LABELS[pair[0]] ?? pair[0]} ${kilo(pair[1])}`).join(" · "));
+      // 宿主用 `data-model-compact` 把模型名整块折叠成图标：它按"整行需求宽度"
+      // 判断，所以本插件往这一行多放一个像素，模型名就更早消失。读数的渠道名
+      // 与整个读数分别由容器查询按行宽让位（见 CSS），模型名永远优先。
+      const title = segments.map(([providerId, amount]) => `${CHIP_LABELS[providerId] ?? providerId} ${amount}`).join(" · ");
+      return h("span", { className: "ofm_composercredits", title },
+        segments.map(([providerId, amount], index) => h(Fragment, { key: providerId },
+          index === 0 ? null : h("span", { className: "ofm_composercreditsep" }, " · "),
+          h("span", { className: "ofm_composercreditlabel" }, CHIP_LABELS[providerId] ?? providerId),
+          " ",
+          h("span", { className: "ofm_composercreditvalue" }, kilo(amount)))));
     }
     function apply(ctx) {
       const t = ctx.locale.bind(NS)

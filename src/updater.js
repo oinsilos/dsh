@@ -32,12 +32,18 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 
 /**
- * Discovery locations, in preference order. Empty by default: this build
- * installs from a distribution the operator controls and checks nothing on its
- * own. A source listed here must serve a manifest signed with the pinned key
- * below before any byte of it is believed.
+ * Discovery locations, in preference order. The plugin lives at the root of the
+ * public repository's `main` branch, and each release ships a signed manifest at
+ * `releases/latest/manifest.json`. Its `base` is `../../`, which resolves to the
+ * repository root, so every file in the manifest downloads from the same commit
+ * the manifest was published with.
+ *
+ * A source listed here must serve a manifest signed with the pinned key below
+ * before any byte of it is believed.
  */
-export const DEFAULT_MANIFEST_SOURCES = []
+export const DEFAULT_MANIFEST_SOURCES = [
+  'https://raw.githubusercontent.com/oinsilos/dsh/main/releases/latest/manifest.json',
+]
 
 /**
  * The Ed25519 public key (SPKI, base64) every release manifest must be signed
@@ -50,7 +56,7 @@ export const DEFAULT_MANIFEST_SOURCES = []
  * itself — whoever forges the manifest forges the hashes. This key is the step
  * the forger cannot take.
  */
-export const PINNED_MANIFEST_PUBLIC_KEY = 'MCowBQYDK2VwAyEAeLdSVwYFyazc2PIBC0oLsvo4LghGEQz9iXIl3CqRuXI='
+export const PINNED_MANIFEST_PUBLIC_KEY = 'MCowBQYDK2VwAyEAHZZv+Z0x0jopFqQQaFcy8wAzn36YdetXKwcqukRj+m0='
 
 /** The manifest fields a signature covers, in canonical (sorted-key) JSON. */
 const SIGNED_FIELDS = ['version', 'base', 'publishedAt', 'notes', 'files', 'minSupported']
@@ -121,7 +127,11 @@ export function bustCdnCache(url, now = Date.now()) {
 
 const MAX_MANIFEST_BYTES = 256 * 1024
 const MAX_FILE_BYTES = 4 * 1024 * 1024
-const MAX_FILES = 80
+// The shipped package carries ~108 runtime files (src/, channels/, adapters,
+// vendor pack). The cap is a sanity bound on a manifest, not a package budget;
+// 240 leaves room for growth without letting a forged manifest enumerate an
+// unbounded download list.
+const MAX_FILES = 240
 const SHA_RE = /^[0-9a-f]{64}$/
 // Hot reload evaluates a fresh updater module before the old request finishes.
 // A process-wide lock keeps the successor from starting a second transaction.

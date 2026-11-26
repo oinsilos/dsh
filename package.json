@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-manager",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "type": "module",
   "description": "Model Manager（dsh-model-manager）— 在 dsh 里装上这个插件即可，无需登录、注册或填 API Key，就能使用包括 DeepSeek V4.1 Flash、Kimi K3 在内的前沿模型；接入 CodeArts、CodeBuddy、WorkBuddy、LobsterAI、Qoder、TRAE、Cline、Loomy、Raccoon、MiniMax、ZCode、Gemini 等账号渠道（登录、账号池、积分领取、本地 OpenAI 网关与局域网转发、数据看板与运行日志），八个分区统一呈现；聊天框模型选择器左侧提供「模型」入口，点开即模型面板（含路由分组与失败模型编辑）。",
   "icon": "./icon.png",
@@ -73,6 +73,7 @@
   "keywords": [
     "dsh",
     "dsh-plugin",
+    "model-manager",
     "free-model",
     "llm-provider"
   ],
