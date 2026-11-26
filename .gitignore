@@ -3,3 +3,9 @@ node_modules/
 *.bak
 .DS_Store
 Thumbs.db
+
+# Development-only material: kept locally, not published.
+# The npm package ships its own `files` allowlist, so these never reach consumers.
+docs/
+tests/
+scripts/
