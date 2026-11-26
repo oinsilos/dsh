@@ -19,7 +19,7 @@
  * the page survives a scheme switch.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-model-manager',
+  id: '@oinsilos/dsh-model-manager',
   factory: require => {
     const module = { exports: {} }
     const exports = module.exports

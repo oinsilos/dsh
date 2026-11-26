@@ -32,7 +32,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const DEFAULT_TARGET = path.join(os.homedir(), '.dsh', 'profiles', 'desktop', 'node_modules', 'dsh-model-manager')
+const DEFAULT_TARGET = path.join(os.homedir(), '.dsh', 'profiles', 'desktop', 'node_modules', '@oinsilos', 'dsh-model-manager')
 
 /** `--target <dir>`；缺省用 desktop profile 的安装位置。 */
 function targetOf(argv) {

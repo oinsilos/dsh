@@ -1,17 +1,13 @@
 /**
- * In-app plugin upgrade machinery.
+ * In-app plugin upgrade machinery, sourced from the npm registry.
  *
- * This build ships the lifecycle code with no discovery source: the manifest
- * locations below are empty, so a check answers "no update source configured"
- * instead of contacting anyone, and applying is refused for the same reason.
- * The machinery stays intact for an operator who pins their own signed-manifest
- * source in code: download → verify → stage → backup → replace → verify →
- * reload. Filesystem access failures can also prevent rollback; in that case
- * the verified backup is retained and the incomplete transaction is reported
- * explicitly:
+ * A check reads the package's `latest` dist-tag, and an apply downloads that
+ * version's tarball, verifies the registry's `dist.integrity` (sha512), unpacks
+ * it, then swaps it over the installed copy. The transaction is otherwise the
+ * same as it always was:
  *
- * - downloads land in a staging directory under the plugin's data dir and are
- *   hash-checked before anything on the installed copy is touched;
+ * - the tarball lands in a staging directory under the plugin's data dir and is
+ *   integrity-checked before anything on the installed copy is touched;
  * - the running process keeps executing from its in-memory module graph, so
  *   replacing files on disk cannot disturb a live request;
  * - the installed package is backed up first, a failed verification restores
@@ -19,6 +15,10 @@
  * - replacements are written as `<file>.ofm-new` beside their target and
  *   renamed over it, so a crash mid-swap cannot truncate a file that the next
  *   boot will import (transient Windows EPERM from indexers is retried).
+ *
+ * Trust: npm's registry publishes a sha512 `dist.integrity` per version, so the
+ * downloaded bytes are authenticated by the same account that published them —
+ * there is no separate signing key to keep, rotate, or leak.
  *
  * The EAC profile gate forbids symlinks and junctions under the profile; this
  * module only ever copies plain files inside the plugin's own directory and
@@ -30,108 +30,21 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import zlib from 'node:zlib'
 
-/**
- * Discovery locations, in preference order. The plugin lives at the root of the
- * public repository's `main` branch, and each release ships a signed manifest at
- * `releases/latest/manifest.json`. Its `base` is `../../`, which resolves to the
- * repository root, so every file in the manifest downloads from the same commit
- * the manifest was published with.
- *
- * A source listed here must serve a manifest signed with the pinned key below
- * before any byte of it is believed.
- */
-export const DEFAULT_MANIFEST_SOURCES = [
-  'https://raw.githubusercontent.com/oinsilos/dsh/main/releases/latest/manifest.json',
-]
+/** The npm package this plugin updates itself from. */
+export const PACKAGE_NAME = '@oinsilos/dsh-model-manager'
 
-/**
- * The Ed25519 public key (SPKI, base64) every release manifest must be signed
- * with before it may be applied. The matching private key lives with the
- * publisher (`scripts/build-manifest.mjs` signs when pointed at it); it is
- * deliberately not in this repository, because a trust root committed beside
- * the code it authenticates authenticates nothing.
- *
- * The sha256 per file pins content, but those hashes travel inside the manifest
- * itself — whoever forges the manifest forges the hashes. This key is the step
- * the forger cannot take.
- */
-export const PINNED_MANIFEST_PUBLIC_KEY = 'MCowBQYDK2VwAyEAHZZv+Z0x0jopFqQQaFcy8wAzn36YdetXKwcqukRj+m0='
+/** Registry base URL; a mirror or a test host is substituted here. */
+export const DEFAULT_REGISTRY = 'https://registry.npmjs.org/'
 
-/** The manifest fields a signature covers, in canonical (sorted-key) JSON. */
-const SIGNED_FIELDS = ['version', 'base', 'publishedAt', 'notes', 'files', 'minSupported']
-
-/**
- * Deterministic JSON: sorted keys, no whitespace, `undefined` dropped (object
- * fields) or nulled (array slots) — the same rules JSON.stringify applies, plus
- * key order. Both signer and verifier reduce the manifest to this form, so the
- * signature is over meaning, not byte layout.
- */
-export function stableStringify(value) {
-  if (Array.isArray(value)) return `[${value.map(row => stableStringify(row ?? null)).join(',')}]`
-  if (value !== null && typeof value === 'object') {
-    const keys = Object.keys(value).filter(key => value[key] !== undefined).sort()
-    return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`
-  }
-  return JSON.stringify(value ?? null)
-}
-
-/** Reduce a manifest to exactly the fields a signature covers. */
-function signaturePayload(payload) {
-  const source = payload !== null && typeof payload === 'object' ? payload : {}
-  const picked = {}
-  for (const key of SIGNED_FIELDS) if (source[key] !== undefined) picked[key] = source[key]
-  return picked
-}
-
-/**
- * Sign one manifest's canonical form with an Ed25519 private key (PEM).
- * @param {object} payload - the manifest document (any superset of the signed fields)
- * @param {string|crypto.KeyObject} privateKey - PKCS8 PEM, or a loaded key
- * @returns {string} base64 signature to store as the manifest's `signature`
- */
-export function signManifest(payload, privateKey) {
-  const key = privateKey instanceof crypto.KeyObject ? privateKey : crypto.createPrivateKey(privateKey)
-  return crypto.sign(null, Buffer.from(stableStringify(signaturePayload(payload))), key).toString('base64')
-}
-
-/**
- * Verify a manifest's `signature` against an Ed25519 public key (SPKI, base64).
- * Any malformed input answers `false` — a signature that cannot be checked is
- * a signature that is not there.
- */
-export function verifyManifestSignature(payload, publicKeyBase64) {
-  const signature = payload !== null && typeof payload === 'object' && typeof payload.signature === 'string'
-    ? payload.signature
-    : ''
-  if (signature === '' || typeof publicKeyBase64 !== 'string' || publicKeyBase64 === '') return false
-  try {
-    const key = crypto.createPublicKey({ key: Buffer.from(publicKeyBase64, 'base64'), format: 'der', type: 'spki' })
-    return crypto.verify(null, Buffer.from(stableStringify(signaturePayload(payload))), key, Buffer.from(signature, 'base64'))
-  } catch {
-    return false
-  }
-}
-
-/** Cache hint only: query strings cannot refresh jsDelivr's branch resolution. */
-export function bustCdnCache(url, now = Date.now()) {
-  try {
-    const parsed = new URL(url)
-    if (parsed.hostname.endsWith('.jsdelivr.net')) {
-      parsed.searchParams.set('ofm', Math.floor(now / 60_000).toString())
-      return parsed.href
-    }
-  } catch { /* malformed URL: let fetch report it */ }
-  return url
-}
-
-const MAX_MANIFEST_BYTES = 256 * 1024
+const MAX_METADATA_BYTES = 256 * 1024
 const MAX_FILE_BYTES = 4 * 1024 * 1024
-// The shipped package carries ~108 runtime files (src/, channels/, adapters,
-// vendor pack). The cap is a sanity bound on a manifest, not a package budget;
-// 240 leaves room for growth without letting a forged manifest enumerate an
-// unbounded download list.
 const MAX_FILES = 240
+// The shipped package carries ~108 runtime files (src/, channels/, adapters,
+// vendor pack). The cap is a sanity bound, not a package budget; 240 leaves
+// room for growth without letting a bad tarball unpack without bound.
+const MAX_TOTAL_EXTRACT_BYTES = 64 * 1024 * 1024
 const SHA_RE = /^[0-9a-f]{64}$/
 // Hot reload evaluates a fresh updater module before the old request finishes.
 // A process-wide lock keeps the successor from starting a second transaction.
@@ -172,212 +85,224 @@ export function compareVersions(a, b) {
   return 0
 }
 
+/** `https://registry.npmjs.org/@scope%2Fname/latest` — the slash is the only escaped part. */
+export function metadataUrlOf(registry, packageName) {
+  const base = registry.endsWith('/') ? registry : `${registry}/`
+  return new URL(`${packageName.replace('/', '%2F')}/latest`, base).href
+}
+
 /**
- * Validate the manifest document.
+ * Validate a registry `latest` document.
  * @param {unknown} payload
- * @returns {object} {version, notes, publishedAt, base, files}
+ * @param {string} [expectedName]
+ * @returns {{version: string, tarball: string, integrity: string, notes: string, publishedAt: number}}
  * @throws {Error} with a reason the settings page can show
  */
-export function parseManifest(payload) {
+export function parseRegistryRelease(payload, expectedName) {
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new Error('manifest must be a JSON object')
+    throw new Error('registry metadata must be a JSON object')
+  }
+  if (expectedName !== undefined && typeof payload.name === 'string' && payload.name !== expectedName) {
+    throw new Error(`registry metadata is for ${payload.name}, not ${expectedName}`)
   }
   const version = typeof payload.version === 'string' ? payload.version.trim() : ''
-  if (parseVersion(version) === null) throw new Error(`manifest version "${version}" is not a valid semver`)
-  const base = typeof payload.base === 'string' && payload.base !== '' ? payload.base : '../'
-  // The base is resolved against the manifest's own URL, so it must stay
-  // relative: an absolute or protocol-relative value would point every download
-  // at a host of the manifest author's choosing, and the sha256 pins would ride
-  // along inside the same forged document. A relative URL cannot leave the
-  // origin it resolves against.
-  if (/^[a-z][a-z0-9+.-]*:/i.test(base) || base.startsWith('//') || base.startsWith('/') || base.includes('\\')) {
-    throw new Error(`manifest base "${base}" must be a path relative to the manifest`)
-  }
-  const rows = payload.files
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('manifest carries no file list')
-  if (rows.length > MAX_FILES) throw new Error(`manifest lists ${rows.length} files, above the ${MAX_FILES} cap`)
-  const files = []
-  const seen = new Set()
-  for (const row of rows) {
-    const file = parseFileEntry(row)
-    if (seen.has(file.path)) throw new Error(`manifest lists ${file.path} twice`)
-    seen.add(file.path)
-    files.push(file)
-  }
-  if (!seen.has('package.json')) throw new Error('manifest must include package.json')
+  if (parseVersion(version) === null) throw new Error(`registry version "${version}" is not a valid semver`)
+  const dist = payload.dist
+  if (dist === null || typeof dist !== 'object') throw new Error('registry metadata carries no dist block')
+  const tarball = typeof dist.tarball === 'string' ? dist.tarball : ''
+  if (!/^https:\/\/[^\s]+\.tgz$/i.test(tarball)) throw new Error('registry dist.tarball is not an https .tgz URL')
+  const integrity = typeof dist.integrity === 'string' ? dist.integrity.trim() : ''
+  if (integrity === '') throw new Error('registry dist.integrity is missing')
   return {
     version,
-    base,
-    files,
-    notes: typeof payload.notes === 'string' ? payload.notes.slice(0, 32 * 1024) : '',
-    publishedAt: timestampOf(payload.publishedAt) ?? 0,
-    ...typeof payload.minSupported === 'string' ? { minSupported: payload.minSupported } : {},
-    ...typeof payload.signature === 'string' ? { signature: payload.signature } : {},
+    tarball,
+    integrity,
+    notes: typeof payload.description === 'string' ? payload.description : '',
+    // `latest` carries no per-version timestamp; the full packument does, and
+    // fetching it just for a date would double every check's payload.
+    publishedAt: 0,
   }
-}
-
-function parseFileEntry(row) {
-  const rel = typeof row?.path === 'string' ? row.path.trim() : ''
-  const normalized = rel.replace(/\\/g, '/')
-  if (normalized === '' || normalized.startsWith('/') || normalized.includes('../') || normalized.endsWith('..')
-    || /[A-Za-z]:/.test(normalized) || normalized.split('/').includes('')) {
-    throw new Error(`manifest file path "${rel}" is not a safe relative path`)
-  }
-  const sha256 = typeof row?.sha256 === 'string' ? row.sha256.toLowerCase() : ''
-  if (!SHA_RE.test(sha256)) throw new Error(`manifest entry "${normalized}" has no valid sha256`)
-  const size = row?.size
-  if (!Number.isInteger(size) || size <= 0 || size > MAX_FILE_BYTES) {
-    throw new Error(`manifest entry "${normalized}" has an out-of-range size`)
-  }
-  return { path: normalized, sha256, size }
-}
-
-function timestampOf(value) {
-  if (typeof value !== 'string' || value === '') return undefined
-  const ms = Date.parse(value)
-  return Number.isFinite(ms) ? ms : undefined
-}
-
-/** Resolve one manifest-relative path against the URL the manifest came from. */
-export function fileUrlOf(manifestUrl, manifest, relativePath) {
-  return new URL(manifest.base + relativePath.split('/').map(encodeURIComponent).join('/'), manifestUrl).href
 }
 
 /**
- * Fetch the first source that answers with a manifest this installation accepts.
- *
- * A source is only believed when its document carries a signature made with
- * `verifyKey` (see {@link verifyManifestSignature}): every mirror — and any
- * pinned source an operator adds — is equally untrusted as a *code* source, and
- * equally usable once the manifest itself is the thing being authenticated.
- *
- * @param {string[]} sources
- * @param {{timeoutMs?: number, fetchImpl?: typeof fetch, verifyKey?: string}} [options]
- * @returns {Promise<{manifest: object, source: string, signed: boolean}>}
+ * Fetch the `latest` dist-tag for one package.
+ * @returns {Promise<object>} the release view {@link parseRegistryRelease} builds
  */
-export async function downloadManifest(sources, { timeoutMs = 15000, fetchImpl = fetch, verifyKey = PINNED_MANIFEST_PUBLIC_KEY } = {}) {
-  const failures = []
-  for (const source of sources) {
-    try {
-      // One deadline covers manifest headers and body for this leg.
-      const signal = AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined
-      const response = await fetchImpl(bustCdnCache(source), {
-        redirect: 'error',
-        headers: { accept: 'application/json' },
-        signal,
-      })
-      if (!response.ok) { failures.push(`${source} -> HTTP ${response.status}`); continue }
-      const text = await response.text()
-      if (text.length > MAX_MANIFEST_BYTES) { failures.push(`${source} -> manifest too large`); continue }
-      const manifest = parseManifest(JSON.parse(text))
-      if (!verifyManifestSignature(manifest, verifyKey)) {
-        failures.push(`${source} -> manifest signature missing or not made with the release key`)
-        continue
-      }
-      return { manifest, source, signed: true }
-    } catch (error) {
-      failures.push(`${source} -> ${error?.message ?? error}`)
-    }
-  }
-  throw new Error(`no manifest source answered (${failures.join('; ')})`)
-}
-
-function sha256File(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+export async function fetchLatestRelease({ registry = DEFAULT_REGISTRY, packageName = PACKAGE_NAME, fetchImpl = fetch, timeoutMs = 15000 } = {}) {
+  const url = metadataUrlOf(registry, packageName)
+  const signal = AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined
+  const response = await fetchImpl(url, { headers: { accept: 'application/json' }, signal })
+  if (!response.ok) throw new Error(`${packageName}: registry answered HTTP ${response.status}`)
+  const text = await response.text()
+  if (text.length > MAX_METADATA_BYTES) throw new Error(`${packageName}: registry metadata too large`)
+  return parseRegistryRelease(JSON.parse(text), packageName)
 }
 
 /**
- * Download and hash-verify the whole release into `stageDir`.
- * @returns {Promise<{bytes: number, files: number}>}
+ * Verify a downloaded tarball against npm's `dist.integrity`.
+ *
+ * The field is a space-separated list like `sha512-<base64>`; one match is
+ * enough, and an algorithm this build cannot compute is skipped rather than
+ * silently accepted.
  */
+export function verifyIntegrity(bytes, integrity) {
+  for (const token of String(integrity ?? '').trim().split(/\s+/)) {
+    const dash = token.indexOf('-')
+    if (dash <= 0) continue
+    const algorithm = token.slice(0, dash)
+    if (!/^sha(256|384|512)$/.test(algorithm)) continue
+    const expected = token.slice(dash + 1)
+    const actual = crypto.createHash(algorithm).update(bytes).digest('base64')
+    if (actual === expected) return true
+  }
+  return false
+}
+
+/** Read a NUL-terminated field out of a tar header block. */
+function tarString(block, start, length) {
+  const raw = block.toString('latin1', start, start + length)
+  const end = raw.indexOf('\0')
+  return end < 0 ? raw : raw.slice(0, end)
+}
+
+/** Read an octal numeric field out of a tar header block. */
+function tarOctal(block, start, length) {
+  const raw = tarString(block, start, length).trim()
+  return raw === '' ? 0 : Number.parseInt(raw, 8) || 0
+}
+
+/** Reject any tar member name that could escape the staging directory. */
+function safeMemberPath(relative) {
+  const normalized = relative.replace(/\\/g, '/')
+  if (normalized === '' || normalized.startsWith('/') || normalized.includes('../')
+    || normalized.endsWith('..') || /[A-Za-z]:/.test(normalized)
+    || normalized.split('/').some(part => part === '' || part === '.' || part === '..')) return undefined
+  return normalized
+}
+
+/**
+ * Unpack an npm tarball (gzip + ustar) into `destDir`, stripping the leading
+ * `package/` directory npm adds.
+ *
+ * Hand-written on purpose: the package ships no dependencies, and a tar reader
+ * for the single shape npm publishes is a few dozen lines. Only regular files
+ * and directories are written — links, devices and pax sidecars are skipped,
+ * so a hostile archive cannot plant a symlink that the swap then writes through.
+ *
+ * @param {Buffer} archive - the .tgz bytes
+ * @param {string} destDir
+ * @returns {Array<{path: string, size: number, sha256: string}>} extracted files
+ */
+export function extractTarball(archive, destDir) {
+  const bytes = zlib.gunzipSync(archive)
+  const files = []
+  let total = 0
+  let offset = 0
+  let longName = ''
+  const root = 'package/'
+
+  while (offset + 512 <= bytes.length) {
+    const header = bytes.subarray(offset, offset + 512)
+    if (header.every(byte => byte === 0)) break
+    const type = String.fromCharCode(header[156] === 0 ? 48 : header[156])
+    const size = tarOctal(header, 124, 12)
+    const dataStart = offset + 512
+    const dataEnd = dataStart + size
+    if (dataEnd > bytes.length) throw new Error('tarball is truncated')
+    const data = bytes.subarray(dataStart, dataEnd)
+    offset = dataStart + Math.ceil(size / 512) * 512
+
+    // GNU long name and pax sidecars describe the next entry; the name they
+    // carry is honoured, their payload is not written.
+    if (type === 'L') { longName = tarString(data, 0, data.length); continue }
+    if (type === 'x' || type === 'g') continue
+
+    const prefix = tarString(header, 345, 155)
+    const name = longName !== '' ? longName : (prefix === '' ? tarString(header, 0, 100) : `${prefix}/${tarString(header, 0, 100)}`)
+    longName = ''
+
+    if (type === '5') continue
+    if (type !== '0' && type !== '\0' && type !== '7') continue
+    if (!name.startsWith(root)) throw new Error(`tarball member "${name}" is outside package/`)
+    const relative = safeMemberPath(name.slice(root.length))
+    if (relative === undefined) throw new Error(`tarball member "${name}" is not a safe path`)
+    if (relative === '') continue
+
+    if (files.length >= MAX_FILES) throw new Error(`tarball carries more than ${MAX_FILES} files`)
+    if (size > MAX_FILE_BYTES) throw new Error(`tarball member "${relative}" is above the ${MAX_FILE_BYTES} per-file cap`)
+    total += size
+    if (total > MAX_TOTAL_EXTRACT_BYTES) throw new Error('tarball unpacks beyond the size cap')
+
+    const target = path.join(destDir, ...relative.split('/'))
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, data)
+    files.push({ path: relative, size, sha256: crypto.createHash('sha256').update(data).digest('hex') })
+  }
+
+  if (!files.some(file => file.path === 'package.json')) throw new Error('tarball carries no package.json')
+  return files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+}
+
 const STAGE_ATTEMPTS = 3
 const STAGE_BACKOFF_MS = 700
 
-/** A CN egress to the CDN drops connections regularly, and a one-shot staging
- * turned one flaky second into a whole failed upgrade ("fetch failed" on a
- * random file). Transport-class failures retry with a short backoff; integrity
- * failures (size/digest) never do — a wrong body is the trust chain refusing,
- * not a bad hair day. */
+/** A CN egress to the CDN drops connections regularly; transport failures
+ * retry with a short backoff, while an integrity mismatch never does — a wrong
+ * body is the trust check refusing, not a bad hair day. */
 function isTransientDownloadError(error) {
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return true
   return /fetch failed|network|ECONN|ETIMEDOUT|EAI_AGAIN|terminated|socket/i.test(String(error?.message ?? error))
 }
 
-/** Size/hash checks remain outside any transport fallback and cannot authorize
- *  another body. The staged file is fetched from its manifest URL only. */
-function stagedFileSources(manifestUrl, manifest, relativePath) {
-  return [fileUrlOf(manifestUrl, manifest, relativePath)]
-}
-
-export async function stageRelease({ manifest, manifestUrl, stageDir, fetchImpl = fetch, concurrency = 4, onProgress = () => {}, timeoutMs = 30000 }) {
+/**
+ * Download, integrity-check and unpack one release into `stageDir`.
+ * @returns {Promise<{bytes: number, files: Array<object>}>}
+ */
+export async function stageRelease({ release, stageDir, fetchImpl = fetch, onProgress = () => {}, timeoutMs = 60000 }) {
   fs.rmSync(stageDir, { recursive: true, force: true })
   fs.mkdirSync(stageDir, { recursive: true })
-  let done = 0
-  let bytes = 0
-  let cursor = 0
-  const failures = []
-  const workers = Array.from({ length: Math.min(concurrency, manifest.files.length) }, async () => {
-    while (cursor < manifest.files.length) {
-      const file = manifest.files[cursor++]
-      const target = path.join(stageDir, ...file.path.split('/'))
-      const sources = stagedFileSources(manifestUrl, manifest, file.path)
-      let lastError
-      for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
-        try {
-          const signal = AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined
-          let body
-          for (let mirror = 0; mirror < sources.length; mirror++) {
-            try {
-              const response = await fetchImpl(bustCdnCache(sources[mirror]), { redirect: 'error', signal })
-              if (!response.ok) throw new Error(`HTTP ${response.status}`)
-              body = Buffer.from(await response.arrayBuffer())
-              break
-            } catch (error) {
-              const status = /^HTTP (\d{3})$/.exec(String(error?.message ?? ''))?.[1]
-              const canFallback = status ? /^(3\d\d|404|429|5\d\d)$/.test(status) : isTransientDownloadError(error)
-              if (!canFallback || mirror === sources.length - 1 || signal?.aborted) throw error
-            }
-          }
-          if (body.length !== file.size) throw new Error(`size ${body.length} != manifest ${file.size}`)
-          const digest = crypto.createHash('sha256').update(body).digest('hex')
-          if (digest !== file.sha256) throw new Error('sha256 mismatch')
-          fs.mkdirSync(path.dirname(target), { recursive: true })
-          fs.writeFileSync(target, body)
-          done += 1
-          bytes += body.length
-          onProgress({ done, total: manifest.files.length, file: file.path })
-          lastError = null
-          break
-        } catch (error) {
-          lastError = error
-          const httpStatus = /^HTTP (\d{3})$/.exec(String(error?.message ?? ''))?.[1]
-          const retryable = httpStatus ? httpStatus === '429' || httpStatus.startsWith('5') : isTransientDownloadError(error)
-          if (attempt >= STAGE_ATTEMPTS || !retryable) break
-          await new Promise(resolve => setTimeout(resolve, STAGE_BACKOFF_MS * attempt))
-        }
-      }
-      if (lastError) failures.push(`${file.path}: ${lastError?.message ?? lastError}`)
+  let lastError
+  for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
+    try {
+      onProgress({ phase: 'download' })
+      const signal = AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined
+      const response = await fetchImpl(release.tarball, { signal })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const body = Buffer.from(await response.arrayBuffer())
+      if (!verifyIntegrity(body, release.integrity)) throw new Error('tarball integrity mismatch')
+      onProgress({ phase: 'extract' })
+      const files = extractTarball(body, stageDir)
+      return { bytes: body.length, files }
+    } catch (error) {
+      lastError = error
+      const httpStatus = /^HTTP (\d{3})$/.exec(String(error?.message ?? ''))?.[1]
+      // An integrity mismatch is final: retrying could only fetch another body.
+      const retryable = error?.message === 'tarball integrity mismatch'
+        ? false
+        : httpStatus ? httpStatus === '429' || httpStatus.startsWith('5') : isTransientDownloadError(error)
+      if (attempt >= STAGE_ATTEMPTS || !retryable) break
+      await new Promise(resolve => setTimeout(resolve, STAGE_BACKOFF_MS * attempt))
     }
-  })
-  await Promise.all(workers)
-  if (failures.length > 0) {
-    fs.rmSync(stageDir, { recursive: true, force: true })
-    throw new Error(`staging failed: ${failures.join('; ')}`)
   }
-  return { bytes, files: done }
+  fs.rmSync(stageDir, { recursive: true, force: true })
+  throw new Error(`staging failed: ${lastError?.message ?? lastError}`)
 }
 
-/** The staged copy is checked against the manifest before install touches anything. */
-export function verifyStaged(stageDir, manifest) {
-  for (const file of manifest.files) {
+/** The staged copy is checked against the expected release before install touches anything. */
+export function verifyStaged(stageDir, release, files) {
+  for (const file of files) {
     const target = path.join(stageDir, ...file.path.split('/'))
     let stat
     try { stat = fs.statSync(target) } catch { throw new Error(`staged file missing: ${file.path}`) }
     if (stat.size !== file.size) throw new Error(`staged size drift for ${file.path}`)
-    if (sha256File(target) !== file.sha256) throw new Error(`staged hash drift for ${file.path}`)
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(stageDir, 'package.json'), 'utf8'))
-  if (pkg.version !== manifest.version) throw new Error(`staged package.json says ${pkg.version}, manifest says ${manifest.version}`)
+  if (pkg.version !== release.version) throw new Error(`staged package.json says ${pkg.version}, registry says ${release.version}`)
+}
+
+/** Put a backed-up copy back in place (used when a swap or reload fails). */
+function sha256File(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 }
 
 /**
@@ -385,11 +310,12 @@ export function verifyStaged(stageDir, manifest) {
  * release. An installed copy never has them; a git-clone or linked development
  * copy always does, and it is the same directory the upgrader operates on.
  * `catalog` travels with ecosystem packs rather than with a release, and
- * `worker` and vendor development sources ship for self-hosters — a sweep that treats them as "files
- * the new release dropped" would delete the pack's readiness records out from
- * under the harness's bundle validation on the first in-app upgrade.
+ * `worker` and vendor development sources ship for self-hosters — a sweep that
+ * treats them as "files the new release dropped" would delete the pack's
+ * readiness records out from under the harness's bundle validation, or the
+ * development copy's own test suite, on the first in-app upgrade.
  */
-const REPOSITORY_SCAFFOLDING = ['feed', 'scripts', 'docs', 'promo', 'node_modules', 'catalog', 'worker', 'vendor']
+const REPOSITORY_SCAFFOLDING = ['feed', 'scripts', 'docs', 'promo', 'node_modules', 'catalog', 'worker', 'vendor', 'tests']
 // Actual published runtime assets must participate in backup and rollback,
 // including when an upgrade crosses the 1.x/2.x boundary. Keep vendor source
 // trees protected; package.json is overwritten during installation, so it
@@ -586,8 +512,8 @@ export async function installStaged(stageDir, pkgDir, files) {
 }
 
 /** Read back everything that was just written; one drifted byte aborts the swap. */
-export function verifyInstalled(pkgDir, manifest) {
-  for (const file of manifest.files) {
+export function verifyInstalled(pkgDir, files) {
+  for (const file of files) {
     const target = path.join(pkgDir, ...file.path.split('/'))
     if (!fs.existsSync(target)) throw new Error(`installed file missing: ${file.path}`)
     if (sha256File(target) !== file.sha256) throw new Error(`installed hash drift for ${file.path}`)
@@ -606,12 +532,12 @@ export class PluginUpdater {
    * @param {() => {updateCheckHours?: number}} deps.settings
    * @param {(message: string) => void} [deps.log]
    * @param {typeof fetch} [deps.fetchImpl]
-   * @param {string} [deps.manifestPublicKey] - SPKI base64; tests substitute a
-   *   throwaway keypair here, installs pin the release key
+   * @param {string} [deps.registry] - registry base URL; tests substitute a local one
+   * @param {string} [deps.packageName] - package to update from
    * @param {string} [deps.runningVersion] - version captured by the running module
    */
-  constructor({ pkgDir, dataDir, settings, log = () => {}, fetchImpl = fetch, defaultSources = DEFAULT_MANIFEST_SOURCES, manifestPublicKey = PINNED_MANIFEST_PUBLIC_KEY, runningVersion }) {
-    this.deps = { pkgDir, dataDir, settings, log, fetchImpl, defaultSources, manifestPublicKey, runningVersion }
+  constructor({ pkgDir, dataDir, settings, log = () => {}, fetchImpl = fetch, registry = DEFAULT_REGISTRY, packageName = PACKAGE_NAME, runningVersion }) {
+    this.deps = { pkgDir, dataDir, settings, log, fetchImpl, registry, packageName, runningVersion }
     this.latest = undefined
     this.checkedAt = 0
     this.error = ''
@@ -711,36 +637,33 @@ export class PluginUpdater {
     }
   }
 
-  /** Manifest sources. Deliberately immune to the `feedUrl` setting: an update
-   *  source is a code source, and a settings value pointing it anywhere else is
-   *  the one-step path from "wrote a config field" to "executed arbitrary code
-   *  in the host process". Announcements may be mirrored by their user; the
-   *  update channel may not. Empty in this build (see the module header). */
-  sources() {
-    return this.deps.defaultSources
+  /** True when this copy is a git checkout rather than an npm install. */
+  isDevelopmentCheckout() {
+    try {
+      return fs.existsSync(path.join(this.deps.pkgDir, '.git'))
+    } catch {
+      return false
+    }
   }
 
   /**
-   * Fetch and evaluate the latest manifest.
+   * Fetch and evaluate the latest published version.
    * @returns {Promise<{available: boolean, current: string, latest: string}>}
    */
   async check() {
     try {
       this.reconcileRecovery()
-      if (this.sources().length === 0) {
-        throw new Error('no update source is configured for this build; the installed copy is the release')
-      }
-      const { manifest, source } = await downloadManifest(this.sources(), { fetchImpl: this.deps.fetchImpl, verifyKey: this.deps.manifestPublicKey })
+      const release = await fetchLatestRelease({
+        registry: this.deps.registry,
+        packageName: this.deps.packageName,
+        fetchImpl: this.deps.fetchImpl,
+      })
       const current = this.deps.runningVersion ?? this.currentVersion()
-      if (manifest.minSupported !== undefined && current !== '' && compareVersions(current, manifest.minSupported) < 0) {
-        throw new Error(`update path requires at least ${manifest.minSupported}; ${current} is installed`)
-      }
-      this.latest = manifest
-      this.manifestUrl = source
+      this.latest = release
       this.checkedAt = Date.now()
       this.error = ''
-      this.deps.log?.(`our-free-model: update check via ${source} -> ${manifest.version} (installed ${current})`)
-      return { available: compareVersions(manifest.version, current) > 0, current, latest: manifest.version }
+      this.deps.log?.(`our-free-model: update check via npm -> ${release.version} (installed ${current})`)
+      return { available: compareVersions(release.version, current) > 0, current, latest: release.version }
     } catch (error) {
       this.error = String(error?.message ?? error)
       throw error
@@ -748,12 +671,18 @@ export class PluginUpdater {
   }
 
   /**
-   * Download, verify and install one manifest. Idempotent for the same version.
+   * Download, verify and install one published version. Idempotent for the
+   * same version.
    * @param {{version?: string, onProgress?: (progress: object) => void, activate?: (result: object) => Promise<object>}} [options]
    * @returns {Promise<{version: string, files: number, bytes: number, previous: string}>}
    */
   async apply({ version, onProgress = () => {}, activate } = {}) {
     if (upgradeLocks.has(this.deps.pkgDir)) throw new Error('an upgrade is already running')
+    // A git checkout is not a release: swapping a tarball over it would delete
+    // the working tree's own files (tests, docs) that no npm package carries.
+    if (this.isDevelopmentCheckout()) {
+      throw new Error('this copy is a development checkout (.git); update it with git or npm, not the in-app updater')
+    }
     this.reconcileRecovery()
     const priorState = this.loadUpgradeState()
     if (['installing', 'activating', 'recovery-required'].includes(priorState?.phase)) {
@@ -767,39 +696,31 @@ export class PluginUpdater {
     let installed = false
     let activated = false
     try {
-      // Re-check immediately before installing: the owner may have pushed a new
-      // manifest since the last check, and a stale cached manifest would verify
-      // downloads against hashes the repository no longer stands behind.
+      // Re-check immediately before installing: the publisher may have pushed a
+      // new version since the last check, and a stale cached release would
+      // verify downloads against a tarball the registry no longer serves.
       await this.check()
-      const manifest = this.latest
-      if (manifest === undefined) throw new Error('no manifest available')
-      targetVersion = manifest.version
-      if (version !== undefined && manifest.version !== version) throw new Error(`manifest offers ${manifest.version}, not ${version}`)
-      if (compareVersions(manifest.version, previous) < 0) throw new Error(`installed ${previous} is newer than ${manifest.version}`)
+      const release = this.latest
+      if (release === undefined) throw new Error('no release available')
+      targetVersion = release.version
+      if (version !== undefined && release.version !== version) throw new Error(`registry offers ${release.version}, not ${version}`)
+      if (compareVersions(release.version, previous) < 0) throw new Error(`installed ${previous} is newer than ${release.version}`)
 
-      onProgress({ phase: 'download' })
-      // `check` above only accepts signed manifests, but this guard is cheap and
-      // keeps `apply` honest on its own: a manifest that cannot be attributed to
-      // the release key must not reach the file swap, whatever path delivered it.
-      if (manifest.signature === undefined || !verifyManifestSignature(manifest, this.deps.manifestPublicKey)) {
-        throw new Error('the manifest is not signed with the pinned release key')
-      }
       const staged = await stageRelease({
-        manifest, manifestUrl: this.manifestUrl ?? this.sources()[0], stageDir: this.stageDir,
-        fetchImpl: this.deps.fetchImpl, onProgress,
+        release, stageDir: this.stageDir, fetchImpl: this.deps.fetchImpl, onProgress,
       })
-      verifyStaged(this.stageDir, manifest)
+      verifyStaged(this.stageDir, release, staged.files)
 
       onProgress({ phase: 'install' })
       const backedUp = backupPackage(this.deps.pkgDir, this.backupDir)
-      state = { from: previous, to: manifest.version, at: Date.now(), phase: 'installing' }
+      state = { from: previous, to: release.version, at: Date.now(), phase: 'installing' }
       // Persist the intent before the first installed byte changes.
       this.saveUpgradeState(state)
-      const result = { version: manifest.version, previous, files: manifest.files.length, bytes: staged.bytes }
+      const result = { version: release.version, previous, files: staged.files.length, bytes: staged.bytes }
       try {
         installed = true
-        await installStaged(this.stageDir, this.deps.pkgDir, manifest.files.map(file => file.path))
-        verifyInstalled(this.deps.pkgDir, manifest)
+        await installStaged(this.stageDir, this.deps.pkgDir, staged.files.map(file => file.path))
+        verifyInstalled(this.deps.pkgDir, staged.files)
         if (activate !== undefined) {
           state = { ...state, phase: 'activating' }
           this.saveUpgradeState(state)
@@ -808,8 +729,8 @@ export class PluginUpdater {
           if (activation?.ok !== true) {
             throw Object.assign(new Error(activation?.error ?? 'hot reload did not confirm activation'), { runtimeRestored: activation?.restored === true })
           }
-          if (activation.version !== manifest.version) {
-            throw new Error(`activation version mismatch: expected ${manifest.version}, got ${String(activation.version ?? '(missing)')}`)
+          if (activation.version !== release.version) {
+            throw new Error(`activation version mismatch: expected ${release.version}, got ${String(activation.version ?? '(missing)')}`)
           }
           activated = true
         }
@@ -833,10 +754,10 @@ export class PluginUpdater {
       }
       this.saveUpgradeState({ ...state, phase: 'complete', activated })
       try { fs.rmSync(this.stageDir, { recursive: true, force: true }) } catch (error) { this.deps.log?.(`our-free-model: staging cleanup failed (${error?.message ?? error})`) }
-      const record = { from: previous, to: manifest.version, at: Date.now(), ok: true, files: manifest.files.length, bytes: staged.bytes, backedUp, activated }
+      const record = { from: previous, to: release.version, at: Date.now(), ok: true, files: staged.files.length, bytes: staged.bytes, backedUp, activated }
       this.recordHistory(record)
       this.checkedAt = Date.now()
-      this.deps.log?.(`our-free-model: upgraded ${previous} -> ${manifest.version} (${manifest.files.length} files)`)
+      this.deps.log?.(`our-free-model: upgraded ${previous} -> ${release.version} (${staged.files.length} files)`)
       return result
     } catch (error) {
       this.error = String(error?.message ?? error)

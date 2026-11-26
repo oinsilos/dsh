@@ -1,8 +1,9 @@
-# dsh-model-manager bundle patch.
+# @oinsilos/dsh-model-manager bundle patch.（id 必须与 package.json 的 name 一致：
+# 浏览器半身按包名绑定，id 不同则宿主找不到 client bundle）
 #
 # 一行 insert 即挂载 Host 半身；浏览器半身由 package.json 的 dsh.client 声明，
 # 并绑定在 name 为裸包名的这一行上（子路径行不会携带半身）。
 - insert:
     - id: our-free-model
-      name: 'dsh-model-manager'
+      name: '@oinsilos/dsh-model-manager'
       config: {}
