@@ -11,48 +11,6 @@
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
-  "scripts": {
-    "pack:standalone": "node scripts/pack-standalone.mjs",
-    "test:package": "node scripts/standalone-package-test.mjs",
-    "start:standalone": "node packages/standalone/cli.mjs",
-    "test:standalone": "node scripts/standalone-test.mjs",
-    "test:management": "node scripts/standalone-management-test.mjs",
-    "build:standalone-channels": "node scripts/build-standalone-channels.mjs",
-    "build:standalone-ui": "node scripts/build-standalone-ui.mjs",
-    "typecheck:standalone": "npm --prefix packages/standalone run typecheck",
-    "test:standalone-channels": "node scripts/standalone-channels-test.mjs",
-    "test:client-amounts": "node tests/amount-helpers.mjs",
-    "test:client-i18n": "node tests/i18n-keys.mjs",
-    "test:channels-smoke": "node tests/channels-smoke.mjs",
-    "test:client": "node tests/amount-helpers.mjs && node tests/i18n-keys.mjs && node tests/codearts-ops.mjs && node tests/channel-extras.mjs && node tests/codely-channel.mjs && node tests/autoclaw-channel.mjs && node tests/accio-channel.mjs && node tests/minimax-channel.mjs && node tests/marvis-channel.mjs && node tests/magicrew-channel.mjs && node tests/chromium-driver.mjs && node tests/own-inference.mjs && node tests/channel-pack-tables.mjs && node tests/codearts-catalog.mjs && node tests/qoder-catalog.mjs && node tests/loomy-upstream.mjs && node tests/composer-credits.mjs && node tests/channel-visibility.mjs && node tests/baizhi-channel.mjs && node tests/doubao-channel.mjs && node tests/doubao-inference.mjs && node tests/pending-accounts.mjs && node tests/astudio-login.mjs && node tests/channel-manifest.mjs && node tests/own-controls.mjs && node tests/api-own-routes.mjs && node tests/agnescode-channel.mjs && node tests/model-panel.mjs && node tests/channels-smoke.mjs && node tests/route-groups.mjs",
-    "test:codearts": "node tests/codearts-ops.mjs",
-    "test:channel-extras": "node tests/channel-extras.mjs",
-    "test:codely": "node tests/codely-channel.mjs",
-    "test:autoclaw": "node tests/autoclaw-channel.mjs",
-    "test:own-inference": "node tests/own-inference.mjs",
-    "test:accio": "node tests/accio-channel.mjs",
-    "test:minimax": "node tests/minimax-channel.mjs",
-    "test:marvis": "node tests/marvis-channel.mjs",
-    "test:magicrew": "node tests/magicrew-channel.mjs",
-    "test:monkeycode": "node tests/monkeycode-channel.mjs",
-    "test:chromium": "node tests/chromium-driver.mjs",
-    "test:drift": "node scripts/check-install-drift.mjs",
-    "test:pack": "node tests/channel-pack-tables.mjs",
-    "test:visibility": "node tests/channel-visibility.mjs",
-    "test": "node scripts/test-all.mjs",
-    "test:contributor": "node scripts/test-all.mjs --mode contributor",
-    "test:release": "node scripts/test-all.mjs --mode release",
-    "channel-pack": "node scripts/build-channel-pack.mjs",
-    "selftest": "node scripts/host-selftest.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test:baizhi": "node tests/baizhi-channel.mjs",
-    "test:doubao": "node tests/doubao-channel.mjs",
-    "test:doubao-inference": "node tests/doubao-inference.mjs",
-    "test:pending": "node tests/pending-accounts.mjs",
-    "test:astudio": "node tests/astudio-login.mjs",
-    "test:manifest": "node tests/channel-manifest.mjs",
-    "test:own-controls": "node tests/own-controls.mjs"
-  },
   "files": [
     "index.js",
     "client.js",
@@ -95,8 +53,5 @@
     "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.1",
     "@deepseek-ai/dsh-llm": "^0.1.2-rc.1 || ^0.1.7-rc.2 || ^0.2.0-rc.1",
     "@deepseek-ai/schemastery": "^3.18.4"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.2"
   }
 }
