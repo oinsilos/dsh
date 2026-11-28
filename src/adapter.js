@@ -278,7 +278,13 @@ export class FreeModelAdapter {
     // also carries the host's other-provider rows (`channel: 'host'`), which
     // `runChain` forwards via `runForeign`. `catalog` alone cannot see them, so a
     // host member the panel let you tick would be dropped here at run time.
-    const members = poolChain(entry, snapshot.routeCatalog ?? snapshot.catalog, { statsFor })
+    const ranked = poolChain(entry, snapshot.routeCatalog ?? snapshot.catalog, { statsFor })
+    // 当日熔断同样适用于池：一个成员失败过一次就没必要让每个请求都先撞它
+    // （真机：一个 90 秒不响应的成员会把整轮拖过客户端超时）。全部成员都被
+    // 熔断时仍按原顺序试，否则池会彻底不可用。
+    const failedKeys = this.deps.routeStore?.failedKeys?.() ?? new Set()
+    const fresh = ranked.filter(member => !failedKeys.has(member.id))
+    const members = fresh.length > 0 ? fresh : ranked
     const retries = Math.max(0, Number(entry.memberRetries) || 0)
     // Expand each member into (retries + 1) slots. The member id rides along so a
     // retry slot is distinguishable from a genuinely repeated member.
@@ -303,6 +309,17 @@ export class FreeModelAdapter {
         // 配额/冷却类的失败要让闸门记住：冷却期内别的请求也不该先挑它。
         if (result?.verdict?.kind === FAILURE_KIND.RATE_LIMIT || result?.verdict?.cooldownMs > 0) {
           this.deps.gate?.markCapacity(candidate.entry.id, result?.verdict?.cooldownMs)
+        }
+        // 池成员也记熔断：下一次请求直接跳过它，而不是再从 90 秒的首字预算开始。
+        // 面板的「失败模型」页可以单条恢复，成功一次也会自动解除。
+        if (result?.verdict !== null && result?.verdict !== undefined) {
+          this.deps.routeStore?.markFailed(
+            {
+              model: candidate.entry.id,
+              provider: candidate.entry.provider ?? '',
+              modelId: candidate.entry.modelId ?? candidate.entry.id,
+            },
+            { code: String(result.verdict.kind ?? ''), reason: String(reason ?? '') })
         }
         this.deps.warn?.(`our-free-model: pool "${entry.name}" advanced past ${candidate.entry.id} — ${reason}`)
       },

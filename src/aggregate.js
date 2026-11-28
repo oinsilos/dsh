@@ -81,6 +81,16 @@ const DEFAULT_MAX_OUTPUT = 32768
 const SNIFF_BYTES = 4096
 const LISTING_TIMEOUT_MS = 15000
 const TURN_TIMEOUT_MS = 300000
+/**
+ * How long one aggregate turn waits for the *first* byte.
+ *
+ * The turn budget is 5 minutes, but a client dialing the gateway gives up long
+ * before that: a member that answers nothing for two minutes makes the caller
+ * report an empty stream while this lane is still waiting. 90s covers the
+ * slowest usable model seen here (a reasoning model whose first frame took 88s)
+ * and fails over to the next member while the client is still listening.
+ */
+const FIRST_BYTE_TIMEOUT_MS = 90000
 const USER_AGENT = 'dsh-our-free-model'
 
 /** A trimmed non-empty string, or ''. */
@@ -692,7 +702,9 @@ export async function postAggregateStreamed({ config, providerId, modelId, body,
   }
   if (response.body === null) throw new UpstreamError('model stream returned no body', CODE.empty)
 
-  const head = await readHead(response.body, SNIFF_BYTES, { signal, timeoutMs })
+  // First byte gets its own, shorter budget: `readHead` stops as soon as the
+  // body says "stream", so this only bounds the wait before any frame arrives.
+  const head = await readHead(response.body, SNIFF_BYTES, { signal, timeoutMs: Math.min(timeoutMs, FIRST_BYTE_TIMEOUT_MS) })
   const shape = sniffBody(head.text)
   if (shape === 'empty') throw new UpstreamError('model stream returned no body', CODE.empty)
   if (shape === 'sse') {

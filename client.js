@@ -245,6 +245,9 @@ window.__ModuleLoader__.load({
         'pool.probing': '测试中…',
         'pool.probeOk': '可用',
         'pool.probeFail': '不可用',
+        'pool.priority': '优先级',
+        'pool.priorityHint': '数字就是位置：改数字把这个成员挪到那个位置',
+        'pool.emptyWarn': '池已启用但没有成员：网关的模型列表会是空的，客户端将无法连接。',
         'pool.addMember': '勾选模型',
         'pool.searchModel': '搜索模型名或 id',
         'pool.noModel': '没有匹配的模型。',
@@ -1117,6 +1120,9 @@ window.__ModuleLoader__.load({
         'pool.probing': 'Testing…',
         'pool.probeOk': 'OK',
         'pool.probeFail': 'Failed',
+        'pool.priority': 'Priority',
+        'pool.priorityHint': 'The number is the position: edit it to move this member there',
+        'pool.emptyWarn': 'The pool is on with no members: the gateway will list nothing and clients cannot connect.',
         'pool.addMember': 'Tick models',
         'pool.searchModel': 'Search name or id',
         'pool.noModel': 'No matching model.',
@@ -2928,6 +2934,17 @@ window.__ModuleLoader__.load({
 .ofm_pickgrouphead b{font-size:12px;font-weight:700;letter-spacing:.3px}
 .ofm_pickgroup .ofm_picklist{max-height:none;overflow:visible;padding:0}
 .ofm_pickmark{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:16px;padding:0 3px;flex:none;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);font-size:10px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
+/* 候选模型（池成员）：一行一个成员，右侧数字框就是优先级。 */
+.ofm_chainlist{display:flex;flex-direction:column;gap:6px}
+.ofm_chainrow{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent)}
+.ofm_chainmain{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ofm_chainmain b{font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_chainmain .ofm_id{font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ofm_chainmeta{display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px;color:var(--dsw-alias-label-tertiary);min-width:0}
+.ofm_chainacts{display:flex;align-items:center;gap:5px;flex:none;margin-left:auto}
+.ofm_chainno{width:58px;height:28px;text-align:center;font:inherit;font-size:12px;font-variant-numeric:tabular-nums;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}
+.ofm_chainno:focus{outline:2px solid color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent);outline-offset:1px}
+@media (max-width:600px){.ofm_chainrow{flex-wrap:wrap}.ofm_chainacts{width:100%;margin-left:0}}
 .ofm_pickrow[aria-pressed="true"] .ofm_pickmark{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff}
 .ofm_tagwarn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
 /* 发现结果的可点标签：点一下加入/移出模型覆盖，选中态用主题主色。 */
@@ -2946,6 +2963,9 @@ window.__ModuleLoader__.load({
 .ofm_foundpill[data-ok="false"]{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
 /* 模型面板里把聚合渠道的行从免费车道里分出来的小标题。 */
 .ofm_mpicklane{display:flex;align-items:center;gap:8px;padding:8px 8px 2px;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--dsw-alias-label-caption)}
+/* 池的接入示例与选择器标题：类名此前只写在 JSX 里，没有样式，故是裸 pre / 默认字号。 */
+.ofm_code{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.6;padding:10px 12px;border-radius:10px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);white-space:pre;overflow:auto}
+.ofm_pickertitle{font-size:13.5px;font-weight:650;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ofm_pickrow{display:flex;flex-direction:column;gap:5px;align-items:stretch;text-align:left;font:inherit;padding:9px 11px;border-radius:11px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 62%,transparent);color:var(--dsw-alias-label-primary);cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease}
 .ofm_pickrow:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary);transform:translateY(-1px)}
 .ofm_pickrow[aria-pressed="true"]{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent)}
@@ -6380,6 +6400,15 @@ window.__ModuleLoader__.load({
         next.splice(target, 0, row)
         return { ...current, members: next }
       })
+      /** 把第 index 个成员挪到 position（1 起）——数字输入框的写回。 */
+      const moveTo = (index, position) => setDraft(current => {
+        if (current === null) return current
+        const next = [...current.members]
+        const [row] = next.splice(index, 1)
+        const target = Math.max(0, Math.min(next.length, (Number(position) || 1) - 1))
+        next.splice(target, 0, row)
+        return { ...current, members: next }
+      })
       // 真实调用一次这个成员：池能否用，取决于成员本身是活的。空流成员和
       // 永不响应的成员会把一次正常请求拖到客户端超时，而用户只看到「流为空」。
       const probeMember = async id => {
@@ -6474,28 +6503,37 @@ window.__ModuleLoader__.load({
                   const usable = resolved.includes(id)
                   const probe = memberProbes[id] ?? {}
                   return h('div', { key: id, className: 'ofm_chainrow', style: usable ? undefined : { opacity: 0.55 } },
-                    h('span', { className: 'ofm_chainno' }, String(index + 1)),
-                    h('span', { className: 'ofm_pickhead' }, h('b', { title: row?.name ?? id }, row?.name ?? id),
-                      h('span', { className: 'ofm_id' }, id)),
-                    h('span', { className: 'ofm_pickmeta' },
-                      h('span', { className: 'ofm_tag' }, lanes[row?.channel] ?? row?.channel ?? ''),
-                      row?.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
-                      row?.today === null || row?.today === undefined ? null
-                        : h('span', { className: 'ofm_note' }, t('pool.todayStats')
-                          .replace('{calls}', String(row.today.calls))
-                          .replace('{failed}', String(row.today.failed))
-                          .replace('{ttft}', row.today.meanTtftMs === null ? '—' : `${row.today.meanTtftMs}ms`)),
-                      usable ? null : h('span', { className: 'ofm_tag', title: t('pool.unavailableHint') }, t('pool.unavailable')),
-                      probe.busy === true
-                        ? h('span', { className: 'ofm_note' }, t('pool.probing'))
-                        : probe.ok === true
-                          ? h('span', { className: 'ofm_tag', title: probe.message }, `${t('pool.probeOk')} ${probe.ttftMs}ms`)
-                          : probe.ok === false
-                            // 原因直接印在行里：只挂在 tooltip 上等于让用户去猜。
-                            ? h('span', { className: 'ofm_tag ofm_tagwarn', title: probe.message },
-                              `${t('pool.probeFail')} · ${String(probe.message ?? '').slice(0, 46)}`)
-                            : null),
-                    h('span', { className: 'ofm_row', style: { marginLeft: 'auto' } },
+                    h('div', { className: 'ofm_chainmain' },
+                      h('b', { title: row?.name ?? id }, row?.name ?? id),
+                      h('span', { className: 'ofm_id' }, id),
+                      h('div', { className: 'ofm_chainmeta' },
+                        h('span', { className: 'ofm_tag' }, lanes[row?.channel] ?? row?.channel ?? ''),
+                        row?.provider && row.provider !== row?.channel ? h('span', { className: 'ofm_tag' }, row.provider) : null,
+                        row?.today === null || row?.today === undefined ? null
+                          : h('span', { className: 'ofm_note' }, t('pool.todayStats')
+                            .replace('{calls}', String(row.today.calls))
+                            .replace('{failed}', String(row.today.failed))
+                            .replace('{ttft}', row.today.meanTtftMs === null ? '—' : `${row.today.meanTtftMs}ms`)),
+                        usable ? null : h('span', { className: 'ofm_tag', title: t('pool.unavailableHint') }, t('pool.unavailable')),
+                        probe.busy === true
+                          ? h('span', { className: 'ofm_note' }, t('pool.probing'))
+                          : probe.ok === true
+                            ? h('span', { className: 'ofm_tag', title: probe.message }, `${t('pool.probeOk')} ${probe.ttftMs}ms`)
+                            : probe.ok === false
+                              // 原因直接印在行里：只挂在 tooltip 上等于让用户去猜。
+                              ? h('span', { className: 'ofm_tag ofm_tagwarn', title: probe.message },
+                                `${t('pool.probeFail')} · ${String(probe.message ?? '').slice(0, 46)}`)
+                              : null)),
+                    // 数字就是优先级：改数字即把它挪到那个位置，和模型面板的
+                    // 路由分组读法一致（那里也是右侧一个数字框）。
+                    h('div', { className: 'ofm_chainacts' },
+                      h('input', {
+                        className: 'ofm_chainno', type: 'number', min: '1', max: String(chosen.length),
+                        value: String(index + 1), disabled: busy,
+                        'aria-label': t('pool.priority'),
+                        title: t('pool.priorityHint'),
+                        onChange: event => moveTo(index, Number(event.target.value)),
+                      }),
                       miniBtn(t('pool.testMember'), () => void probeMember(id), { disabled: probe.busy === true || busy, title: t('pool.testMemberHint') }),
                       miniBtn('↑', () => move(index, -1), { disabled: index === 0 || busy }),
                       miniBtn('↓', () => move(index, 1), { disabled: index === chosen.length - 1 || busy }),
@@ -6523,7 +6561,12 @@ window.__ModuleLoader__.load({
 
               h('div', { className: 'ofm_row' },
                 h(Button, { disabled: busy || dirty !== true, onClick: submit }, busy ? t('common.saving') : t('common.save')),
-                dirty === true ? h('span', { className: 'ofm_note' }, t('pool.unsaved')) : null),
+                dirty === true ? h('span', { className: 'ofm_note' }, t('pool.unsaved')) : null,
+                // 池开着却没有成员：网关 /v1/models 会是一个空列表，客户端连不上
+                // 任何模型。这是最容易在保存后才发现的状态，所以提前说。
+                draft.enabled === true && chosen.length === 0
+                  ? h('span', { className: 'ofm_note', style: { color: 'var(--warn)' } }, t('pool.emptyWarn'))
+                  : null),
               error === '' ? null : h('p', { className: 'ofm_note', style: { color: 'var(--warn)' } }, error),
               notice === '' ? null : h('p', { className: 'ofm_note' }, notice),
 
@@ -8356,7 +8399,7 @@ window.__ModuleLoader__.load({
               className: 'ofm_input', placeholder: t('panel.routes.nameHint'), value: newName,
               onChange: event => setNewName(event.currentTarget.value),
             }),
-            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create'))))
+            h('button', { type: 'button', className: 'ofm_btn primary', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create'))))
       }
       const members = active?.models ?? []
       // 成员坐标可能有两种写法（目录 id，或迁移数据里的「裸名 + provider」），
@@ -8426,7 +8469,7 @@ window.__ModuleLoader__.load({
               ? h('span', { className: 'ofm_mpickcurrent' }, t('panel.current'))
               : null,
             h('span', { className: 'ofm_mpickerspacer' }),
-            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: () => onUse(active) }, t('panel.routes.use')),
+            h('button', { type: 'button', className: 'ofm_btn primary', disabled: busy !== '', onClick: () => onUse(active) }, t('panel.routes.use')),
             h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: remap }, t('panel.routes.remap')),
             h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: () => deleteGroup(active) }, t('panel.routes.delete'))),
           h('div', { className: 'ofm_mpickerlist' },
@@ -8533,7 +8576,7 @@ window.__ModuleLoader__.load({
                     })),
                 h('div', { className: 'ofm_mpickaddfoot' },
                   h('button', {
-                    type: 'button', className: 'ofm_btn ofm_btn--primary',
+                    type: 'button', className: 'ofm_btn primary',
                     disabled: busy !== '' || picked.length === 0, onClick: addPicked,
                   }, t('panel.routes.bulkAdd').replace('{n}', String(picked.length))),
                   h('span', { className: 'ofm_note' }, t('panel.routes.bulkHint'))))
