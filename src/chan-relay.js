@@ -81,6 +81,53 @@ export function chanGatewayPort(env = process.env) {
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 8326
 }
 
+/** Can this process bind the port at all? EACCES (reserved range) counts as no. */
+function canBind(port, host = '127.0.0.1') {
+  return new Promise(resolve => {
+    const server = http.createServer()
+    const settle = answer => {
+      server.removeAllListeners()
+      try { server.close() } catch { /* never opened */ }
+      resolve(answer)
+    }
+    server.once('error', () => settle(false))
+    server.once('listening', () => server.close(() => settle(true)))
+    try {
+      server.listen(port, host)
+    } catch {
+      settle(false)
+    }
+  })
+}
+
+/**
+ * Move the gateway off a port this machine will not hand out.
+ *
+ * The pack defaults to 8326 and walks up to 8341 when it sees EADDRINUSE — but
+ * on Windows the whole neighbourhood is frequently *reserved* rather than
+ * occupied (`netsh int ipv4 show excludedportrange protocol=tcp` reported
+ * 8179-8378 here), so every candidate fails with EACCES and the switch reads
+ * "on, not listening" with a reason nobody can act on.
+ *
+ * Only an environment default is chosen here: an explicit
+ * `DSH_OPENAI_GATEWAY_PORT` is never overridden, and the relay reads the same
+ * variable (`chanGatewayPort`), so both ends move together. Returns the port it
+ * picked, or null when the default already binds.
+ */
+export async function pickGatewayPort({ env = process.env, desired = 8326, span = 512 } = {}) {
+  if (String(env.DSH_OPENAI_GATEWAY_PORT ?? '').trim() !== '') return null
+  if (await canBind(desired)) return null
+  for (let offset = 1; offset <= span; offset += 1) {
+    const port = desired + offset
+    if (port > 65535) break
+    if (await canBind(port)) {
+      env.DSH_OPENAI_GATEWAY_PORT = String(port)
+      return port
+    }
+  }
+  return null
+}
+
 /**
  * The gateway's own switch. Same normalization rule as the gateway: only an
  * explicit false-y string disables, because `parseInt('0') || 1`-style parses

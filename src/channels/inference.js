@@ -46,6 +46,14 @@ import {
 
 const TURN_TIMEOUT_MS = 300_000
 const KEY_TIMEOUT_MS = 15_000
+/**
+ * 豆包等「整段读完才吐」的上游：等首字节的合理上限。
+ *
+ * 5 分钟只对真正的流式上游有意义 —— 那种情况下首帧几秒就到，等不到就是故障。
+ * 豆包一次要给完整段回答，180 秒是参考实现实测取的值（目录 15s 与 undici 300s
+ * 之间），再长只是让用户干等。
+ */
+const DOUBAO_HEAD_TIMEOUT_MS = 180_000
 
 /**
  * Codely 的推理网关常量（与 `codely.js` 的账号侧同源，但推理走另一个主机）。
@@ -334,11 +342,12 @@ export async function postOwnChannelStreamed({ provider, credential, body, signa
   const setRetry = Number.isFinite(retrySeconds) && retrySeconds > 0 ? Math.trunc(retrySeconds * 1000) : undefined
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    throw classifyFailure(response.status, parseMaybeJson(text, response.status), setRetry)
+    throw classifyFailure(response.status, withUpstreamReason(parseMaybeJson(text, response.status)), setRetry)
   }
   if (response.body === null) throw new UpstreamError('model stream returned no body', CODE.empty)
 
-  const head = await readHead(response.body, 4096, { signal, timeoutMs })
+  const headTimeoutMs = lane.frames === 'doubao' ? Math.min(timeoutMs, DOUBAO_HEAD_TIMEOUT_MS) : timeoutMs
+  const head = await readHead(response.body, 4096, { signal, timeoutMs: headTimeoutMs })
   const shape = sniffBody(head.text)
   if (shape === 'empty') throw new UpstreamError('model stream returned no body', CODE.empty)
 
@@ -648,4 +657,23 @@ function parseMaybeJson(text, status) {
   try { return JSON.parse(text) } catch {
     return { error: { message: text.slice(0, 300) || `HTTP ${status}` } }
   }
+}
+
+/**
+ * 把上游的原因从 `msg` / `error_msg` 提到 `message` 上。
+ *
+ * 豆包这类国内网关把原因写成 `{"code":7100…,"msg":"当前对话人数过多","message":"…"}`，
+ * 有的只给 `msg`；而 `classifyFailure` 只认 `error.message` / `message`，
+ * 于是那句**唯一能让用户行动的话**会被压成 `upstream HTTP 500`（参考实现 issue #150）。
+ *
+ * 只取这几个字段，绝不把整段 body 带进错误：body 可能回显请求与凭据。
+ */
+function withUpstreamReason(payload) {
+  if (payload === null || typeof payload !== 'object') return payload
+  const error = payload.error ?? payload
+  if (error === null || typeof error !== 'object') return payload
+  if (typeof error.message === 'string' && error.message.trim() !== '') return payload
+  const reason = [error.msg, error.error_msg].find(value => typeof value === 'string' && value.trim() !== '')
+  if (reason === undefined) return payload
+  return { ...payload, error: { ...error, message: reason.trim().slice(0, 200) } }
 }

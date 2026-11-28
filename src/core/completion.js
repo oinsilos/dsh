@@ -1,5 +1,6 @@
 import { ROUTE_MAIN } from '../adapter.js'
 import { toOpenAiUsage } from '../forward.js'
+import { isPoolEntry } from '../forward-pool.js'
 
 export function routableModelIds(snapshot) {
   /**
@@ -17,7 +18,19 @@ export function routableModelIds(snapshot) {
 
 export function publicModelRows(snapshot) {
   const membership = routableModelIds(snapshot)
-  return snapshot.catalog
+  /**
+   * 「对外入口」开启隐藏时，网关只报这一个名字。
+   *
+   * 这不是省流量的花活：池的契约是「外部只填一个名字、内部自动换人」，但一个
+   * 客户端看到 100 多个可选项时，人会去挑、会填错、会挑到一个今天正好限流的，
+   * 又开始来回改配置 —— 恰好是池要消灭的那个流程。只报入口名，客户端就没得选，
+   * 契约才真正成立。想精确指定某模型时，把隐藏开关关掉即可。
+   *
+   * 隐藏只作用于**网关 `/v1/models`**，不作用于宿主选择器：本机人仍能看到全部。
+   */
+  const pool = snapshot.catalog.find(entry => isPoolEntry(entry) && entry.hideOthers === true)
+  const visible = group => pool === undefined ? group : group.filter(entry => entry.id === pool.id)
+  return visible(snapshot.catalog)
     .filter(entry => membership.has(entry.id))
     .map(entry => ({
       id: entry.id, object: 'model',

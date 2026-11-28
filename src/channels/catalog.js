@@ -150,7 +150,9 @@ const FALLBACK = {
   // 远端 `brief_list` 可用时以它为准（`createDoubaoExtras` 会把它塞进 `catalog`）。
   doubao: DOUBAO_FALLBACK_MODELS.map(model => ({
     id: model.key,
-    name: model.tags.length === 0 ? model.name : `${model.name} · ${model.tags.join(' · ')}`,
+    // `mode=3` = 工作任务线：普通账号实测回 `712010202 参数错误`，且该会员线当前
+    // 不可用（用户确认会员「是假的」，买了也不解锁）。名字里直说，免得被当成「模型不可用」。
+    name: `${model.name}${model.mode === '3' ? '（会员线·暂不可用）' : ''}${model.tags.length === 0 ? '' : ` · ${model.tags.join(' · ')}`}`,
     reasoning: Array.isArray(model.efforts),
     ...Array.isArray(model.efforts) ? { efforts: model.efforts } : {},
   })),

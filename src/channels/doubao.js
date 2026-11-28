@@ -601,8 +601,23 @@ export function buildDoubaoChatBody({ model, mode, prompt, reasoningEffort, now 
   })
 }
 
-/** 把 OpenAI 形的 messages 压成豆包要的单段 `prompt`（system 在前，历史逐条标注）。 */
-export function doubaoPromptOf(messages) {
+/**
+ * 把 OpenAI 形的 messages 压成豆包要的单段 `prompt`。
+ *
+ * ## system 默认**不转发**（`includeSystem: false`）
+ *
+ * 2026-11-27 实测（本机凭据，经网关原样发出）：宿主注入的 `~/.dsh/prompt-inject.md`
+ * （21KB 人设提示词）整份作为 system 发出时，豆包 100% 回
+ * 「该内容涉嫌违反豆包使用规范…」—— 内容审核在**整段上下文**上打分，600 字摘录能过、
+ * 全文必拦。豆包是消费级聊天产品，agent 注入的人设/约定对它没有正向价值，只会触发
+ * 审核拦答；故默认丢弃 system，只发对话轮。需要旧行为时显式传 `includeSystem: true`。
+ *
+ * ## 角色分隔符
+ *
+ * ⚠️ 与参考实现**逐字同形**：` user: ` / ` assistant: ` —— 上游按这个分隔符切角色，
+ * 换成中文冒号会被当成一条无角色的长 prompt（实测 `710020202 common invalid param`）。
+ */
+export function doubaoPromptOf(messages, { includeSystem = false } = {}) {
   const textOf = message => {
     if (typeof message?.content === 'string') return message.content
     if (Array.isArray(message?.content)) return message.content.map(part => (typeof part?.text === 'string' ? part.text : '')).join('')
@@ -613,10 +628,11 @@ export function doubaoPromptOf(messages) {
   for (const message of Array.isArray(messages) ? messages : []) {
     const text = textOf(message).trim()
     if (text === '') continue
-    if (message.role === 'system') system.push(text)
-    // ⚠️ 与参考实现**逐字同形**：` user: ` / ` assistant: ` —— 上游按这个分隔符切角色，
-    // 换成中文冒号会被当成一条无角色的长 prompt（实测 `710020202 common invalid param`）。
-    else turns.push(`${message.role === 'assistant' ? ' assistant: ' : ' user: '}${text}`)
+    if (message.role === 'system') {
+      if (includeSystem) system.push(text)
+      continue
+    }
+    turns.push(`${message.role === 'assistant' ? ' assistant: ' : ' user: '}${text}`)
   }
   return [system.join('\n\n'), turns.join('\n\n')].filter(part => part !== '').join('\n\n')
 }
@@ -1101,9 +1117,13 @@ export function createDoubaoExtras({ credentialOf, fetch: fetchImpl = fetch } = 
   const catalogRowsOf = models => models.map(model => {
     const tags = Array.isArray(model.tags) ? model.tags : []
     const effortNames = Array.isArray(model.effortNames) ? model.effortNames : []
+    // `mode=3` 是「工作任务」线。上游要求会员账号，但本机实测：普通账号回
+    // `712010202 参数错误`，且用户确认该会员「现在是假的」（买了也不解锁这条线）。
+    // ⇒ 这 12 个模型对当前账号**实际不可用**，名字上直说，别让人以为是模型坏了。
+    const paidLine = model.mode === '3' ? '（会员线·暂不可用）' : ''
     return {
       id: model.key,
-      name: tags.length === 0 ? model.name : `${model.name} · ${tags.join(' · ')}`,
+      name: `${model.name}${paidLine}${tags.length === 0 ? '' : ` · ${tags.join(' · ')}`}`,
       reasoning: effortNames.length > 0,
       ...effortNames.length === 0 ? {} : {
         efforts: effortNames.map(row => row.id),

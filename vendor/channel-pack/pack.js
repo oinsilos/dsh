@@ -31014,6 +31014,114 @@ function queueDelayMs(info) {
   if (raw === void 0 || raw < 0) return void 0;
   return Math.min(Math.trunc(raw), QUEUE_MAX_DELAY_MS);
 }
+/**
+ * 把 body 里所有可能承载业务信封的节点摊平（含 JSON 字符串套 JSON 字符串）。
+ *
+ * 与 `parseQueueError` 内部那段遍历分开：后者是 qoder 早期形态，只认
+ * `data/result/message/body`，而排队信封还会出现在 `error` / `response` 下。
+ */
+function queueNodes(body) {
+  let root = body;
+  if (typeof body === "string") {
+    try {
+      root = JSON.parse(body);
+    } catch {
+      return [];
+    }
+  }
+  if (root === null || typeof root !== "object") return [];
+  const seen = /* @__PURE__ */ new Set();
+  const nodes = [];
+  const queue = [root];
+  while (queue.length > 0) {
+    const node = queue.shift();
+    if (node === null || typeof node !== "object" || seen.has(node)) continue;
+    seen.add(node);
+    const record = node;
+    nodes.push(record);
+    for (const key of ["data", "result", "message", "body", "error", "response"]) {
+      const value = record[key];
+      if (value !== null && typeof value === "object") queue.push(value);
+      else if (key !== "response" && typeof value === "string" && value.length > 0) {
+        try {
+          queue.push(JSON.parse(value));
+        } catch {
+        }
+      }
+    }
+  }
+  return nodes;
+}
+/** 明确声明排队的 body 直接抛 `ModelQueuedError`，交给上层退避重试。 */
+function throwIfModelQueued(body, headers) {
+  const declared = queueNodes(body).find((node) => node.isQueued === true || [node.code, node.type].some((value) => typeof value === "string" && ["queued", "model_queued"].includes(value.toLowerCase())));
+  if (declared === void 0) return;
+  const info = parseQueueError(body) ?? parseQueueError({ ...declared, isQueued: true }) ?? { isQueued: true };
+  const delay = queueDelayMs(info) ?? retryAfterMsFromResponse(headers);
+  throw new ModelQueuedError("\u6A21\u578B\u6392\u961F\u4E2D", {
+    queueInfo: { ...info },
+    ...delay === void 0 ? {} : { retryAfterMs: Math.min(delay, QUEUE_MAX_DELAY_MS) }
+  });
+}
+/**
+ * 排队可能以**任意**状态码回来（实测 MiniMax 过载时是 HTTP 500）。
+ *
+ * 非 2xx：读一份 body 副本，命中排队就抛 `ModelQueuedError`。
+ * 2xx 但 `content-type: application/json`：原本应是 SSE，先嗅探一段前缀，
+ * 能解析出 JSON 就再判一次 —— 不然这段 JSON 会被当成 SSE 丢掉，用户只看到空回答。
+ */
+async function checkQueuedResponse(response) {
+  if (!response.ok) {
+    const body = await response.clone().text().catch(() => void 0);
+    if (body !== void 0) throwIfModelQueued(body, response.headers);
+  } else if (response.body !== null && response.headers.get("content-type")?.includes("application/json")) {
+    const decoder = new TextDecoder();
+    let prefix = "";
+    const reader = response.body.getReader();
+    let cancelling;
+    const cancel = (reason) => {
+      cancelling ??= reader.cancel(reason).finally(() => reader.releaseLock());
+      return cancelling;
+    };
+    const body = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value: chunk } = await reader.read();
+          if (cancelling !== void 0) return;
+          if (done) {
+            reader.releaseLock();
+            controller.close();
+            return;
+          }
+          if (prefix !== void 0) {
+            prefix += decoder.decode(chunk, { stream: true });
+            if (prefix.length > 65536 || prefix.trimStart().length > 0 && !prefix.trimStart().startsWith("{")) {
+              prefix = void 0;
+            } else {
+              let parsed;
+              try {
+                parsed = JSON.parse(prefix);
+              } catch {
+              }
+              if (parsed !== void 0) {
+                prefix = void 0;
+                throwIfModelQueued(parsed, response.headers);
+              }
+            }
+          }
+          controller.enqueue(chunk);
+        } catch (error) {
+          await cancel(error).catch(() => {
+          });
+          controller.error(error);
+        }
+      },
+      cancel
+    });
+    return new Response(body, response);
+  }
+  return response;
+}
 
 // vendor/channel-pack/src/models.ts
 import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as readFileSync3, renameSync as renameSync3, writeFileSync as writeFileSync3 } from "node:fs";
@@ -66008,6 +66116,16 @@ import { LlmAdapter as LlmAdapter11, LlmError as LlmError18, ReasoningEffortId a
 
 // vendor/channel-pack/src/minimax-messages.ts
 import { ToolCallId as ToolCallId8 } from "@deepseek-ai/dsh-llm";
+function collectHarnessSystem(messages) {
+  const parts = [];
+  for (const message of messages) {
+    if (message === null || typeof message !== "object" || message.role !== "system") continue;
+    const content = message.content;
+    const text = typeof content === "string" ? content : Array.isArray(content) ? content.filter((block) => typeof block === "object" && block !== null && block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n") : "";
+    if (text !== "") parts.push(text);
+  }
+  return parts.join("\n\n");
+}
 function buildMinimaxMessagesPayload(options) {
   const payload = {
     model: options.model,
@@ -66015,7 +66133,10 @@ function buildMinimaxMessagesPayload(options) {
     messages: serializeMinimaxMessages(options.messages, options.images)
   };
   if (options.maxTokens !== void 0) payload.max_tokens = options.maxTokens;
-  if (options.system !== void 0 && options.system !== "") payload.system = options.system;
+  // 宿主有时把 system 放进 messages 里而不是 `options.system`；只取后者会让
+  // `serializeMinimaxMessages` 把那条 system 整条跳过 —— 系统提示静默丢失。
+  const systemText = [...new Set([options.system, collectHarnessSystem(options.messages)].filter((text) => typeof text === "string" && text !== ""))].join("\n\n");
+  if (systemText !== "") payload.system = systemText;
   if (options.temperature !== void 0) payload.temperature = options.temperature;
   if (options.stop !== void 0 && options.stop.length > 0) payload.stop_sequences = [...options.stop];
   if (options.tools !== void 0 && options.tools.length > 0) {
@@ -66219,6 +66340,7 @@ async function* consumeMinimaxSse(options) {
       return;
     }
     if (typeof parsed !== "object" || parsed === null) return;
+    throwIfModelQueued(parsed);
     const frame = parsed;
     const type = typeof frame.type === "string" ? frame.type : eventName;
     if (type === "error") {
@@ -66527,25 +66649,41 @@ var MinimaxAdapter = class extends LlmAdapter11 {
       requiresAdaptiveThinking,
       ...images === void 0 ? {} : { images }
     });
-    const response = await fetch(`${this.product.apiHost}${MINIMAX_INFER_PATH}`, {
-      method: "POST",
-      headers: minimaxInferHeaders(credential),
-      body: JSON.stringify(payload),
-      signal: options.signal
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      const code = response.status === 402 ? "QUOTA_EXCEEDED" : httpErrorCode4(response.status);
-      throw new LlmError18(
-        `minimax: HTTP ${response.status}${text === "" ? "" : ` \u2014 ${text.slice(0, 500)}`}`,
-        code,
-        { status: response.status }
-      );
+    // 排队是可恢复的临时状态（业务码 10605 / isQueued / JSON 信封），而它可能挂在
+    // **任意**状态码上 —— 实测 MiniMax 过载时回的是 HTTP 500。不认这一层，用户看到
+    // 的就是一条「500」硬失败。已交付过内容后不再重试，避免重复正文。
+    let delivered = false;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const response = await fetch(`${this.product.apiHost}${MINIMAX_INFER_PATH}`, {
+          method: "POST",
+          headers: minimaxInferHeaders(credential),
+          body: JSON.stringify(payload),
+          signal: options.signal
+        }).then(checkQueuedResponse);
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          const code = response.status === 402 ? "QUOTA_EXCEEDED" : httpErrorCode4(response.status);
+          throw new LlmError18(
+            `minimax: HTTP ${response.status}${text === "" ? "" : ` \u2014 ${text.slice(0, 500)}`}`,
+            code,
+            { status: response.status }
+          );
+        }
+        if (response.body === null) {
+          throw new LlmError18("minimax: \u54CD\u5E94\u7F3A\u5C11 body", "EMPTY_RESPONSE");
+        }
+        for await (const chunk of consumeMinimaxSse({ body: response.body, signal: options.signal })) {
+          delivered = true;
+          yield chunk;
+        }
+        return;
+      } catch (error) {
+        if (!(error instanceof ModelQueuedError) || delivered || attempt >= 12) throw error;
+        const waitMs = Math.min(Math.max(100, error.retryAfterMs ?? 1e3), QUEUE_MAX_DELAY_MS);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
     }
-    if (response.body === null) {
-      throw new LlmError18("minimax: \u54CD\u5E94\u7F3A\u5C11 body", "EMPTY_RESPONSE");
-    }
-    yield* consumeMinimaxSse({ body: response.body, signal: options.signal });
   }
 };
 function registerMinimaxLlm(ctx, options) {

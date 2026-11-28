@@ -31,6 +31,7 @@ import { createChannel } from './channel.js'
 import { recoveryPolicy, canRecover, canRecoverSilentStop, recoveryMessages, continuationMessages, checkpointFits, addUsage, createBlockTracker } from './recovery.js'
 import { isEacEntry, isKiloEntry } from './catalog.js'
 import { isComboEntry, comboChain } from './combos.js'
+import { poolChain, decideFailure, isPoolEntry } from './forward-pool.js'
 import { applyTokenSavers, saverConfig } from './token-saver/index.js'
 import { classifyFailure, describeVerdict, shouldAdvance, FAILURE_KIND } from './route/classify.js'
 import { isRouteEntry, GROUP_PREFIX, resolveGroupCandidates } from './route/groups.js'
@@ -222,6 +223,10 @@ export class FreeModelAdapter {
       yield * this.runCombo(effective, entry, snapshot)
       return
     }
+    if (entry !== null && isPoolEntry(entry)) {
+      yield * this.runPool(effective, entry, snapshot)
+      return
+    }
     if (entry !== null && isRouteEntry(entry)) {
       yield * this.runRoute(effective, entry, snapshot)
       return
@@ -248,6 +253,85 @@ export class FreeModelAdapter {
       return
     }
     yield * this.runSingle(effective, entry, snapshot, {})
+  }
+
+  /**
+   * A forward pool's turn: pick the best candidates, retry the wobbles, fail over
+   * the walls — all behind one exposed name.
+   *
+   * `runChain` already owns the commit rule (buffer until the first
+   * answer-bearing delta, so a discarded try is invisible), so the pool only has
+   * to (a) order the members and (b) express "retry this member in place before
+   * advancing". The second is done by *expanding* the candidate list, not by a
+   * new walk: a member with `memberRetries: 1` appears twice, tagged
+   * `retryOf: id`. A failed attempt then reports whether it was an advance (the
+   * chain moves on) or a transient wobble worth a same-member retry, and
+   * `runChain`'s per-candidate loop treats the next duplicate as exactly that.
+   *
+   * That keeps *one* walk implementation. The alternative — a nested retry loop
+   * inside a chain candidate — would duplicate the buffer/commit bookkeeping that
+   * is the only thing making failover invisible to the caller.
+   */
+  async * runPool(options, entry, snapshot) {
+    const statsFor = modelId => this.deps.poolStats?.(modelId)
+    // Resolve members against the same directory the panel offered: `routeCatalog`
+    // also carries the host's other-provider rows (`channel: 'host'`), which
+    // `runChain` forwards via `runForeign`. `catalog` alone cannot see them, so a
+    // host member the panel let you tick would be dropped here at run time.
+    const members = poolChain(entry, snapshot.routeCatalog ?? snapshot.catalog, { statsFor })
+    const retries = Math.max(0, Number(entry.memberRetries) || 0)
+    // Expand each member into (retries + 1) slots. The member id rides along so a
+    // retry slot is distinguishable from a genuinely repeated member.
+    const slots = []
+    for (const member of members) {
+      slots.push({ entry: member, attempt: 0 })
+      for (let extra = 1; extra <= retries; extra += 1) slots.push({ entry: member, attempt: extra })
+    }
+    this.deps.trace?.({
+      kind: 'pool-turn',
+      pool: entry.id,
+      candidates: members.map(member => member.id).join(' '),
+      retries,
+    })
+    yield * this.runChain(options, entry, slots, snapshot, {
+      planFor: candidate => ({ wire: wireOf(candidate.entry) }),
+      onCommit: (candidate, result) => {
+        if (result?.ok === true) this.deps.routeStore?.clearFailed(candidate.entry.id)
+        this.deps.trace?.({ kind: 'pool-commit', pool: entry.id, model: candidate.entry.id, ok: result?.ok === true })
+      },
+      onAdvance: (candidate, result, reason) => {
+        // 配额/冷却类的失败要让闸门记住：冷却期内别的请求也不该先挑它。
+        if (result?.verdict?.kind === FAILURE_KIND.RATE_LIMIT || result?.verdict?.cooldownMs > 0) {
+          this.deps.gate?.markCapacity(candidate.entry.id, result?.verdict?.cooldownMs)
+        }
+        this.deps.warn?.(`our-free-model: pool "${entry.name}" advanced past ${candidate.entry.id} — ${reason}`)
+      },
+      emptyMessage: `the forward pool "${entry.name}" has no model available on this egress`,
+      /**
+       * Pool-specific reading of a candidate result, returning the chain
+       * directive:
+       *
+       * - `'retry'` — transient wobble, retry slot still queued: hold nothing,
+       *   run the same member again;
+       * - `'skip'`  — account/provider fault: the member is dead, jump past every
+       *   remaining slot for it even if retries were configured;
+       * - `'stop'`  — request-scoped refusal: no other member can succeed, hand
+       *   back the real error rather than repeating it down the chain;
+       * - `false`   — plain advance (default).
+       */
+      retryInstead: (candidate, result, remainingForMember) => {
+        const decision = decideFailure(result?.verdict, remainingForMember)
+        if (decision === 'stop') {
+          // Let the chain end naturally with this member's real error; advancing
+          // would replace a "your request is wrong" with a string of the same.
+          return false
+        }
+        if (decision === 'retry') return 'retry'
+        // `advance` on a member that still has queued retry slots means it died
+        // for a reason a retry cannot cure — skip the rest of its slots.
+        return remainingForMember > 0 ? 'skip' : false
+      },
+    })
   }
 
   /**
@@ -452,8 +536,41 @@ export class FreeModelAdapter {
           return
         }
         const reason = result.verdict === null || result.verdict === undefined ? 'failed' : describeVerdict(result.verdict)
-        tried.push(`${candidate.entry.id} (${reason})`)
-        hooks.onAdvance?.(candidate, result, reason)
+        // A pool slot may veto plain advancement: either re-try this same member
+        // (a transient wobble with a retry slot still queued) or skip the member
+        // outright (an account/provider fault — the member itself is dead, so its
+        // remaining retry slots must not be spent). Count how many later slots
+        // still point at this entry so the hook can see the retry budget.
+        let sameMemberAhead = 0
+        for (let j = index + 1; j < candidates.length; j += 1) {
+          if (candidates[j].entry.id === candidate.entry.id) sameMemberAhead += 1
+        }
+        const directive = hooks.retryInstead?.(candidate, result, sameMemberAhead)
+        if (directive === false || directive === undefined) {
+          tried.push(`${candidate.entry.id} (${reason})`)
+          hooks.onAdvance?.(candidate, result, reason)
+        } else if (directive === 'stop') {
+          // Request-scoped refusal: the body itself is wrong, so no other member
+          // can succeed. Hand back this member's real error instead of diluting
+          // it into "exhausted every candidate".
+          tried.push(`${candidate.entry.id} (${reason})`)
+          hooks.onAdvance?.(candidate, result, reason)
+          rejectedTurn(index + 1)
+          for (const chunk of held) yield chunk
+          return
+        } else if (directive === 'skip') {
+          // The whole member is dead (quota wall / auth / region). Jump past every
+          // remaining slot that points at it — a dead member retried is the
+          // billed-thrice bug the pool's retry split exists to prevent.
+          tried.push(`${candidate.entry.id} (${reason})`)
+          hooks.onAdvance?.(candidate, result, reason)
+          while (index + 1 < candidates.length && candidates[index + 1].entry.id === candidate.entry.id) index += 1
+        } else {
+          // `'retry'`: hold nothing back, drop the attempt whole, run this member
+          // again on its next slot. Nothing was shown, so it is as invisible as a
+          // failover — and not pushed to `tried`, since the next slot will re-try it.
+          tried.push(`${candidate.entry.id} (retry: ${reason})`)
+        }
       } finally {
         release?.()
       }

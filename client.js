@@ -103,6 +103,10 @@ window.__ModuleLoader__.load({
         'panel.sessionRequired': '先打开一个会话，再选择模型。',
         'panel.settingsLink': '完整设置',
         'panel.failedProviders': '有 {n} 个提供商的目录没加载出来，其余照常可用。',
+        'panel.hiddenUnavailable': '已按设置折叠 {n} 个不可用模型（可在「免费模型 → 偏好」里改）。',
+        'panel.unavailableDropped': '{n} 个模型探测为不可用，宿主选择器里不再列出；到「免费模型 → 重新探测可用性」可以复测。',
+        'panel.hiddenAll': '这一家的模型都被折叠了',
+        'panel.hiddenAllHint': '探测结论都不是「可用」。关掉「偏好」里的「模型面板里隐藏不可用的模型」就能看到它们。',
         'panel.dockOpen': '模型面板',
         'compact.chip': '自动压缩',
         'compact.quickHint': '上下文占用达到窗口的这个比例时自动压缩；松手即保存并立即生效。',
@@ -146,9 +150,10 @@ window.__ModuleLoader__.load({
         'state.available': '可用',
         'state.region-blocked': '地区受限',
         'state.unavailable': '暂不可用',
-        'state.throttled': '暂不可用',
+        'state.throttled': '限流中',
         'state.unknown': '未探测',
         'hint.region': '该模型按出口地区放行。开启网络代理后，插件会在下一次探测自动把它移入可用分组。',
+        'hint.throttled': '上游正在限流（额度或速率），属于可恢复的临时状态；插件会在下一轮探测自动复测，限流期间选中它大概率失败。',
         'hint.unknown': '尚未探测，默认保持可达。',
         'hint.hidden': '探测显示网关点名了它却不路由它，因此已从模型选择器中移除；某一次探测重新通过，它会自己回来。',
         'hint.sharedBudget': '该模型思考不可关闭：思考与可见回答共用同一份额度，档位越低留给正文的越少。',
@@ -218,6 +223,36 @@ window.__ModuleLoader__.load({
         'eac.lockedNote': '未授权：点下方按钮用 GitHub 登录并 star 仓库，或到「EAC 渠道授权」区完成。',
         'section.forward': '本地转发（OpenAI 兼容）',
         'section.forwardHint': '让其它本地工具用一个 base URL 调用这些模型。',
+        'section.pool': '对外入口（一个名字，自动重试与切换）',
+        'section.poolHint': '勾选一批模型合成一个入口名给网关：外部只填这一个，内部自动挑最快可用的、失败原地重试、无法重试就换下一个。',
+        'pool.name': '入口名',
+        'pool.nameHint': '客户端里 `model` 就填这个名字。当前目录 id：{id}',
+        'pool.enabled': '启用对外入口',
+        'pool.strategy': '挑人顺序',
+        'pool.strategySmart': '智能排序',
+        'pool.strategyFallback': '固定顺序',
+        'pool.strategyRoundRobin': '轮询',
+        'pool.stickyLimit': '轮询粘滞（连续几次）',
+        'pool.memberRetries': '每个模型原地重试次数',
+        'pool.hideOthers': '网关只暴露这个入口名',
+        'pool.hideOthersHint': '开启后客户端 `/v1/models` 只看到这一个名字；想精确指定某模型时关掉。只影响网关，不影响本机选择器。',
+        'pool.membersTitle': '候选模型（共 {n} 个，顺序即优先级）',
+        'pool.membersEmpty': '尚未勾选模型。从下方列表点选，至少一个才会在网关生效。',
+        'pool.addMember': '勾选模型',
+        'pool.searchModel': '搜索模型名或 id',
+        'pool.noModel': '没有匹配的模型。',
+        'pool.todayStats': '今日 {calls} 次 · 失败 {failed} · 首字 {ttft}',
+        'pool.todayShort': '今日 {calls} 次 / 失败 {failed}',
+        'pool.unavailable': '当前不可用',
+        'pool.unavailableHint': '这个模型此刻不在目录里，保存后会被剔除。',
+        'pool.unresolvedHint': '{n} 个勾选的模型此刻不可用，保存后它们会被剔除。',
+        'pool.exampleTitle': '客户端怎么填',
+        'pool.exampleHint': '外部工具只改 base URL 和这一个模型名，其余照常。',
+        'pool.unsaved': '有未保存的改动。',
+        'pool.saved': '已保存。',
+        'pool.savedRenamed': '已保存。入口名从「{from}」改为「{to}」，旧配置里的名字已失效，需要同步修改。',
+        'common.loading': '加载中…',
+        'common.saving': '保存中…',
         'section.egress': '出口代理（订阅分流）',
         'section.egressHint': '把推理与探测请求从代理出口发出，缓解按 IP 的频率限制。',
         'egress.enabled': '启用出口',
@@ -314,6 +349,8 @@ window.__ModuleLoader__.load({
         'pref.enabled': '启用免费模型',
         'pref.exposeRegion': '展示地区受限模型',
         'pref.hideChannels': '隐藏渠道模型分组',
+        'pref.hideUnavailable': '模型面板里隐藏不可用的模型',
+        'pref.hideUnavailableHint': '开启后，探测为不可用、地区受限或限流的模型仍留在宿主选择器里，只是不在本插件的模型面板里列出；页脚会注明折叠了几行。',
         'pref.interval': '自动探测间隔（分钟）',
         'pref.maxTokens': '单次输出上限（token）',
         'pref.egress': '当前出口',
@@ -393,10 +430,15 @@ window.__ModuleLoader__.load({
         'star.title': '在 GitHub 上给本仓库点 Star',
         'free.title': '免费模型',
         'free.sub': '免登录、免 Key、免配置：模型清单跟随上游刷新，可用性由这台机器实测。',
-        'free.tankLabel': '免费车道可用度',
-        'free.tankNote': '水位 = 当前可用模型占比（{ok}/{total}）',
+        'free.tankLabel': '免费模型可用度',
+        'free.tankNote': '水位 = 当前可用模型占比（{ok}/{total}），含 Kilo 免费池',
         'free.tankEmpty': '尚未探测，水位按已声明模型占位。',
-        'roster.showDead': '显示暂不可用（{n}）',
+        'free.noneUsable': '本机当前没有任何免费模型探测为「可用」',
+        'free.noneUsableHint': '上游额度耗尽 / 限流、出口地区不放行、或探测还没跑完都会这样 —— 这不是渲染问题：下面列表每一行都带着自己的探测结论。检查「出口」后点「重新探测可用性」即可复测。',
+        'roster.showDead': '显示限流与暂不可用的模型（{n}）',
+        'roster.collapseDead': '收起限流与暂不可用的模型（{n}）',
+        'roster.kiloNote': 'Kilo 免费池：未单独探测，选中后由上游直接应答。',
+        'roster.throttledHint': '上游主动限流，属于可恢复的临时状态，不等同于不可用。',
         'roster.deadHint': '探测判定不可用或尚未探测；仍可手动选择，失败会如实报错。',
         'eac.title': 'EAC 模型',
         'eac.sub': '桌面端协付渠道：GitHub 登录并 star 本仓库后解锁，与免费车道互不影响。',
@@ -581,8 +623,8 @@ window.__ModuleLoader__.load({
         'logs.windowNote': '逐条日志保留最近窗口；历史只保留按日聚合（约 90 天），数据看板的「全部历史」即来源于此。',
         'gw.title': '网关设置',
         'gw.sub': '把渠道模型以 OpenAI 兼容接口发给本机与局域网工具：端点、密钥与转发端口都在这里。',
-        'gw.gatewayTitle': '渠道模型网关（OpenAI 兼容）',
-        'gw.gatewayHint': '覆盖全部已接入渠道；Chat Completions 与 Responses 两套接口同时可用。',
+        'gw.gatewayTitle': '渠道模型网关（宿主，全部渠道，OpenAI 兼容）',
+        'gw.gatewayHint': '覆盖全部已接入渠道（含渠道包与其它 provider）；Chat Completions 与 Responses 两套接口同时可用。它由宿主提供、与本插件转发各自独立监听。',
         'gw.running': '运行中',
         'gw.stopped': '未运行',
         'gw.envBlocked': '已被环境变量停用',
@@ -596,8 +638,8 @@ window.__ModuleLoader__.load({
         'gw.keyNoneHint': '启用一次网关即会自动生成密钥。',
         'gw.models': '可转发模型',
         'gw.portNote': '端口可用环境变量 DSH_OPENAI_GATEWAY_PORT 调整。',
-        'gw.relayTitle': '局域网转发（本插件中继）',
-        'gw.relayHint': '把网关再暴露到一个可选的地址与端口：调用方用下面的中继密钥，网关自身只监听本机。',
+        'gw.relayTitle': '局域网转发（把上面的宿主网关暴露出去）',
+        'gw.relayHint': '这不是另一套网关，只是把上面的宿主网关再暴露到一个可选的地址与端口：调用方用下面的中继密钥，网关自身仍只监听本机。',
         'gw.relaySwitch': '启用局域网转发',
         'gw.relayBind': '监听地址',
         'gw.bindLocal': '仅本机（127.0.0.1）',
@@ -608,6 +650,14 @@ window.__ModuleLoader__.load({
         'gw.rotate': '轮换',
         'gw.relayNote': '中继只放行模型接口（/v1/*），并要求携带中继密钥；局域网绑定意味着同网段的设备都能访问到这个端口。',
         'gw.freeLaneNote': '免费车道（Model Manager）自己的转发端口在「免费模型」页的「本地转发」分区。',
+        'gw.rpcOff': '宿主未提供 connection RPC，网关控制不可用',
+        'gw.rpcOffHint': '网关的开关与端点由宿主的 channel-pack 服务提供，本机这一版宿主没有暴露它（常见于精简化/headless 启动，或插件不是经宿主渠道包加载的）。本插件自身的中继与免费车道转发不依赖它，下面照常可用。',
+        'gw.rpcOffWhy': '这不是密钥或端口问题，也不是插件坏了：缺少的是宿主侧的一个服务。',
+        'gw.retry': '重新检测',
+        'gw.notRunning': '网关开关是开的，但没有在监听',
+        'gw.notRunningHint': '多半是端口被占用或初始化失败；下面这行是宿主给出的原因。点「重启网关」会再执行一次启动。',
+        'gw.portReserved': 'EACCES 表示这段端口被 Windows 保留了（Hyper-V / WinNAT 的排除段），不是被别的程序占用，换程序、杀进程都没用。插件下次启动会自动挑一个能绑的端口，重启 DSH 即可恢复。',
+        'gw.restart': '重启网关',
         'chan.credits.left': '剩余积分',
         'chan.credits.tokens': '剩余 Token',
         'chan.credits.dollars': '剩余余额（USD）',
@@ -881,8 +931,10 @@ window.__ModuleLoader__.load({
         'routing.channel.kilo': 'Kilo',
         'routing.channel.aggregate': '聚合',
         'routing.channel.combo': '链路',
+        'routing.channel.host': '宿主渠道',
+        'routing.channel.own': '自有渠道',
         'gw.clientsTitle': '接入客户端',
-        'gw.clientsHint': '免费车道转发端口（在「免费模型」页的「本地转发」里开关）的接入配方：地址与 Key 按实际绑定的端口与真实密钥生成。',
+        'gw.clientsHint': '本插件转发（在「模型」页的「本地转发」里开关）的接入配方：地址与 Key 按实际绑定的端口与真实密钥生成。想用刚做的「对外入口」自动切换，连的是这个端口。',
         'gw.clientsOff': '转发端口未启用',
         'gw.clientsOffHint': '先到「免费模型」页的「本地转发」打开端口，这里才会给出可用的地址与配方。',
         'gw.clientsModels': '可转发模型 {n} 个',
@@ -949,6 +1001,10 @@ window.__ModuleLoader__.load({
         'panel.sessionRequired': 'Open a conversation first, then pick a model.',
         'panel.settingsLink': 'All settings',
         'panel.failedProviders': '{n} provider catalog(s) failed to load; the rest still work.',
+        'panel.hiddenUnavailable': '{n} unavailable model(s) folded away by your setting (change it under Free models → Preferences).',
+        'panel.unavailableDropped': '{n} model(s) probed as unavailable are no longer listed by the host picker; re-probe under Free models → Re-probe availability to re-check them.',
+        'panel.hiddenAll': 'Every model here was folded away',
+        'panel.hiddenAllHint': 'None of them probed as available. Turn off “Hide unavailable models in the panel” under Preferences to see them.',
         'panel.dockOpen': 'Models',
         'compact.chip': 'Auto compact',
         'compact.quickHint': 'Compact when context use reaches this share of the window. Releasing the slider saves and applies immediately.',
@@ -992,9 +1048,10 @@ window.__ModuleLoader__.load({
         'state.available': 'Available',
         'state.region-blocked': 'Region-limited',
         'state.unavailable': 'Unavailable',
-        'state.throttled': 'Temporarily unavailable',
+        'state.throttled': 'Throttled',
         'state.unknown': 'Not probed',
         'hint.region': 'This model is gated by egress country. Once a proxy changes your egress, the next probe moves it into the available group by itself.',
+        'hint.throttled': 'The upstream is throttling (quota or rate) — a recoverable, temporary state. The next probe re-tests it automatically; picking it while throttled will most likely fail.',
         'hint.unknown': 'Not probed yet, so it stays reachable.',
         'hint.hidden': 'The gateway names it but refuses to route it, so it is out of the model picker. It returns by itself as soon as a probe gets through.',
         'hint.sharedBudget': 'Thinking cannot be switched off on this model, so thinking and the visible answer share one ceiling — a lower rung leaves the answer less room.',
@@ -1016,6 +1073,36 @@ window.__ModuleLoader__.load({
         'section.dashHint': 'Written to this machine only; nothing is uploaded.',
         'section.forward': 'Local forward (OpenAI compatible)',
         'section.forwardHint': 'Let other local tools reach these models through one base URL.',
+        'section.pool': 'Forward entry (one name, auto-retry and failover)',
+        'section.poolHint': 'Tick a set of models into a single entry name for the gateway: clients dial that one name; inside, the fastest usable member answers, transient failures retry in place, and unfixable ones fail over.',
+        'pool.name': 'Entry name',
+        'pool.nameHint': 'Clients put this in `model`. Catalog id: {id}',
+        'pool.enabled': 'Enable forward entry',
+        'pool.strategy': 'Pick order',
+        'pool.strategySmart': 'Smart',
+        'pool.strategyFallback': 'Declared order',
+        'pool.strategyRoundRobin': 'Round-robin',
+        'pool.stickyLimit': 'Round-robin sticky turns',
+        'pool.memberRetries': 'In-place retries per model',
+        'pool.hideOthers': 'Gateway exposes only this entry',
+        'pool.hideOthersHint': 'When on, clients see just this name in `/v1/models`; turn it off to pick a specific model. Gateway only — the local picker is unaffected.',
+        'pool.membersTitle': 'Candidates ({n}, order is priority)',
+        'pool.membersEmpty': 'No models ticked yet. Pick from the list below; at least one is needed before the gateway uses it.',
+        'pool.addMember': 'Tick models',
+        'pool.searchModel': 'Search name or id',
+        'pool.noModel': 'No matching model.',
+        'pool.todayStats': 'Today {calls} calls · {failed} failed · first token {ttft}',
+        'pool.todayShort': 'Today {calls} calls / {failed} failed',
+        'pool.unavailable': 'Unavailable now',
+        'pool.unavailableHint': 'This model is not in the catalog right now; it will be dropped on save.',
+        'pool.unresolvedHint': '{n} ticked models are unavailable now; they will be dropped on save.',
+        'pool.exampleTitle': 'How a client configures it',
+        'pool.exampleHint': 'External tools set the base URL and this one model name; nothing else changes.',
+        'pool.unsaved': 'Unsaved changes.',
+        'pool.saved': 'Saved.',
+        'pool.savedRenamed': 'Saved. Entry name changed from "{from}" to "{to}" — configs pinning the old name need updating.',
+        'common.loading': 'Loading…',
+        'common.saving': 'Saving…',
         'section.egress': 'Egress outlet (subscription routing)',
         'section.egressHint': 'Send inference and probe traffic through a proxy outlet to ease per-IP rate limits.',
         'egress.enabled': 'Enable outlet',
@@ -1160,6 +1247,8 @@ window.__ModuleLoader__.load({
         'pref.enabled': 'Enable free models',
         'pref.exposeRegion': 'Show region-limited models',
         'pref.hideChannels': 'Hide channel model groups',
+        'pref.hideUnavailable': 'Hide unavailable models in the panel',
+        'pref.hideUnavailableHint': 'When on, models probed as unavailable, region-limited or throttled stay in the host picker but are left out of this plugin\'s model panel; the footer says how many were folded away.',
         'pref.interval': 'Auto-probe interval (minutes)',
         'pref.maxTokens': 'Output ceiling per call (tokens)',
         'pref.egress': 'Current egress',
@@ -1239,10 +1328,15 @@ window.__ModuleLoader__.load({
         'star.title': 'Star this repository on GitHub',
         'free.title': 'Free models',
         'free.sub': 'No login, no key, no setup: the roster follows upstream, availability is measured from this machine.',
-        'free.tankLabel': 'Free-lane availability',
-        'free.tankNote': 'Water level = share of reachable models ({ok}/{total})',
+        'free.tankLabel': 'Free-model availability',
+        'free.tankNote': 'Water level = share of reachable models ({ok}/{total}), Kilo free pool included',
         'free.tankEmpty': 'Not probed yet; the level stands at the declared roster.',
-        'roster.showDead': 'Show unavailable ({n})',
+        'free.noneUsable': 'No free model is currently probed as available on this machine',
+        'free.noneUsableHint': 'Upstream quota exhaustion / throttling, an egress-blocked region, or an unfinished probe all look like this — it is not a rendering bug: every row below carries its own probe verdict. Check "Egress", then hit "Re-probe availability" to retest.',
+        'roster.showDead': 'Show throttled and unavailable models ({n})',
+        'roster.collapseDead': 'Collapse throttled and unavailable models ({n})',
+        'roster.kiloNote': 'Kilo free pool: not probed locally; the upstream answers directly.',
+        'roster.throttledHint': 'Throttled by upstream: a recoverable, temporary state — not the same as unavailable.',
         'roster.deadHint': 'Probed as unavailable, or not probed yet; still selectable, failures surface as real errors.',
         'eac.title': 'EAC models',
         'eac.sub': 'The desktop co-paid lane: unlocked by a GitHub login plus a star, independent of the free lane.',
@@ -1427,8 +1521,8 @@ window.__ModuleLoader__.load({
         'logs.windowNote': 'Per-request rows cover a recent window only; history is kept as daily aggregates (~90 days) — the dashboard\'s "All time" reads those.',
         'gw.title': 'Gateway settings',
         'gw.sub': 'Serve the channel models over an OpenAI-compatible API to this machine and the LAN: endpoint, key and relay port live here.',
-        'gw.gatewayTitle': 'Channel gateway (OpenAI compatible)',
-        'gw.gatewayHint': 'Covers every connected channel; Chat Completions and Responses are both served.',
+        'gw.gatewayTitle': 'Channel gateway (host, all channels, OpenAI compatible)',
+        'gw.gatewayHint': 'Covers every connected channel (incl. channel packs and other providers); Chat Completions and Responses are both served. Provided by the host, on its own listener separate from this plugin\'s forward port.',
         'gw.running': 'Running',
         'gw.stopped': 'Not running',
         'gw.envBlocked': 'Disabled by environment',
@@ -1442,8 +1536,8 @@ window.__ModuleLoader__.load({
         'gw.keyNoneHint': 'Enabling the gateway once mints a key automatically.',
         'gw.models': 'Servable models',
         'gw.portNote': 'The port can be moved with the DSH_OPENAI_GATEWAY_PORT environment variable.',
-        'gw.relayTitle': 'LAN relay (this plugin\'s)',
-        'gw.relayHint': 'Re-expose the gateway on an address and port you choose: callers use the relay key below, and the gateway itself stays on the loopback.',
+        'gw.relayTitle': 'LAN relay (re-exposes the host gateway above)',
+        'gw.relayHint': 'This is not a second gateway — it re-exposes the host gateway above on an address and port you choose: callers use the relay key below, and the gateway itself stays on the loopback.',
         'gw.relaySwitch': 'Enable LAN relay',
         'gw.relayBind': 'Bind address',
         'gw.bindLocal': 'This machine only (127.0.0.1)',
@@ -1454,6 +1548,14 @@ window.__ModuleLoader__.load({
         'gw.rotate': 'Rotate',
         'gw.relayNote': 'The relay forwards only the model routes (/v1/*) and demands the relay key; binding to the LAN means every device on the network can reach that port.',
         'gw.freeLaneNote': 'The free lane (Model Manager) has its own forward port under "Local forward" on the Free models page.',
+        'gw.rpcOff': 'The host does not expose the connection RPC, so gateway control is unavailable',
+        'gw.rpcOffHint': 'The gateway switch and endpoint are served by the host\'s channel-pack service, and this build of the host does not expose it (typical of a trimmed/headless launch, or a plugin not loaded through the host channel pack). This plugin\'s own relay and free-lane forward do not depend on it and keep working below.',
+        'gw.rpcOffWhy': 'This is not a key or port problem, and not a broken plugin: what is missing is a host-side service.',
+        'gw.retry': 'Re-check',
+        'gw.notRunning': 'The gateway switch is on, but nothing is listening',
+        'gw.notRunningHint': 'Usually a port conflict or a failed initialisation; the line below is the reason the host reported. "Restart gateway" runs the start sequence again.',
+        'gw.portReserved': 'EACCES means Windows reserved this range (a Hyper-V / WinNAT exclusion) — no other program holds it, so killing processes will not help. The plugin picks a bindable port on its next start; restart DSH to recover.',
+        'gw.restart': 'Restart gateway',
         'chan.credits.left': 'Credits left',
         'chan.credits.tokens': 'Tokens left',
         'chan.credits.dollars': 'Balance left (USD)',
@@ -1727,8 +1829,10 @@ window.__ModuleLoader__.load({
         'routing.channel.kilo': 'Kilo',
         'routing.channel.aggregate': 'Aggregate',
         'routing.channel.combo': 'Chain',
+        'routing.channel.host': 'Host channel',
+        'routing.channel.own': 'Own channel',
         'gw.clientsTitle': 'Connect a client',
-        'gw.clientsHint': 'How the free lane\'s forward port (enabled under "Local forward" on the Free models page) plugs into each client: addresses and keys below are generated from the port that actually bound and the real key.',
+        'gw.clientsHint': 'How this plugin\'s forward port (enabled under "Local forward" on the Model page) plugs into each client: addresses and keys below are generated from the port that actually bound and the real key. To use the new "forward entry" with auto-failover, connect to this port.',
         'gw.clientsOff': 'The forward port is off',
         'gw.clientsOffHint': 'Enable it under "Local forward" on the Free models page first; only then does this section have a usable address and recipes.',
         'gw.clientsModels': '{n} servable models',
@@ -1796,7 +1900,8 @@ window.__ModuleLoader__.load({
 .ofm_badge{margin-left:auto;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 60%,transparent);white-space:nowrap}
 .ofm_badge.available{color:var(--dsw-alias-state-success-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,transparent)}
 .ofm_badge.region-blocked{color:var(--dsw-alias-state-warning-primary,#f0a441);border-color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 10%,transparent)}
-.ofm_badge.throttled,.ofm_badge.unavailable{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
+.ofm_badge.throttled{color:var(--dsw-alias-state-warning-primary,#f0a441);border-color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 10%,transparent)}
+.ofm_badge.unavailable{color:var(--dsw-alias-state-error-primary);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent)}
 .ofm_badge.unknown{color:var(--dsw-alias-label-tertiary)}
 .ofm_id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ofm_tags{display:flex;gap:5px;flex-wrap:wrap}
@@ -1878,6 +1983,8 @@ window.__ModuleLoader__.load({
 /* ══ 提示条 ════════════════════════════════════════════════════════════ */
 .ofm_callout{display:flex;gap:9px;padding:10px 12px;border-radius:11px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 9%,transparent);font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-primary)}
 .ofm_error{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 45%,transparent);background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 9%,transparent)}
+.ofm_callout p{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:11px}
+.ofm_callout b{font-weight:650}
 /* ══ 小组件统计 ════════════════════════════════════════════════════════ */
 .ofm_stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px}
 .ofm_stat{padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 78%,transparent);border:1px solid var(--dsw-alias-border-l1);box-shadow:inset 0 1px 0 rgb(255 255 255 / 4%)}
@@ -2050,6 +2157,9 @@ window.__ModuleLoader__.load({
 .ofm_mpicknum{width:62px;padding:4px 6px;font-size:11.5px;text-align:center}
 .ofm_mpickeffort{width:104px;padding:4px 6px;font-size:11px}
 .ofm_mpickbadge[data-tone="warn"]{color:var(--dsw-alias-state-error-primary,#c0392b);background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c0392b) 32%,transparent)}
+.ofm_mpickbadge[data-tone="region"]{color:var(--dsw-alias-state-warning-primary,#f0a441);background:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-warning-primary,#f0a441) 32%,transparent)}
+.ofm_mpickbadge[data-tone="dim"]{color:var(--dsw-alias-label-tertiary);background:color-mix(in srgb,var(--dsw-alias-label-tertiary) 10%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-label-tertiary) 28%,transparent)}
+.ofm_mpickrow[data-dead="true"] .ofm_mpickname{color:var(--dsw-alias-label-secondary)}
 .ofm_mpickadd{padding:10px 4px 2px;display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--dsw-alias-border-l1);margin-top:8px}
 .ofm_mpickaddbar{display:flex;align-items:center;gap:8px}
 .ofm_mpickaddbar .ofm_panelsearch{flex:1;max-width:none;margin:0}
@@ -2306,6 +2416,7 @@ window.__ModuleLoader__.load({
 .ofm_poolstats{display:flex;gap:22px;flex-wrap:wrap}
 .ofm_poolstats .ofm_stat b{font-size:19px}
 .ofm_poolstats .ofm_stat.hot b{color:var(--dsw-alias-state-error-primary)}
+.ofm_poolstats .ofm_stat.warn b{color:var(--dsw-alias-state-warning-primary,#f0a441)}
 .ofm_poolmeta{display:flex;gap:8px 18px;align-items:baseline;flex-wrap:wrap;justify-content:space-between}
 @media (max-width:760px){.ofm_tank.xl{width:100%;max-width:340px}.ofm_tab{flex:1 1 auto;text-align:center}}
 /* ══ 动效降级：用户系统开启"减少动态效果"时全部收敛 ═══════════════════ */
@@ -3415,10 +3526,12 @@ window.__ModuleLoader__.load({
           h('span', { className: 'ofm_tag' }, `${t('tag.output')} ${kilo(m.maxOutput)}`),
           rung === undefined ? null : h('span', { className: 'ofm_tag', title: t('tag.rungTitle').replace('{ladder}', m.budgets.map(row => `${row.name} ${kilo(row.tokens)}`).join(' · ')) },
             `${t('tag.rung')} ${kilo(rung.tokens)}`)),
-        m.availability === 'region-blocked' ? h('p', { className: 'ofm_note' }, t('hint.region'))
-          : m.availability === 'unknown' ? h('p', { className: 'ofm_note' }, t('hint.unknown'))
-            : m.availability === 'unavailable' ? h('p', { className: 'ofm_note', title: m.detail ?? '' }, t('hint.hidden'))
-              : h('div', { className: 'ofm_metrics' },
+        m.channel === 'kilo' ? h('p', { className: 'ofm_note', title: t('tag.kiloChannel') }, t('roster.kiloNote'))
+          : m.availability === 'region-blocked' ? h('p', { className: 'ofm_note' }, t('hint.region'))
+          : m.availability === 'throttled' ? h('p', { className: 'ofm_note', title: m.detail ?? '' }, t('hint.throttled'))
+            : m.availability === 'unknown' ? h('p', { className: 'ofm_note' }, t('hint.unknown'))
+              : m.availability === 'unavailable' ? h('p', { className: 'ofm_note', title: m.detail ?? '' }, t('hint.hidden'))
+                : h('div', { className: 'ofm_metrics' },
                 m.ttftMs === undefined || m.ttftMs === 0 ? null : h('span', null, t('tag.latency'), ' ', h('b', null, Math.round(m.ttftMs)), ' ms'),
                 h('span', null, t('pref.probedAt'), ' ', h('b', null, ago(m.probedAt, t.locale)))),
         // 档位下拉：面板里选的档优先于会话里的 reasoningEffort（adapter 里的
@@ -3439,19 +3552,40 @@ window.__ModuleLoader__.load({
           bench?.result === undefined ? null : h('span', { className: 'ofm_note' }, bench.result)))
     }
 
+    /**
+     * 「免费模型」到底包含哪些行 —— 设置页与模型面板必须用同一个答案。
+     *
+     * 面板的那一组来自宿主的 `ROUTE_MAIN` membership，它除了免费车道自己的行，
+     * 还包含 **Kilo 渠道**的行：Kilo 走同一条 adapter 路由，所以在选择器里和
+     * 免费车道共用一个「免费模型」标题。设置页过去只按 `!m.channel` 过滤，
+     * 于是面板里能选的 13 个 Kilo 模型在设置页一个都看不到 —— 用户看到的就是
+     * 「面板有、设置里没有」，而免费车道那 10 行恰好全在限流，整页像空的。
+     *
+     * 这里把 Kilo 一并算进免费模型页；自有渠道（channel 'own'）、聚合、组合链、
+     * 路由分组各有自己的页签，仍然排除。
+     */
+    const isFreeRosterRow = row => row.channel === undefined || row.channel === 'kilo'
+
     function Roster(props) {
       const { summary, t, onBench, benches, effortTable, onEffort, busy } = props
-      const [showDead, setShowDead] = useState(false)
-      // 免费车道页只列**免费车道自己**的行：`channel` 字段是其它车道的标记
-      // （eac / kilo / aggregate / own / combo / route），没有它才是本车道。
-      // 虚拟行（路由分组、组合链）现在走独立路由，这里再挡一道以防旧宿主漏过来。
-      const roster = summary.catalog.filter(m => !m.channel)
+      const [showDead, setShowDead] = useState(true)
+      // 与模型面板的「免费模型」组同源：免费车道 + Kilo 渠道。
+      // Kilo 走同一条 adapter 路由，在选择器里与免费车道共用一个标题，因此
+      // 也必须算进这一页；否则面板里能用的十几个 Kilo 模型在设置里会消失，
+      // 而免费车道那十行恰好全在限流，整页看起来就像空的。
+      const roster = summary.catalog.filter(isFreeRosterRow)
       const available = roster.filter(m => m.availability === 'available')
       const limited = roster.filter(m => m.availability === 'region-blocked')
-      // 探测结论是「暂不可用 / 未探测」的行：过去它们在选择器里被 membership
-      // 滤掉，页面上也就看不到，用户没法提前知道哪个模型挂了。现在如实列出，
-      // 由下面的开关决定是否折叠。
-      const dead = roster.filter(m => m.availability !== 'available' && m.availability !== 'region-blocked')
+      // 默认展示全部：这里曾经用 showDead=false 折叠「不可用」行，结果整条
+      // 车道都没探通时设置页只剩一片空白，看起来像插件坏了。开关只用来主动
+      // 收起，不用来隐藏真相。
+      //
+      // 限流单独成组：它是上游主动限速、会自己恢复的临时状态；和「探测判定
+      // 不可用」混在一起，恰好把这个最有用的结论抹掉了。
+      const throttled = roster.filter(m => m.availability === 'throttled')
+      const dead = roster.filter(m => m.availability !== 'available'
+        && m.availability !== 'region-blocked' && m.availability !== 'throttled')
+      const foldable = throttled.length + dead.length
       const group = (title, list, hint) => list.length === 0 ? null
         : h('div', { className: 'ofm_sec', style: { gap: 8 } },
           h('div', { className: 'ofm_row' }, h('span', { className: 'ofm_sec_title', style: { fontSize: 12.5 } }, title),
@@ -3465,13 +3599,15 @@ window.__ModuleLoader__.load({
       return h(Fragment, null,
         group(t('state.available'), available),
         group(t('state.region-blocked'), limited, t('hint.region')),
-        dead.length === 0 ? null : h(Fragment, null,
-          h('div', { className: 'ofm_row', style: { marginTop: 10 } },
-            h(Switch, {
-              checked: showDead, label: t('roster.showDead').replace('{n}', String(dead.length)),
-              onChange: () => setShowDead(value => !value),
-            })),
-          showDead ? group(t('state.unavailable'), dead, t('roster.deadHint')) : null))
+        foldable === 0 ? null : h('div', { className: 'ofm_row', style: { marginTop: 10 } },
+          h(Switch, {
+            checked: !showDead,
+            label: t(showDead ? 'roster.collapseDead' : 'roster.showDead').replace('{n}', String(foldable)),
+            onChange: () => setShowDead(value => !value),
+          })),
+        showDead ? h(Fragment, null,
+          group(t('state.throttled'), throttled, t('roster.throttledHint')),
+          group(t('state.unavailable'), dead, t('roster.deadHint'))) : null)
     }
 
     // ── dashboard ─────────────────────────────────────────────────────────────
@@ -3988,6 +4124,9 @@ window.__ModuleLoader__.load({
           h(Switch, { checked: settings.enabled !== false, label: t('pref.enabled'), onChange: () => onApply({ enabled: !(settings.enabled !== false) }) }),
           h(Switch, { checked: settings.exposeRegionModels !== false, label: t('pref.exposeRegion'), onChange: () => onApply({ exposeRegionModels: !(settings.exposeRegionModels !== false) }) }),
           h(Switch, { checked: settings.hideChannelModels === true, label: t('pref.hideChannels'), onChange: () => onApply({ hideChannelModels: !(settings.hideChannelModels === true) }) })),
+        h('div', { className: 'ofm_row', style: { gap: 10 } },
+          h(Switch, { checked: settings.hideUnavailableModels === true, label: t('pref.hideUnavailable'), onChange: () => onApply({ hideUnavailableModels: !(settings.hideUnavailableModels === true) }) }),
+          h('span', { className: 'ofm_note' }, t('pref.hideUnavailableHint'))),
         h('div', { className: 'ofm_row' },
           field(t('pref.interval'), h('input', { className: 'ofm_input', style: { maxWidth: 100 }, value: draft?.probeIntervalMinutes ?? 15, onChange: e => setDraft(c => ({ ...c, probeIntervalMinutes: Number(e.target.value.replace(/\D/g, '')) || 0 })) })),
           field(t('pref.maxTokens'), h('input', { className: 'ofm_input', style: { maxWidth: 120 }, value: draft?.defaultMaxTokens ?? 32768, onChange: e => setDraft(c => ({ ...c, defaultMaxTokens: Number(e.target.value.replace(/\D/g, '')) || 0 })) })),
@@ -6057,11 +6196,192 @@ window.__ModuleLoader__.load({
           h('p', { className: 'ofm_note' }, t('logs.windowNote'))) : null)
     }
 
+    /**
+     * 「对外入口」面板 —— 网关只暴露一个名字，内部自动挑人、重试、换人。
+     *
+     * 表单不自动保存：改名会把客户端已写死的 `model` 变成 404，所以保存是一次显式
+     * 动作，保存后由 `renamed` 回执提醒旧名字已失效。其余开关（策略、隐藏、重试
+     * 次数）同样走保存，避免半改状态下网关行为与面板显示不一致。
+     */
+    function ForwardPoolPage(props) {
+      const { t } = props
+      const panel = usePanel(() => api('/forward-pool'), [])
+      const pool = panel.data?.pool ?? { enabled: false, name: 'auto', members: [], strategy: 'smart', stickyLimit: 1, memberRetries: 0, hideOthers: true }
+      const members = panel.data?.members ?? []
+      const resolved = panel.data?.resolved ?? []
+      const example = panel.data?.example ?? { model: pool.name, endpoint: '/v1/chat/completions' }
+      const [draft, setDraft] = useState(null)
+      const [query, setQuery] = useState('')
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const [notice, setNotice] = useState('')
+      useEffect(() => { if (panel.data !== undefined) setDraft({ ...pool, members: [...pool.members] }) }, [
+        panel.data?.pool?.name, panel.data?.pool?.enabled, panel.data?.pool?.strategy,
+        panel.data?.pool?.hideOthers, panel.data?.pool?.memberRetries, panel.data?.pool?.stickyLimit,
+        JSON.stringify(panel.data?.pool?.members),
+      ])
+      const lanes = LANE_LABEL(t)
+      const byId = new Map(members.map(row => [row.id, row]))
+      const chosen = draft?.members ?? []
+      const needle = query.trim().toLowerCase()
+      // No truncation: the host-lane rows live past the first few dozen entries,
+      // and slicing at 80 made them unreachable by search (the filter ran first,
+      // then the cut, so a 300-model host still only showed 80 matches).
+      const rows = members.filter(row => needle === ''
+        || `${row.id} ${row.name ?? ''} ${row.provider ?? ''}`.toLowerCase().includes(needle))
+      const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify({ ...pool, members: pool.members })
+
+      const toggle = id => setDraft(current => current === null ? current : {
+        ...current,
+        members: current.members.includes(id) ? current.members.filter(item => item !== id) : [...current.members, id],
+      })
+      const move = (index, delta) => setDraft(current => {
+        if (current === null) return current
+        const next = [...current.members]
+        const target = index + delta
+        if (target < 0 || target >= next.length) return current
+        const [row] = next.splice(index, 1)
+        next.splice(target, 0, row)
+        return { ...current, members: next }
+      })
+      const submit = async () => {
+        if (draft === null) return
+        setBusy(true); setError(''); setNotice('')
+        try {
+          const result = await api('/forward-pool', { method: 'POST', body: {
+            enabled: draft.enabled === true,
+            name: draft.name,
+            members: draft.members,
+            strategy: draft.strategy,
+            stickyLimit: Number(draft.stickyLimit) || 1,
+            memberRetries: Number(draft.memberRetries) || 0,
+            hideOthers: draft.hideOthers !== false,
+          } })
+          panel.reload()
+          setNotice(result?.renamed
+            ? t('pool.savedRenamed').replace('{from}', result.renamed.from).replace('{to}', result.renamed.to)
+            : t('pool.saved'))
+        } catch (failure) { setError(String(failure?.message ?? failure)) } finally { setBusy(false) }
+      }
+
+      return h(Section, { title: t('section.pool'), hint: t('section.poolHint') },
+        panel.status === 'loading'
+          ? h('p', { className: 'ofm_note' }, t('common.loading'))
+          : h(Fragment, null,
+            draft === null ? null : h(Fragment, null,
+              h('div', { className: 'ofm_row' },
+                h('div', { className: 'ofm_field', style: { flex: '1 1 180px' } },
+                  h('span', null, t('pool.name')),
+                  h('input', {
+                    className: 'ofm_input', value: draft.name, placeholder: 'auto', disabled: busy,
+                    onChange: event => setDraft({ ...draft, name: event.target.value }),
+                  }),
+                  h('span', { className: 'ofm_note' }, t('pool.nameHint').replace('{id}', `pool:${String(draft.name || 'auto').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`))),
+                h(Switch, {
+                  checked: draft.enabled === true, label: t('pool.enabled'), disabled: busy,
+                  onChange: () => { if (!busy) setDraft({ ...draft, enabled: draft.enabled !== true }) },
+                })),
+              h('div', { className: 'ofm_row' },
+                h('div', { className: 'ofm_field' },
+                  h('span', null, t('pool.strategy')),
+                  h('div', { className: 'ofm_seg', role: 'group' },
+                    [['smart', 'pool.strategySmart'], ['fallback', 'pool.strategyFallback'], ['round-robin', 'pool.strategyRoundRobin']].map(([id, key]) => h('button', {
+                      key: id, type: 'button', disabled: busy,
+                      'aria-pressed': draft.strategy === id ? 'true' : 'false',
+                      onClick: () => setDraft({ ...draft, strategy: id }),
+                    }, t(key))))),
+                draft.strategy === 'round-robin' ? h('div', { className: 'ofm_field' },
+                  h('span', null, t('pool.stickyLimit')),
+                  h('input', {
+                    className: 'ofm_input', type: 'number', min: '1', value: String(draft.stickyLimit ?? 1), disabled: busy,
+                    onChange: event => setDraft({ ...draft, stickyLimit: event.target.value }),
+                  })) : null,
+                h('div', { className: 'ofm_field' },
+                  h('span', null, t('pool.memberRetries')),
+                  h('input', {
+                    className: 'ofm_input', type: 'number', min: '0', max: '5', value: String(draft.memberRetries ?? 0), disabled: busy,
+                    onChange: event => setDraft({ ...draft, memberRetries: event.target.value }),
+                  }))),
+              h('div', { className: 'ofm_field' },
+                h(Switch, {
+                  checked: draft.hideOthers !== false, label: t('pool.hideOthers'), disabled: busy,
+                  onChange: () => { if (!busy) setDraft({ ...draft, hideOthers: draft.hideOthers === false }) },
+                }),
+                h('span', null, t('pool.hideOthersHint'))),
+
+              h('div', { className: 'ofm_paneltitle' }, t('pool.membersTitle').replace('{n}', String(chosen.length))),
+              chosen.length === 0
+                ? h('p', { className: 'ofm_note' }, t('pool.membersEmpty'))
+                : h('div', { className: 'ofm_chainlist' }, chosen.map((id, index) => {
+                  const row = byId.get(id)
+                  const usable = resolved.includes(id)
+                  return h('div', { key: id, className: 'ofm_chainrow', style: usable ? undefined : { opacity: 0.55 } },
+                    h('span', { className: 'ofm_chainno' }, String(index + 1)),
+                    h('span', { className: 'ofm_pickhead' }, h('b', { title: row?.name ?? id }, row?.name ?? id),
+                      h('span', { className: 'ofm_id' }, id)),
+                    h('span', { className: 'ofm_pickmeta' },
+                      h('span', { className: 'ofm_tag' }, lanes[row?.channel] ?? row?.channel ?? ''),
+                      row?.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
+                      row?.today === null || row?.today === undefined ? null
+                        : h('span', { className: 'ofm_note' }, t('pool.todayStats')
+                          .replace('{calls}', String(row.today.calls))
+                          .replace('{failed}', String(row.today.failed))
+                          .replace('{ttft}', row.today.meanTtftMs === null ? '—' : `${row.today.meanTtftMs}ms`)),
+                      usable ? null : h('span', { className: 'ofm_tag', title: t('pool.unavailableHint') }, t('pool.unavailable'))),
+                    h('span', { className: 'ofm_row', style: { marginLeft: 'auto' } },
+                      miniBtn('↑', () => move(index, -1), { disabled: index === 0 || busy }),
+                      miniBtn('↓', () => move(index, 1), { disabled: index === chosen.length - 1 || busy }),
+                      miniBtn('×', () => toggle(id), { danger: true, disabled: busy })))
+                })),
+
+              h('div', { className: 'ofm_row' },
+                h('div', { className: 'ofm_field', style: { flex: '1 1 200px' } },
+                  h('span', null, t('pool.addMember')),
+                  h('input', {
+                    className: 'ofm_input', value: query, placeholder: t('pool.searchModel'), disabled: busy,
+                    onChange: event => setQuery(event.target.value),
+                  }))),
+              rows.length === 0
+                ? h('p', { className: 'ofm_note' }, t('pool.noModel'))
+                : h('div', { className: 'ofm_picklist' }, rows.map(row => h('button', {
+                  key: row.id, type: 'button', className: 'ofm_pickrow', disabled: busy,
+                  'aria-pressed': chosen.includes(row.id) ? 'true' : 'false',
+                  onClick: () => toggle(row.id),
+                },
+                h('span', { className: 'ofm_pickhead' }, h('b', { title: row.name }, row.name ?? row.id)),
+                h('span', { className: 'ofm_pickmeta' },
+                  h('span', { className: 'ofm_id' }, row.id),
+                  h('span', { className: 'ofm_tag' }, lanes[row.channel] ?? row.channel),
+                  row.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
+                  row.vision === true ? h('span', { className: 'ofm_tag' }, t('tag.vision')) : null,
+                  row.today === null || row.today === undefined ? null
+                    : h('span', { className: 'ofm_note' }, t('pool.todayShort')
+                      .replace('{calls}', String(row.today.calls)).replace('{failed}', String(row.today.failed))))))),
+
+              h('div', { className: 'ofm_row' },
+                h(Button, { disabled: busy || dirty !== true, onClick: submit }, busy ? t('common.saving') : t('common.save')),
+                dirty === true ? h('span', { className: 'ofm_note' }, t('pool.unsaved')) : null),
+              error === '' ? null : h('p', { className: 'ofm_note', style: { color: 'var(--warn)' } }, error),
+              notice === '' ? null : h('p', { className: 'ofm_note' }, notice),
+
+              h('div', { className: 'ofm_panel' },
+                h('div', { className: 'ofm_paneltitle' }, t('pool.exampleTitle')),
+                h('p', { className: 'ofm_note' }, t('pool.exampleHint')),
+                h('pre', { className: 'ofm_code' },
+                  `POST ${example.endpoint}\n{\n  "model": "${example.model}",\n  "messages": [...]\n}`)),
+              resolved.length !== chosen.length && chosen.length > 0
+                ? h('p', { className: 'ofm_note', style: { color: 'var(--warn)' } },
+                  t('pool.unresolvedHint').replace('{n}', String(chosen.length - resolved.length)))
+                : null)))
+    }
+
     /** The gateway page: the pack's OpenAI endpoint plus this plugin's relay. */
     function GatewayPage(props) {
       const { t, ctx } = props
       const { available, rpc } = useChannelRpc(ctx)
       const [status, setStatus] = useState(undefined)
+      // 宿主是否真的能应答网关 RPC。false 时不再渲染骨架屏，而是明说缺什么。
+      const [rpcReady, setRpcReady] = useState(undefined)
       const [busy, setBusy] = useState(false)
       const [notice, setNotice] = useState('')
       const [keyShown, setKeyShown] = useState(false)
@@ -6074,8 +6394,14 @@ window.__ModuleLoader__.load({
       const clients = usePanel(() => api('/clients'), [])
 
       const loadGateway = useCallback(async () => {
-        if (!available) return
-        try { setStatus(await rpc('gateway.getEnabled', {}, 30_000)) } catch (error) { setNotice(String(error?.message ?? error)) }
+        // 宿主没有 connection RPC 时 `rpc()` 必然抛异常。过去这里直接 `return`，
+        // `status` 就永远停在 undefined、页面顶部那张卡片永远是骨架屏——用户看到
+        // 的就是「网关不可用」。现在把「宿主没提供这个服务」作为一等状态显式渲染。
+        if (!available) { setStatus(null); setRpcReady(false); return }
+        setRpcReady(true)
+        // RPC 抛错时也必须把 status 落到一个非 undefined 的值，否则页面会一直
+        // 停在骨架屏；错误信息走上面的 notice 条。
+        try { setStatus(await rpc('gateway.getEnabled', {}, 30_000)) } catch (error) { setStatus(null); setNotice(String(error?.message ?? error)) }
       }, [available, rpc])
       const loadRelay = useCallback(async () => {
         try { setRelay(await api('/chan-gateway')) } catch { setRelay(null) }
@@ -6110,14 +6436,45 @@ window.__ModuleLoader__.load({
           h(Button, { onClick: () => { void loadGateway(); void loadRelay() } }, t('dash.refresh'))),
         notice !== '' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, notice)) : null,
         h(Section, { title: t('gw.gatewayTitle'), hint: t('gw.gatewayHint') },
-          status === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
-            : h('div', { className: 'ofm_panel' },
+          status === undefined && rpcReady !== false ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
+            // 宿主没有 connection RPC：这是环境事实，不是加载中。说清楚缺什么、
+            // 哪些功能仍然可用，用户才不会把整页当成“坏了”。
+            : rpcReady === false ? h('div', { className: 'ofm_callout ofm_error' },
+              h('span', { 'aria-hidden': 'true' }, '⚠'),
+              h('div', null,
+                h('b', null, t('gw.rpcOff')),
+                h('p', null, t('gw.rpcOffHint')),
+                h('p', null, t('gw.rpcOffWhy')),
+                h('div', { style: { marginTop: 8 } },
+                  h(Button, { kind: 'ghost', onClick: () => { void loadGateway() } }, t('gw.retry')))))
+              : status === null
+                // 宿主服务在、但这块网关没回数据（关闭 / 报错）：给一句明确的
+                // 状态说明，而不是让用户对着骨架屏猜。
+                ? h('div', { className: 'ofm_callout' },
+                  h('div', null,
+                    h('b', null, t('gw.stopped')),
+                    h('p', null, t('gw.gatewayHint'))))
+              : h('div', { className: 'ofm_panel' },
               h('div', { className: 'ofm_row' },
                 h(Pill, { strong: true, tone: status.running === true ? 'ok' : 'warn' }, status.running === true ? t('gw.running') : t('gw.stopped')),
                 status.blockedByEnv === true ? h(Pill, { tone: 'err' }, t('gw.envBlocked')) : null,
                 h(Switch, { checked: status.enabled === true, label: t('gw.switch'), onChange: () => void toggleGateway(status.enabled !== true), disabled: busy })),
-              status.running !== true && typeof status.error === 'string' && status.error !== ''
-                ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, status.error)) : null,
+              // 开关是开的却没在监听：这是真故障（端口冲突 / 初始化失败），
+              // 必须把宿主给出的原因和一次重试放在同一处，否则用户只知道「不可用」。
+              status.running !== true && status.enabled === true && status.blockedByEnv !== true
+                ? h('div', { className: 'ofm_callout ofm_error' },
+                  h('div', null,
+                    h('b', null, t('gw.notRunning')),
+                    h('p', null, typeof status.error === 'string' && status.error !== '' ? status.error : t('gw.notRunningHint')),
+                    // EACCES 是「系统保留了这段端口」，与「被别人占用」的处置完全不同：
+                    // 前者杀进程没用，只能换端口（插件已自动做），必须说明白。
+                    /EACCES/.test(String(status.error ?? '')) ? h('p', null, t('gw.portReserved')) : null,
+                    h('div', { style: { marginTop: 8 } },
+                      h(Button, { disabled: busy, onClick: () => void toggleGateway(true) }, t('gw.restart')))))
+                : null,
+              status.running !== true && (status.enabled !== true || status.blockedByEnv === true)
+                && typeof status.error === 'string' && status.error !== ''
+                ? h('div', { className: 'ofm_callout' }, h('div', null, status.error)) : null,
               h('div', { className: 'ofm_row' },
                 h('span', { className: 'ofm_note' }, t('gw.endpoint')),
                 gatewayUrl === '' ? h('span', { className: 'ofm_note' }, '—')
@@ -6328,6 +6685,8 @@ window.__ModuleLoader__.load({
       kilo: t('routing.channel.kilo'),
       aggregate: t('routing.channel.aggregate'),
       combo: t('routing.channel.combo'),
+      host: t('routing.channel.host'),
+      own: t('routing.channel.own'),
     })
 
     /**
@@ -7771,7 +8130,7 @@ window.__ModuleLoader__.load({
      * 服务端是唯一权威，面板跟着 reload。
      */
     function RouteGroupPanel(props) {
-      const { t, routes, catalogGroups, current, busy, setBusy, setNotice, notice, onUse, onClose, openSettings } = props
+      const { t, routes, catalogGroups, current, busy, setBusy, setNotice, notice, onUse } = props
       const groups = routes.data?.groups ?? []
       const [selected, setSelected] = useState(null)
       const [adding, setAdding] = useState(false)
@@ -7903,8 +8262,7 @@ window.__ModuleLoader__.load({
               className: 'ofm_input', placeholder: t('panel.routes.nameHint'), value: newName,
               onChange: event => setNewName(event.currentTarget.value),
             }),
-            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create'))),
-          h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))
+            h('button', { type: 'button', className: 'ofm_btn ofm_btn--primary', disabled: busy !== '', onClick: createGroup }, t('panel.routes.create'))))
       }
       const members = active?.models ?? []
       // 成员坐标可能有两种写法（目录 id，或迁移数据里的「裸名 + provider」），
@@ -8088,8 +8446,7 @@ window.__ModuleLoader__.load({
             : null,
           h('div', { className: 'ofm_mpickerfoot' },
             h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { setAdding(!adding); setQuery(''); setPicked([]) } }, adding ? t('panel.routes.addClose') : t('panel.routes.add')),
-            h('span', { className: 'ofm_note' }, notice !== '' ? notice : t('panel.failed.hint')),
-            h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettings('routing') } }, t('panel.settingsLink')))))
+            h('span', { className: 'ofm_note' }, notice !== '' ? notice : t('panel.failed.hint')))))
     }
 
     function ModelPickerDialog(props) {
@@ -8103,11 +8460,54 @@ window.__ModuleLoader__.load({
       // 路由分组与失败名单来自本插件自己的宿主路由（`/routes`），与设置页同一个
       // 数据源；模型页只读宿主会话目录。两者都不用轮询。
       const routes = usePanel(() => api('/routes'), [])
+      // 可用性结论来自本插件的 `/summary`（探测结果 + 设置）。宿主目录只报
+      // 「有哪些模型」，不报「这台机器能不能用」——没有这份数据，面板就只能
+      // 把探测失败的模型画成和可用模型一模一样的一行。
+      const summary = usePanel(() => api('/summary'), [])
+      const verdicts = useMemo(() => {
+        const table = new Map()
+        for (const row of summary.data?.catalog ?? []) table.set(String(row.id ?? ''), row)
+        return table
+      }, [summary.data])
+      const hideUnavailable = summary.data?.settings?.hideUnavailableModels === true
       const routeGroups = routes.data?.groups ?? []
       const failed = routes.data?.failed ?? []
       const current = state.pending ?? state.current
       const groups = state.groups ?? []
       const needle = query.trim().toLowerCase()
+      /**
+       * 只有**免费车道自己**的行才有可用性结论：`channel` 字段标着别的车道
+       * （own / kilo / aggregate / combo / route）时，宿主目录里的「能不能选」
+       * 由登录态、Key、成员解析决定，不是探测结论。给它们贴「未探测」只会误导，
+       * 所以角标与隐藏都只管没有 `channel` 的行。
+       */
+      const verdictOf = model => {
+        const row = verdicts.get(String(model.id ?? ''))
+        return row === undefined || row.channel !== undefined ? undefined : row
+      }
+      /**
+       * 有**明确负面结论**的行：地区受限 / 探测不可用 / 限流。
+       *
+       * 「未探测」不算：它什么都还没证明，藏起来会让一次刷新后的新模型凭空
+       * 消失。这类行留着，挂一个灰色「未探测」角标，等下一轮探测给结论。
+       */
+      const isDead = model => {
+        const availability = verdictOf(model)?.availability
+        return availability === 'unavailable' || availability === 'region-blocked' || availability === 'throttled'
+      }
+      const keepModel = model => !hideUnavailable || !isDead(model)
+      // 被开关折叠掉的行数：页脚如实说明「少了几行」，而不是让列表悄悄变短。
+      const hiddenCount = hideUnavailable
+        ? groups.reduce((sum, group) => sum + group.models.filter(model => !keepModel(model)).length, 0)
+        : 0
+      /**
+       * 宿主目录里根本没有的免费车道行：`membership` 会把探测为 unavailable 的
+       * 行剔除，于是它们连「可切换」都做不到。既然列表里看不到，就在页脚说明
+       * 有几个、去哪儿处理（重探测），而不是让用户以为模型清单本来就那么短。
+       */
+      const droppedCount = (summary.data?.catalog ?? []).filter(row => row.channel === undefined
+        && row.route === null
+        && row.availability === 'unavailable').length
       // 搜索框一有内容就跨全部提供商（否则要先去左边点一家才能搜别家）；空搜索时
       // 只看左侧选中的那一家。左栏不再放「免费模型 / 全部」这一行——它和「所有
       // 提供商」是同义重复，默认跟随当前模型所属的那家即可。
@@ -8116,8 +8516,12 @@ window.__ModuleLoader__.load({
       const followed = provider === undefined ? (current?.provider ?? null) : provider
       const activeProvider = followed !== null && groups.some(group => group.id === followed) ? followed : null
       const visible = searchAll
-        ? groups.map(group => ({ group, models: group.models.filter(model => matches(group, model)) })).filter(entry => entry.models.length > 0)
-        : groups.filter(group => group.id === activeProvider).map(group => ({ group, models: group.models }))
+        ? groups.map(group => ({ group, models: group.models.filter(model => keepModel(model) && matches(group, model)) })).filter(entry => entry.models.length > 0)
+        : groups.filter(group => group.id === activeProvider).map(group => ({ group, models: group.models.filter(keepModel) }))
+      // 当前视图（同一家提供商 / 同一次搜索）里被折叠掉的行数。页脚的 hiddenCount
+      // 说的是整份清单，空状态要说的是"你眼前这一屏为什么是空的"。
+      const viewHidden = (searchAll ? groups : groups.filter(group => group.id === activeProvider))
+        .reduce((sum, group) => sum + group.models.filter(model => !keepModel(model) && (!searchAll || matches(group, model))).length, 0)
       const loading = (state.status === 'loading' || state.status === 'idle') && groups.length === 0 && error === ''
       const choose = async (providerId, modelId, effort) => {
         if (directory === undefined || busy !== '') return false
@@ -8208,7 +8612,7 @@ window.__ModuleLoader__.load({
             onClick: () => setProvider(group.id),
           },
             h('span', { className: 'ofm_mpickerrailname', title: group.name }, group.name),
-            h('span', { className: 'ofm_mpickerrailcount' }, String(group.models.length)))))),
+            h('span', { className: 'ofm_mpickerrailcount' }, String(group.models.filter(keepModel).length)))))),
         h('div', { className: 'ofm_mpickerpane' },
           h('div', { className: 'ofm_mpickertools' },
             h('input', {
@@ -8222,7 +8626,9 @@ window.__ModuleLoader__.load({
               : loading
                 ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('loading')))
                 : visible.length === 0
-                  ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.noMatch')))
+                  ? (viewHidden > 0
+                    ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.hiddenAll')), h('span', null, t('panel.hiddenAllHint')))
+                    : h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.noMatch'))))
                   : visible.map(entry => h(Fragment, { key: entry.group.id },
                     activeProvider === null || searchAll
                       ? h('div', { className: 'ofm_mpickgroup' },
@@ -8235,18 +8641,40 @@ window.__ModuleLoader__.load({
                       const efforts = Array.isArray(model.reasoning?.efforts) ? model.reasoning.efforts : []
                       const activeEffort = current?.reasoningEffort ?? model.reasoning?.defaultEffort
                       const badge = badgeTextOf(model.badge)
+                      // 可用性角标：有结论且不是「可用」才画，可用行保持干净。
+                      // 未探测的行同样要标出来——否则它和刚探测通过的行长得一样，
+                      // 用户点下去才发现要等一次失败。
+                      const verdict = verdictOf(model)
+                      const availability = verdict?.availability
+                      const dead = isDead(model)
+                      const stateBadge = availability === undefined || availability === 'available'
+                        ? null
+                        : availability === 'unknown'
+                          // 一次探测都还没跑（probedAt 为 0）时全目录都是 unknown，
+                          // 给每一行都挂「未探测」只是噪音；已经有探测时间戳却不
+                          // 是可用/不可用，才是值得标出来的「这一行没结论」。
+                          ? ((summary.data?.probedAt ?? 0) > 0 ? { text: t('state.unknown'), tone: 'dim' } : null)
+                          : availability === 'region-blocked'
+                            ? { text: t('state.region-blocked'), tone: 'region' }
+                            : availability === 'throttled'
+                              ? { text: t('state.throttled'), tone: 'warn' }
+                              : { text: t('state.unavailable'), tone: 'warn' }
                       return h('div', { key, className: 'ofm_mpickitem' },
                         h('button', {
                           type: 'button', className: 'ofm_mpickrow',
                           'data-current': isCurrent ? 'true' : 'false',
+                          'data-dead': dead ? 'true' : 'false',
                           disabled: busy !== '',
-                          title: model.id,
+                          title: verdict?.detail === undefined || verdict.detail === '' ? model.id : `${model.id}\n${verdict.detail}`,
                           onClick: () => void choose(entry.group.id, model.id),
                         },
                           h('span', { className: 'ofm_mpickmain' },
                             h('span', { className: 'ofm_mpicknamerow' },
                               h('span', { className: 'ofm_mpickname' }, model.name ?? model.id),
-                              badge === '' ? null : h('span', { className: 'ofm_mpickbadge' }, badge)),
+                              badge === '' ? null : h('span', { className: 'ofm_mpickbadge' }, badge),
+                              stateBadge === null
+                                ? null
+                                : h('span', { className: 'ofm_mpickbadge', 'data-tone': stateBadge.tone }, stateBadge.text)),
                             model.description === undefined || model.description === ''
                               ? null
                               : h('span', { className: 'ofm_mpickdesc' }, model.description)),
@@ -8266,8 +8694,7 @@ window.__ModuleLoader__.load({
                           : null)
                     }))))))
       const routeBody = h(RouteGroupPanel, {
-        t, routes, catalogGroups: groups, current, busy, setBusy, setNotice, notice,
-        onUse: useRouteGroup, onClose, openSettings: openSettingsPanel,
+        t, routes, catalogGroups: groups, current, busy, setBusy, setNotice, notice, onUse: useRouteGroup,
       })
 
       const failedBody = h('div', { className: 'ofm_mpickerbody' },
@@ -8306,15 +8733,11 @@ window.__ModuleLoader__.load({
               ? notice
               : (state.failures ?? []).length > 0
                 ? t('panel.failedProviders').replace('{n}', String(state.failures.length))
-                : ''),
-            h('button', {
-              type: 'button', className: 'ofm_minibtn',
-              onClick: () => { onClose(); openSettingsPanel('routing') },
-            }, t('panel.tab.routes')),
-            h('button', {
-              type: 'button', className: 'ofm_minibtn',
-              onClick: () => { onClose(); openSettingsPanel('free') },
-            }, t('panel.settingsLink')))
+                : hiddenCount > 0
+                  ? t('panel.hiddenUnavailable').replace('{n}', String(hiddenCount))
+                  : droppedCount > 0
+                    ? t('panel.unavailableDropped').replace('{n}', String(droppedCount))
+                    : ''))
           : null)
     }
 
@@ -8548,7 +8971,7 @@ window.__ModuleLoader__.load({
       // absorbed channels stay out of the tally — their cards carry their own
       // availability badge, and a lane that is never probed would otherwise
       // read as a permanently green slice of this gauge.
-      const counts = data.catalog.filter(m => !m.channel).reduce((acc, m) => ({ ...acc, [m.availability]: (acc[m.availability] ?? 0) + 1 }), {})
+      const counts = data.catalog.filter(isFreeRosterRow).reduce((acc, m) => ({ ...acc, [m.availability]: (acc[m.availability] ?? 0) + 1 }), {})
       return h(Shell, {
         t: tagged, data, counts, summary, stats,
         busy, setBusy, apply, bench, benches, ctx: props.ctx,
@@ -8644,7 +9067,7 @@ window.__ModuleLoader__.load({
       const tabs = [
         // 徽章数的是「这条车道有几行模型」，不是「有几行探测为可用」：探测
         // 尚未出结果（unknown）时按可用数显示会让页签写着 0，看着像车道空了。
-        ['free', t('nav.tab.free'), data.catalog.filter(m => !m.channel).length],
+        ['free', t('nav.tab.free'), data.catalog.filter(isFreeRosterRow).length],
         ['aggregate', t('nav.tab.aggregate'), data.catalog.filter(m => m.channel === 'aggregate').length],
         ['channels', t('nav.tab.channels'), CHANNEL_PROVIDERS.length],
         ['pipeline', t('nav.tab.pipeline'), null],
@@ -8707,6 +9130,7 @@ window.__ModuleLoader__.load({
                 ? h(RetryPage, { t })
                 : tab === 'gateway'
                 ? h('div', { className: 'ofm_page' },
+                  h(ForwardPoolPage, { t }),
                   h(Section, { title: t('section.forward'), hint: t('section.forwardHint') }, h(Forward, { settings: data.settings, t, onApply: apply, busy })),
                   h(Section, { title: t('section.egress'), hint: t('section.egressHint') }, h(Egress, { settings: data.settings, t, onApply: apply, busy })),
                   h(GatewayPage, { t, ctx }))
@@ -8742,7 +9166,7 @@ window.__ModuleLoader__.load({
       // The denominator is the free lane's own roster — the only slice the
       // verdicts describe. Dividing by the whole catalog (which also carries
       // the never-probed EAC and Kilo entries) read a 6-of-10 lane as ~17%.
-      const total = data.catalog.filter(m => !m.channel).length
+      const total = data.catalog.filter(isFreeRosterRow).length
       const ok = counts.available ?? 0
       // The tank reads the free lane's own health: the share of the declared
       // roster this machine can actually reach. Same thresholds as the pool
@@ -8755,7 +9179,23 @@ window.__ModuleLoader__.load({
       // below two thirds — the pool gauge's own cut-offs measure queue pressure
       // and would paint a perfectly usable lane amber.
       const level = ratio >= 0.6 ? 'ok' : ratio >= 0.3 ? 'busy' : 'over'
+      // 全线不可用是数据面的真实结论，不是渲染异常：必须在页面最上方点名，
+      // 否则用户只会看到一屏 0% 和一个空列表，误以为插件坏了。
+      const throttled = counts.throttled ?? 0
+      const regionBlocked = counts['region-blocked'] ?? 0
+      const dead = counts.unavailable ?? 0
+      const unknown = counts.unknown ?? 0
+      const noneUsable = total > 0 && ok === 0
       return h('div', { className: 'ofm_page' },
+        noneUsable ? h('div', {
+          className: 'ofm_callout ofm_error', role: 'status', style: { marginBottom: 12 },
+        },
+        h('span', { 'aria-hidden': 'true' }, '⚠'),
+        h('div', null,
+          h('b', null, t('free.noneUsable')),
+          h('p', null, t('free.noneUsableHint')),
+          h('div', { style: { marginTop: 8 } },
+            h(Button, { disabled: busy, onClick: reprobe }, t('reprobe'))))) : null,
         h('header', { className: 'ofm_hero ofm_glass' },
           h('div', { className: 'ofm_pagehead' },
             h('div', { className: 'ofm_pagetitle' },
@@ -8773,11 +9213,19 @@ window.__ModuleLoader__.load({
                   h('span', { className: 'ofm_pooldot' }),
                   `${t('free.tankLabel')} ${pct ?? '—'}%`),
                 h(StarButton, { t })),
+              // 五格状态：可用 / 地区受限 / 限流 / 不可用 / 未探测。
+              // 只报三项会把限流和未探测混进「不可用」，恰好抹掉「临时状态」
+              // 和「还没结论」这两种最有用的区别。
               h('div', { className: 'ofm_poolstats' },
                 h('div', { className: 'ofm_stat' }, h('b', null, String(ok)), h('span', null, t('state.available'))),
-                h('div', { className: `ofm_stat${(counts['region-blocked'] ?? 0) > 0 ? ' hot' : ''}` },
-                  h('b', null, String(counts['region-blocked'] ?? 0)), h('span', null, t('state.region-blocked'))),
-                h('div', { className: 'ofm_stat' }, h('b', null, String(counts.unavailable ?? 0)), h('span', null, t('state.unavailable')))),
+                h('div', { className: `ofm_stat${regionBlocked > 0 ? ' hot' : ''}` },
+                  h('b', null, String(regionBlocked)), h('span', null, t('state.region-blocked'))),
+                throttled === 0 ? null : h('div', { className: 'ofm_stat warn' },
+                  h('b', null, String(throttled)), h('span', null, t('state.throttled'))),
+                h('div', { className: `ofm_stat${ok === 0 && dead > 0 ? ' hot' : ''}` },
+                  h('b', null, String(dead)), h('span', null, t('state.unavailable'))),
+                unknown === 0 ? null : h('div', { className: 'ofm_stat' },
+                  h('b', null, String(unknown)), h('span', null, t('state.unknown')))),
               h('div', { className: 'ofm_poolmeta' },
                 h('span', { className: 'ofm_note' }, total > 0
                   ? t('free.tankNote').replace('{ok}', String(ok)).replace('{total}', String(total))

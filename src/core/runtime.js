@@ -4,9 +4,10 @@ import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from '../ada
 import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
+import { buildPoolRow, isPoolEntry, normalizePool, prunePoolRotation } from '../forward-pool.js'
 import { buildGroupRows, isRouteEntry } from '../route/groups.js'
 import { buildOwnCatalog } from '../channels/catalog.js'
-import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, migrateStats, pruneDays, recordTurn, recordUsage } from '../store.js'
+import { JsonStore, SETTINGS_INITIAL, STATS_INITIAL, STATS_VERSION, dayKey, migrateStats, pruneDays, recordTurn, recordUsage } from '../store.js'
 import { STATE, detectEgress, probeCatalog } from '../probe.js'
 import { CODE, getJson } from '../http.js'
 import { fetchSealedListing } from '../eac.js'
@@ -80,6 +81,8 @@ export function createModelRuntime({
   let ownCatalog = []
   /** The virtual rows a combo contributes; rebuilt last, after every real lane. */
   let comboCatalog = []
+  /** The single forward-pool row (one exposed gateway name), or none. */
+  let poolCatalog = []
   /** 路由分组投影出来的虚拟行（进 `catalog`，选择器里能选）。 */
   let routeCatalog = []
   /** 分组成员解析用的目录：本插件自己的行 + 宿主其它渠道的行。 */
@@ -128,6 +131,22 @@ export function createModelRuntime({
       seen.add(entry.id)
       merged.push(entry)
     }
+    // 对外入口池：一行虚拟模型，成员必须是上面已成立的实模型行。排在组合链之后、
+    // 路由分组之前 —— 它和组合链一样是"多成员挑一个"，但只给网关用一个名字。
+    //
+    // 解析目录必须并上宿主其它渠道的行（`hostCatalog`）：面板允许勾选它们，
+    // 而 `runChain` 早已支持把 `channel: 'host'` 的成员转给宿主 `llm.stream`
+    // （见 `runForeign`）。只喂 `merged` 会让「勾了宿主模型却解析不到」，池行
+    // 凭空少成员。这里用和路由分组同一份 `groupCatalog` 口径。
+    const pool = normalizePool(settings.get().forwardPool)
+    const poolRow = buildPoolRow(pool, hostCatalog.length === 0 ? merged : [...merged, ...hostCatalog.filter(row => !seen.has(row.id))])
+    poolCatalog = poolRow === null ? [] : [poolRow]
+    prunePoolRotation(pool)
+    for (const entry of poolCatalog) {
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      merged.push(entry)
+    }
     // 分组排在最后：成员必须是上面已经成立的实模型行，否则组内会指向一个
     // 不存在的东西；`buildGroupRows` 自己会把空组/全失效组丢掉。宿主目录的
     // 行只在建组视图中参与（成员解析 + 投影），不并进 `catalog`。
@@ -169,6 +188,11 @@ export function createModelRuntime({
       stats.edit(value => pruneDays(value, 120))
     },
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
+    /** 池的智能排序读数：今天这个模型的实际调用/失败/首字。缺省时退回声明顺序。 */
+    poolStats: modelId => {
+      const today = stats.get().days?.[dayKey()]?.models?.[modelId]
+      return today ?? null
+    },
     routeStore,
     gate,
     routeGroups,
@@ -453,9 +477,9 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
       ;(own[entry.provider] ??= []).push(entry.id)
       continue
     }
-    // 虚拟行（路由分组 / 组合链）不是免费模型：它们有自己的路由，否则选择器
-    // 会把 `route:主力` / `combo:xxx` 画在「免费模型」这一组下面。
-    if (isRouteEntry(entry) || isComboEntry(entry)) {
+    // 虚拟行（路由分组 / 组合链 / 对外入口池）不是免费模型：它们有自己的路由，
+    // 否则选择器会把 `route:主力` / `combo:xxx` / `pool:auto` 画在「免费模型」组下。
+    if (isRouteEntry(entry) || isComboEntry(entry) || isPoolEntry(entry)) {
       virtual.push(entry.id)
       continue
     }

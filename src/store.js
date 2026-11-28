@@ -163,6 +163,16 @@ export const SETTINGS_INITIAL = {
    * silently removes models from the picker.
    */
   hideChannelModels: false,
+  /**
+   * Hide free-lane rows whose probe verdict is not "available" from the model
+   * panel's list.
+   *
+   * Display only, and only in this plugin's own panel: the host picker keeps
+   * every row the membership advertises, because hiding there would silently
+   * take models away from the native selector. Off by default so an upgrade
+   * never removes rows the user could see before.
+   */
+  hideUnavailableModels: false,
   /** Minutes between background availability re-probes. */
   probeIntervalMinutes: 15,
   /** Serve the OpenAI-compatible forward listener for other local harnesses. */
@@ -208,6 +218,18 @@ export const SETTINGS_INITIAL = {
   /** Named fallback chains. A combo is a virtual model whose answer comes from
    *  the first link that produces output; see src/combos.js. */
   combos: [],
+  /** The forward pool: one exposed model name for the loopback gateway that is
+   *  really a self-ordering candidate set (retry-in-place then fail over). See
+   *  src/forward-pool.js. Off until the user ticks models in its panel. */
+  forwardPool: {
+    enabled: false,
+    name: 'auto',
+    members: [],
+    strategy: 'smart',
+    stickyLimit: 1,
+    memberRetries: 0,
+    hideOthers: true,
+  },
   /** 上下文压缩（宿主内置引擎的运行时接管）。`thresholdRatio: null` = 跟随引擎
    *  默认（0.8）；false 的 `enabled` 把比例放到 1.0，等于只在窗口末尾触发。 */
   compaction: { enabled: true, thresholdRatio: null },

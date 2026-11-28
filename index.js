@@ -30,11 +30,11 @@ import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from './src/adapter.js'
-import { DATA_DIR_NAME, JsonStore, decodeWindow, resolveDshHome } from './src/store.js'
+import { DATA_DIR_NAME, JsonStore, dayKey, decodeWindow, resolveDshHome } from './src/store.js'
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from './src/forward.js'
-import { chanGatewayCredential, chanGatewayEnabled, chanGatewayPort, startChanRelay } from './src/chan-relay.js'
+import { chanGatewayCredential, chanGatewayEnabled, chanGatewayPort, pickGatewayPort, startChanRelay } from './src/chan-relay.js'
 import { CODE, UpstreamError } from './src/http.js'
 import { egressActive, egressFetch, outletLabel, readOutletSelection, startEgressRelay } from './src/egress.js'
 import { directFetch } from './src/eac.js'
@@ -85,6 +85,7 @@ import { rejectionFor, isLoopbackHost, connectionAdmissionView } from './src/tru
 import { resolveAttributionUserAgent } from './adapter/kernel.js'
 import { buildAggregateCatalog, fetchProviderModels, isAggregateEntry, testProvider } from './src/aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from './src/combos.js'
+import { buildPoolRow, normalizePool, isPoolEntry } from './src/forward-pool.js'
 import { getProvider, listProviders } from './src/providers/index.js'
 import { addSavings, describeSavingsTotal, emptySavings, saverConfig, savingsPercent } from './src/token-saver/index.js'
 import { CAVEMAN_LEVELS, PONYTAIL_LEVELS } from './src/token-saver/prompts.js'
@@ -1498,7 +1499,13 @@ export function apply(ctx, config) {
     // load this plugin's free lane. `pack.js` is the bundled form of the
     // vendored tree (see scripts/build-channel-pack.mjs) — one file, so the
     // release manifest stays inside its file cap.
-    void import('./vendor/channel-pack/pack.js').then(pack => {
+    // The pack's gateway takes its port from `process.env` when `apply` runs,
+    // so settle that before mounting: on a machine whose reserved TCP range
+    // covers 8326 the default silently cannot bind (EACCES), and the switch then
+    // reads "on, not listening" forever. An explicit env value wins.
+    void pickGatewayPort({ env: process.env })
+      .catch(error => logger.warn?.(`our-free-model: gateway port probe failed (${error?.message ?? error})`))
+      .then(() => import('./vendor/channel-pack/pack.js')).then(pack => {
       if (stopped) return
       pack.apply(scoped, {
         disableOpencode: true,
@@ -2147,6 +2154,9 @@ export function apply(ctx, config) {
     // ReferenceError（真机表现：点「模型」折叠 → 操作失败：diagLog is not defined）。
     diagLog,
     refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress,
+    // 池的候选要在读取时刷新宿主目录；和 diagLog 同一批 apply 作用域闭包，
+    // 直接裸引用会 ReferenceError（见下方 2470 行的注释）。
+    syncHostCatalog,
     pool: fetchPoolSnapshot,
     eacAuth,
     // 浏览器登录（CDP 拦截回调）：与设备码同形的两步式，由自己起的 Chromium 完成。
@@ -2247,6 +2257,73 @@ export function apply(ctx, config) {
         settings.flush()
         const catalog = syncAggregateCatalog()
         return { combos: rows, usable: catalog.filter(isComboEntry).map(entry => ({ id: entry.id, name: entry.name, models: entry.combo })) }
+      },
+    },
+    // ── forward pool (one exposed gateway name, auto-retry + failover) ──────
+    forwardPool: {
+      get: () => {
+        const pool = normalizePool(settings.get().forwardPool)
+        // Candidate *and* resolution source: `routeCatalog` (`routeMembers`) is
+        // "this plugin's real rows + the host's other-provider rows", without the
+        // group/combo/pool virtual rows. Using `catalog` here dropped every
+        // host-lane model from the picker while `runChain` could still run them
+        // (`runForeign`), so ticking one resolved to nothing.
+        const catalog = state().routeCatalog ?? state().catalog
+        const row = buildPoolRow(pool, catalog)
+        // The picker offers every *real* model; a pool can never contain another
+        // virtual row, so combos, groups and the pool itself are filtered out.
+        const members = catalog
+          .filter(entry => entry.channel !== 'pool' && !isComboEntry(entry) && !isRouteEntry(entry))
+          .map(entry => ({
+            id: entry.id,
+            name: entry.name,
+            channel: entry.channel ?? 'free',
+            // Host rows carry their real provider; the panel shows it so two
+            // models with the same display name stay distinguishable.
+            provider: typeof entry.provider === 'string' ? entry.provider : null,
+            vision: entry.vision === true,
+            // What the smart ranking sees today, so the panel can explain its order
+            // rather than presenting it as a black box.
+            today: (() => {
+              const bucket = stats.get().days?.[dayKey()]?.models?.[entry.id]
+              if (bucket === undefined) return null
+              return { calls: Number(bucket.calls) || 0, failed: Number(bucket.failed) || 0,
+                meanTtftMs: (Number(bucket.ttftSamples) || 0) > 0 ? Math.round((Number(bucket.ttftMs) || 0) / bucket.ttftSamples) : null }
+            })(),
+          }))
+        return {
+          pool,
+          members,
+          resolved: row === null ? [] : row.pool,
+          // The base URL a client should dial, with the pool name pre-filled so the
+          // "just one field" promise is visible, not merely described.
+          example: { model: pool.name, endpoint: '/v1/chat/completions' },
+          strategies: ['smart', 'fallback', 'round-robin'],
+        }
+      },
+      save: async patch => {
+        if (patch === null || typeof patch !== 'object') throw httpError(400, 'the request body must be a JSON object')
+        const before = normalizePool(settings.get().forwardPool)
+        const next = normalizePool(patch)
+        // Refuse a name that collides with a real model or another virtual row: two
+        // catalog entries with one id is a resolution ambiguity, not a preference.
+        if (next.enabled === true) {
+          const clash = state().catalog.find(entry => entry.id === next.id && entry.channel !== 'pool')
+          if (clash !== undefined) throw httpError(409, `"${next.name}" already names another model (${clash.id}); pick a different entry name`)
+        }
+        settings.update({ forwardPool: next })
+        settings.flush()
+        syncAggregateCatalog()
+        // Resolve against the same directory the picker offered, or a saved host
+        // member would come back as "unresolved" the moment it is not in `catalog`.
+        const row = buildPoolRow(next, state().routeCatalog ?? state().catalog)
+        return {
+          pool: next,
+          resolved: row === null ? [] : row.pool,
+          // Name changes invalidate any client config pinned to the old name; say so
+          // when it happened rather than letting the client 404 later.
+          renamed: before.id !== next.id ? { from: before.name, to: next.name } : null,
+        }
       },
     },
     // ── token savers ────────────────────────────────────────────────────────
@@ -3000,6 +3077,19 @@ export function createApiRoutes(deps) {
         const body = await readJson(req)
         return send(200, { ok: true, ...await deps.combos.save(body) })
       }
+      // ── forward pool (one exposed gateway name, auto-retry + failover) ─────
+      if (method === 'GET' && routePath === '/forward-pool') {
+        // The picker must include the host's other-channel models, and those only
+        // exist in `routeCatalog` after a sync. `syncHostCatalog` is an `apply`-scope
+        // closure: reached only through deps, or this route throws a ReferenceError
+        // that reads as a bare 500 (same trap as diagLog, see the deps block).
+        await deps.syncHostCatalog?.()
+        return send(200, deps.forwardPool.get())
+      }
+      if (method === 'POST' && routePath === '/forward-pool') {
+        const body = await readJson(req)
+        return send(200, { ok: true, ...await deps.forwardPool.save(body) })
+      }
       // ── compaction threshold (host engine, runtime takeover) ───────────────
       if (method === 'GET' && routePath === '/compaction') {
         return send(200, await deps.compaction.get())
@@ -3490,7 +3580,7 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/settings') {
         const patch = await readJson(req)
         const current = deps.settings.get()
-        const next = sanitizeSettings({ ...current, ...pick(patch, ['enabled', 'exposeRegionModels', 'hideChannelModels', 'probeIntervalMinutes', 'defaultMaxTokens', 'announcementAck', 'feedUrl', 'feedPollMinutes', 'notifyOs', 'updateCheckHours', 'autoReloadWatch', 'compaction', 'modelEffort', 'route']) }, current)
+        const next = sanitizeSettings({ ...current, ...pick(patch, ['enabled', 'exposeRegionModels', 'hideChannelModels', 'hideUnavailableModels', 'probeIntervalMinutes', 'defaultMaxTokens', 'announcementAck', 'feedUrl', 'feedPollMinutes', 'notifyOs', 'updateCheckHours', 'autoReloadWatch', 'compaction', 'modelEffort', 'route']) }, current)
         if (patch.forward !== undefined) {
           const forward = { ...(current.forward ?? {}), ...pick(patch.forward, ['enabled', 'host', 'port']) }
           // The listener spends this machine's lane, and a routable bind address
@@ -3857,6 +3947,7 @@ function publicSettings(settings, forwardInfo, egressInfo) {
     enabled: settings.enabled !== false,
     exposeRegionModels: settings.exposeRegionModels !== false,
     hideChannelModels: settings.hideChannelModels === true,
+    hideUnavailableModels: settings.hideUnavailableModels === true,
     probeIntervalMinutes: settings.probeIntervalMinutes ?? 15,
     defaultMaxTokens: settings.defaultMaxTokens ?? 32768,
     announcementAck: settings.announcementAck ?? '',
