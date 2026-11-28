@@ -2748,6 +2748,9 @@ export function apply(ctx, config) {
     // reads have been disposed (the rejection gets swallowed, quota burned).
     modelRuntime.dispose()
     push.dispose()
+    // 旧一代在途的公告轮询会在 fetch 返回后继续写 feed.json 并调用旧的 push
+    // （已 dispose）；dispose 让它在第一个 await 之后放弃。
+    feed.dispose?.()
     watcher?.()
   }, 'our-free-model: push + watcher')
 

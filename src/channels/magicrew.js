@@ -373,12 +373,26 @@ export async function completeMagicrewLogin(product, { jwt, organizationCode, fe
 
 /** 权益扩展：目录 + 积分 + 签到。 */
 export function createMagicrewExtras({ product = MAGICREW_PRODUCTS.magicrew, credentialOf, fetch: fetchImpl = fetch, persist } = {}) {
+  /**
+   * `accountId → 正在跑的续签`。
+   *
+   * 续签会吊销旧 key：两个并发读（面板轮询 + 推理取号）撞在同一个账号上时，
+   * 各自续一次，后一次会让前一次刚写回的 key 失效。按账号单飞。
+   */
+  const refreshing = new Map()
   async function live(account) {
     const raw = await credentialOf(account)
     if (raw === null || typeof raw.jwt !== 'string' || raw.jwt === '') return { error: '凭据不可用（需要重新登录）' }
     // ⚠️ 续签会吊销旧 key：只在「快过期」时做，且不在推理路径上。
     if (shouldRefreshKey(raw) && typeof raw.refreshToken === 'string' && raw.refreshToken !== '') {
-      const refreshed = await refreshGatewayKey(product, { refreshToken: raw.refreshToken, fetch: fetchImpl })
+      const key = `magicrew:${String(account?.id ?? '')}`
+      let pending = refreshing.get(key)
+      if (pending === undefined) {
+        pending = refreshGatewayKey(product, { refreshToken: raw.refreshToken, fetch: fetchImpl })
+          .finally(() => refreshing.delete(key))
+        refreshing.set(key, pending)
+      }
+      const refreshed = await pending
       if (refreshed.error === undefined) {
         const next = { ...raw, ...refreshed.key, provider: product.id }
         if (typeof persist === 'function' && typeof account?.id === 'string') {

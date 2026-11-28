@@ -168,6 +168,15 @@ export class AnnouncementFeed {  /**
     this.error = ''
     this.polling = null
     this.knownIds = new Set()
+    /** Set by `dispose()`: an in-flight poll from a torn-down generation must
+     *  not write its snapshot over the successor's cache or call the old hub. */
+    this.disposed = false
+  }
+
+  /** Stop this generation's polls. The in-flight fetch is abandoned at its
+   *  first await point rather than aborted (no signal crosses `fetchFeed`). */
+  dispose() {
+    this.disposed = true
   }
 
   /** Read the cached copy from disk; fresh installs start empty and stay silent on first poll. */
@@ -238,6 +247,9 @@ export class AnnouncementFeed {  /**
           return { arrived: [], total: this.cache.announcements.length, source: this.cache.source }
         }
         const { feed, source } = await fetchFeed(sources)
+        // The generation may have been torn down while the fetch was in flight:
+        // its cache file and its push hub are already replaced.
+        if (this.disposed) return { arrived: [], total: this.cache.announcements.length, source: this.cache.source }
         const hadCache = this.knownIds.size > 0
         const previousIds = new Set(this.knownIds)
         this.cache = { at: Date.now(), source, announcements: feed.announcements }

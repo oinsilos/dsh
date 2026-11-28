@@ -534,11 +534,24 @@ export async function fetchCreditDetails(credential, { product = MINIMAX_PRODUCT
  * @param {(accountId: string, credential: object) => Promise<void>} [options.persist] - 续期后回写
  */
 export function createMinimaxExtras({ credentialOf, product = MINIMAX_PRODUCTS.minimaxintl, fetch: fetchImpl = fetch, persist } = {}) {
+  /**
+   * `accountId → 正在跑的续期`。面板轮询与并发推理回合同时发现过期时，两边会各自
+   * 拿同一份一次性 refresh_token 去换 —— 后一次必然失败，而它的失败视图会盖掉
+   * 前一次刚续好的结果。按账号单飞。
+   */
+  const refreshing = new Map()
   /** 取一次「可用」的凭据（过期就地续期，续期后回写账号表）。 */
   async function live(account) {
     const raw = await credentialOf(account)
     if (raw === null) return { error: '凭据不可用（需要重新登录）' }
-    const ensured = await ensureMinimaxCredential(raw, { product, fetch: fetchImpl })
+    const key = `minimax:${product.id}:${String(account?.id ?? '')}`
+    let pending = refreshing.get(key)
+    if (pending === undefined) {
+      pending = ensureMinimaxCredential(raw, { product, fetch: fetchImpl })
+        .finally(() => refreshing.delete(key))
+      refreshing.set(key, pending)
+    }
+    const ensured = await pending
     if (ensured.error !== undefined) return { error: ensured.error }
     if (ensured.refreshed && typeof persist === 'function' && typeof account?.id === 'string') {
       await persist(account.id, ensured.credential).catch?.(() => {})
