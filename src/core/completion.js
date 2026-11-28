@@ -1,6 +1,6 @@
 import { ROUTE_MAIN } from '../adapter.js'
 import { toOpenAiUsage } from '../forward.js'
-import { isPoolEntry } from '../forward-pool.js'
+import { DEFAULT_POOL_NAME, isPoolEntry, POOL_PREFIX } from '../forward-pool.js'
 
 export function routableModelIds(snapshot) {
   /**
@@ -39,14 +39,34 @@ export function publicModelRows(snapshot) {
     }))
 }
 
+/** Resolve a client-supplied model name to a catalog row.
+ *
+ * The pool's short name is a first-class alias: its catalog id is `pool:auto`
+ * (the prefix is what keeps it from colliding with a real model), but the panel's
+ * own example and every failover router on the market write `"model": "auto"`.
+ * Matching only the exact id answered 404 for the very name the UI printed.
+ */
+function entryFor(snapshot, model) {
+  const direct = snapshot.catalog.find(candidate => candidate.id === model)
+  if (direct !== undefined) return direct
+  const alias = `${POOL_PREFIX}${model}`
+  return snapshot.catalog.find(candidate => isPoolEntry(candidate) && candidate.id === alias)
+}
+
 /** 固定本次请求的模型和配置快照，两个入口使用同一条推理链路。 */
 export function createForwardCompletion({ adapter, state, signal }) {
   return async (request, onChunk) => {
     if (signal?.aborted) throw Object.assign(new Error('model runtime is stopped'), { statusCode: 503 })
     const snapshot = state()
-    const entry = snapshot.catalog.find(candidate => candidate.id === request.model)
+    const entry = entryFor(snapshot, request.model)
     if (entry === undefined || !routableModelIds(snapshot).has(entry.id)) {
-      throw Object.assign(new Error(`model "${request.model}" not found`), { statusCode: 404 })
+      // A client that followed the panel's own example asks for "auto" while the
+      // pool is off. A bare 404 sends the user looking for a typo; name the
+      // switch instead.
+      const poolOff = request.model === DEFAULT_POOL_NAME && !snapshot.catalog.some(isPoolEntry)
+      throw Object.assign(new Error(poolOff
+        ? `model "${request.model}" not found — the forward pool is not enabled: tick models in the settings page's "Forward entry" panel and save`
+        : `model "${request.model}" not found`), { statusCode: 404 })
     }
     const openAi = request.openAi ?? {}
     // Two callers converge here. The OpenAI/Responses listener hands over a raw

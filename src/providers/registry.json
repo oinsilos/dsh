@@ -3088,7 +3088,7 @@
       "env": "ARK_API_KEY",
       "url": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
     },
-    "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+    "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
     "format": "openai-chat",
     "models": [
       {

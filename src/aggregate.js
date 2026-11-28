@@ -470,7 +470,7 @@ export async function testProvider(config, providerId, options) {
  * The key probe above only reads the listing; a model in that listing can still
  * be dead for this account (not entitled, retired, wrong region). The settings
  * page therefore offers a per-model test, and this is it: one non-streaming
- * request with a 16-token ceiling — the smallest call every wire in the registry
+ * request with a small ceiling — the smallest call every wire in the registry
  * accepts.
  *
  * @returns {Promise<{ok:boolean, status:number, message:string}>}
@@ -499,7 +499,7 @@ export async function testModel(config, providerId, modelId, { signal, timeoutMs
     const body = await response.text().catch(() => '')
     if (!response.ok) {
       const failure = classifyUpstream(response.status, body, retryAfterMs(response), resolved.apiKey)
-      return { ok: false, status: response.status, message: failure.message }
+      return { ok: false, status: response.status, message: emptyBodyHint(failure.message, body) }
     }
     let payload = null
     try { payload = JSON.parse(redact(body, resolved.apiKey)) } catch { payload = null }
@@ -518,9 +518,17 @@ export async function testModel(config, providerId, modelId, { signal, timeoutMs
   }
 }
 
-/** The smallest legal completion body per wire (16 output tokens). */
+/** A 403/400 with no body says nothing; name the likely cause instead of "HTTP 403". */
+function emptyBodyHint(message, bodyText) {
+  if (text(bodyText) !== '') return message
+  return `${message} (empty response body — the key can read the model listing but the provider refused this call; check the account's verification and whether this model is activated)`
+}
+
+/** The smallest legal completion body per wire. 64 tokens rather than 16:
+ *  a few providers reject tiny ceilings, and a reasoning model would spend the
+ *  whole budget thinking and still answer 200. */
 function probeBody(wire, model) {
-  const budget = 16
+  const budget = 64
   if (wire === 'messages') {
     return { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: budget, stream: false }
   }

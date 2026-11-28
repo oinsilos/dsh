@@ -85,7 +85,13 @@ export function transportCause(error) {
 export function classifyFailure(status, payload, retryAfterMs) {
   const error = payload?.error ?? payload ?? {}
   const type = typeof error.type === 'string' ? error.type : ''
-  const raw = typeof error.message === 'string' ? error.message : `upstream HTTP ${status}`
+  // Providers do not all speak OpenAI's `{error:{message}}`: NVIDIA answers with
+  // RFC 7807 problem details (`{title, detail}`), and reading only `message`
+  // turned a precise "Authorization failed" into a bare "upstream HTTP 403".
+  const raw = typeof error.message === 'string' ? error.message
+    : typeof error.detail === 'string' ? error.detail
+      : typeof error.title === 'string' ? error.title
+        : `upstream HTTP ${status}`
   // A front proxy (the free lane's CDN, the co-paid lane's WAF) answers hard
   // failures with a whole HTML error page. The status alone misfiles it — a
   // WAF's 403 is not a bad credential, its 413 is not a request the user can
