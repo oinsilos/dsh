@@ -266,6 +266,9 @@ export async function fetchAgnescodeCatalog(credential, { fetch: fetchImpl = fet
     }
     let payload
     try { payload = JSON.parse(text) } catch { return { error: '模型目录不是 JSON（上游形态可能变了）' } }
+    // 200 但形状不认识 ≠ 真的 0 个模型：以前会把这当成 `live` 空目录，
+    // 面板上看起来就是「这个渠道一个模型都没有」，真实原因是上游改了字段。
+    if (!Array.isArray(payload?.data)) return { error: '模型目录形状不认识（缺少 data 数组，上游形态可能变了）' }
     return { models: parseAgnesModels(payload) }
   } catch (error) {
     return { error: `模型目录网络失败：${error instanceof Error ? error.message : String(error)}` }

@@ -120,6 +120,10 @@ export class JsonStore {
       // final flush would otherwise skip a write that never landed and drop
       // the session's last changes silently.
       this.dirty = true
+      // Re-arm a retry too: waiting for the next mutation means a transient
+      // lock/permission blip keeps the last acknowledged change in memory
+      // until the user happens to touch another setting.
+      if (!this.disposed && this.timer === undefined) this.schedule(10_000)
       if (!this.writeFailed) {
         this.writeFailed = true
         this.log?.(`our-free-model: could not persist ${path.basename(this.file)} (${error?.message ?? error}); changes are kept in memory only`)

@@ -159,7 +159,9 @@ export async function exchangeOfficeaceCode({ code, codeVerifier, privateJwk, fe
   const accessToken = typeof payload.access_token === 'string' ? payload.access_token : undefined
   const refreshToken = typeof payload.refresh_token === 'string' ? payload.refresh_token : undefined
   if (accessToken === undefined && payload.credentials === undefined) {
-    return { error: `token 响应里没有 access_token（${JSON.stringify(payload).slice(0, 200)}）` }
+    // 不要把整份响应写进错误：这份 payload 里就带着 30 天有效的一次性
+    // `refresh_token`，错误会进面板、日志和会话记录。只列字段名。
+    return { error: `token 响应里没有 access_token（响应字段：${Object.keys(payload).slice(0, 12).join(', ') || '空'}）` }
   }
   const expiresIn = Number(payload.expires_in)
   return {

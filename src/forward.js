@@ -139,7 +139,14 @@ async function readBody(req) {
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload)
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body), 'cache-control': 'no-store' })
+  // Same CORS envelope as the SSE headers and the preflight: a browser harness
+  // on another origin must be able to *read* a 401/404, not just be blocked.
+  res.writeHead(status, {
+    ...corsHeaders(),
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+  })
   res.end(body)
 }
 
@@ -826,7 +833,9 @@ async function chatCompletions(req, res, complete, options = {}) {
 
   openStreamHeaders(res, options.heartbeatMs)
   sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] })
-  const outcome = await complete({ model, openAi: body }, (chunk) => {
+  let outcome
+  try {
+    outcome = await complete({ model, openAi: body }, (chunk) => {
     if (res.destroyed) return
     if (chunk.type === 'text-delta') {
       sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta: { content: chunk.text }, finish_reason: null }] })
@@ -860,7 +869,19 @@ async function chatCompletions(req, res, complete, options = {}) {
     if (chunk.type === 'usage') {
       sendSse(res, { id, object: 'chat.completion.chunk', created, model, choices: [], usage: toOpenAiUsage(chunk.usage) })
     }
-  })
+    })
+  } catch (error) {
+    // The 200 status line went out with the SSE headers, so a dispatch that
+    // throws before its first chunk — an unroutable model, the pool switched
+    // off — has nowhere to put a status code. The outer `handle` catch can only
+    // `res.end()`, which is the empty 200 an OpenAI client reads as "the model
+    // answered nothing". Say it in the stream instead, where the protocol has a
+    // slot for it, and close with `[DONE]` so the client stops waiting.
+    sendSse(res, { error: { message: String(error?.message ?? error), type: 'server_error' } })
+    res.write('data: [DONE]\n\n')
+    res.end()
+    return
+  }
   if (outcome.error !== undefined) {
     // The status line went out with the first SSE header, so 200 is already spent
     // — but a turn the lane refused must still say so. Answering a refusal with a
@@ -1012,7 +1033,9 @@ async function responsesEndpoint(req, res, complete, options = {}) {
       say('response.output_item.added', { output_index: index, item: { type: 'function_call', item_id: `fc_${index}`, call_id: `fc_${index}`, name, arguments: '' } })
     }
     let usage
-    const outcome = await complete({ model, openAi, responses: true, responsesBody: body }, (chunk) => {
+    let outcome
+    try {
+      outcome = await complete({ model, openAi, responses: true, responsesBody: body }, (chunk) => {
       if (res.destroyed) return
       if (chunk.type === 'text-delta') {
         announceMessage()
@@ -1029,7 +1052,14 @@ async function responsesEndpoint(req, res, complete, options = {}) {
       if (chunk.type === 'usage') {
         usage = toOpenAiUsage(chunk.usage)
       }
-    })
+      })
+    } catch (error) {
+      // Same spent-status-line problem as the chat endpoint: report the failed
+      // dispatch as the terminal event this wire defines, not as an empty 200.
+      say('response.failed', { response: response({ status: 'failed', error: { message: String(error?.message ?? error) } }) })
+      res.end()
+      return
+    }
     if (outcome.error !== undefined) {
       say('response.failed', { response: response({ status: 'failed', error: { message: String(outcome.error) } }) })
       res.end()

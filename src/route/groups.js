@@ -398,9 +398,10 @@ export function resolveGroupCandidates(group, { catalog, failedKeys, hour, gate,
       skipped.push({ model: member.model, reason: 'missing', detail: '目录里没有这个模型（渠道未登录或模型已下架）' })
       continue
     }
-    // 虚拟行不能当分组成员：combo 需要自己的走链器，route 会递归。
-    if (entry.channel === 'combo' || entry.channel === 'route') {
-      skipped.push({ model: member.model, reason: 'virtual', detail: '组合链/分组不能作为另一个分组的成员' })
+    // 虚拟行不能当分组成员：combo 需要自己的走链器，route 会递归，pool 是
+    // 整条转发链的入口（把它当成员会再吞一次候选表并在池内二次换人）。
+    if (entry.channel === 'combo' || entry.channel === 'route' || entry.channel === 'pool') {
+      skipped.push({ model: member.model, reason: 'virtual', detail: '组合链/分组/转发池不能作为另一个分组的成员' })
       continue
     }
     if (!windowActive(member.windows, hour)) {

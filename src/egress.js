@@ -279,12 +279,35 @@ function relayRequest(req, res) {
     return
   }
   void (async () => {
-    const socket = await openTunnel(upstream, outlet)
+    // The client can walk away while the tunnel is still being dialed (a slow
+    // outlet, a 10 s CONNECT budget). The teardown listener is armed *before*
+    // the dial, not after, so that window cannot leave an orphan tunnel and an
+    // upstream request nobody will ever read.
+    let socket = null
+    let outgoing = null
+    const teardown = () => {
+      try { socket?.destroy() } catch { /* already gone */ }
+      try { outgoing?.destroy() } catch { /* already gone */ }
+    }
+    const onClose = () => {
+      teardown()
+      if (!res.writableFinished) {
+        activeRelay?.log?.(`relay: response for ${upstream.host} closed before finish (writableEnded=${res.writableEnded})`)
+        try { res.destroy() } catch { /* already gone */ }
+      }
+    }
+    res.on('close', onClose)
+    socket = await openTunnel(upstream, outlet)
+    if (res.destroyed === true) {
+      // Body never started: the aborted-client teardown already ran.
+      teardown()
+      return
+    }
     const agent = new http.Agent({ keepAlive: false })
     agent.createConnection = () => socket
     const headers = { ...req.headers, host: upstream.host }
     delete headers['transfer-encoding']
-    const outgoing = http.request({
+    outgoing = http.request({
       method: req.method,
       path: `${upstream.pathname}${upstream.search}`,
       headers,
@@ -307,24 +330,14 @@ function relayRequest(req, res) {
       activeRelay?.log?.(`egress relay: tunnel to ${upstream.host} failed: ${error?.message ?? error}`)
       failOnce(res, error)
     })
-    // A client abort (the harness aborts a dead turn) must tear the upstream
-    // side down too, or the socket idles until the outlet times it out. On a
-    // completed response only the one-shot tunnel socket goes: destroying the
-    // client connection while its body is still in flight reads as a reset to
-    // fetch(). The per-request tunnel is never reused (keepAlive: false).
-    res.on('close', () => {
-      outgoing.destroy()
-      socket.destroy()
-      if (!res.writableFinished) {
-        activeRelay?.log?.(`relay: response for ${upstream.host} closed before finish (writableEnded=${res.writableEnded})`)
-        try { res.destroy() } catch { /* already gone */ }
-      }
-    })
-    req.on('error', () => { outgoing.destroy() })
+    // On a completed response only the one-shot tunnel socket goes: destroying
+    // the client connection while its body is still in flight reads as a reset
+    // to fetch(). The per-request tunnel is never reused (keepAlive: false).
+    req.on('error', () => { outgoing?.destroy() })
     req.pipe(outgoing)
   })().catch(error => {
     activeRelay?.log?.(`egress relay: ${upstream.host} failed: ${error?.message ?? error}`)
-    failOnce(res, error)
+    if (res.destroyed !== true) failOnce(res, error)
   })
 }
 
@@ -379,11 +392,14 @@ async function openTunnel(upstream, outlet) {
 
 /** Plain TCP with the dial budget applied. */
 function netConnect(host, port) {
+  // The socket is created outside the race so the timeout can tear it down:
+  // without it a refused/black-holed dial left the fd half-open for the life
+  // of the process.
+  const socket = net.connect({ host, port })
   return withTimeout(new Promise((resolve, reject) => {
-    const socket = net.connect({ host, port })
     socket.once('connect', () => resolve(socket))
     socket.once('error', reject)
-  }), DIAL_TIMEOUT_MS, 'tcp connect')
+  }), DIAL_TIMEOUT_MS, 'tcp connect', socket)
 }
 
 /**

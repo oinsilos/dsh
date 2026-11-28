@@ -28,6 +28,14 @@
 export function createOwnAccountPicker({ accounts, refreshers = {}, logger } = {}) {
   /** provider → 上次用过的 account.id（用 id 而不是下标：账号表会增删）。 */
   const lastByProvider = new Map()
+  /**
+   * `provider:accountId → 正在跑的续期`。
+   *
+   * 续期是**有副作用的**：多数上游在发放新 access_token 的同时作废旧 refresh_token。
+   * 两个并发回合撞在同一个账号上时，各自续一次，后一次会把前一次刚写回的 refresh
+   * 作废，下一次续期就永久失败（用户看到「突然要重新登录」）。按账号单飞即可。
+   */
+  const refreshing = new Map()
 
   return {
     /**
@@ -56,8 +64,16 @@ export function createOwnAccountPicker({ accounts, refreshers = {}, logger } = {
         let refreshed = false
         const refresher = refreshers[provider]
         if (typeof refresher === 'function') {
+          const key = `${provider}:${account?.id ?? account?.nickname ?? offset}`
+          let pending = refreshing.get(key)
+          if (pending === undefined) {
+            pending = Promise.resolve()
+              .then(() => refresher(credential, { force }))
+              .finally(() => refreshing.delete(key))
+            refreshing.set(key, pending)
+          }
           try {
-            const ensured = await refresher(credential, { force })
+            const ensured = await pending
             // 续期失败但手上还有令牌：照旧发出去，让上游判 —— 本地判「过期」
             // 比上游准。只有「续期也没给出凭据」时才退回原凭据。
             if (ensured?.credential !== undefined && ensured?.credential !== null) credential = ensured.credential

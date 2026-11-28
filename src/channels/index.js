@@ -223,13 +223,34 @@ export function createChannelExtras({ pool, resolve, ownAccounts, fetch: fetchIm
         }
       }
       // 倍率与目录是**渠道维度**的，同一渠道各账号一致；合并成给模型列表用的一张表。
+      // `source` / `catalogNote` / `catalogError` 必须一起抬上来：各渠道的 `statusOf`
+      // 早就按行返回它们，但这里曾只挑 `catalog` 与 `ratios`，于是「实时/预制」
+      // 提示和失败原因在宿主侧永远是 undefined，面板只能显示成功的样子。
       const ratios = {}
       let catalog
+      let source
+      let catalogNote
+      let catalogError
       for (const row of rows) {
         for (const [model, ratio] of Object.entries(row.ratios ?? {})) if (ratios[model] === undefined) ratios[model] = ratio
-        if (catalog === undefined && Array.isArray(row.catalog) && row.catalog.length > 0) catalog = row.catalog
+        if (catalog === undefined && Array.isArray(row.catalog) && row.catalog.length > 0) {
+          catalog = row.catalog
+          source = typeof row.source === 'string' ? row.source : undefined
+        }
+        const note = typeof row.catalogNote === 'string' ? row.catalogNote : typeof row.note === 'string' ? row.note : undefined
+        if (catalogNote === undefined && note !== undefined) catalogNote = note
+        if (catalogError === undefined && typeof row.catalogError === 'string' && row.catalogError !== '') catalogError = row.catalogError
       }
-      return { provider, accounts: rows, ratios, ...catalog === undefined ? {} : { catalog }, supported: true }
+      return {
+        provider,
+        accounts: rows,
+        ratios,
+        ...catalog === undefined ? {} : { catalog },
+        ...source === undefined ? {} : { source },
+        ...catalogNote === undefined ? {} : { catalogNote },
+        ...catalogError === undefined ? {} : { catalogError },
+        supported: true,
+      }
     },
     /** 领取某个活动 / 每日签到；`campaignId` 省略时取该渠道的默认活动。 */
     async claim(provider, accountId, campaignId) {

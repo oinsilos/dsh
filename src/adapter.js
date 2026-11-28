@@ -300,7 +300,17 @@ export class FreeModelAdapter {
       retries,
     })
     yield * this.runChain(options, entry, slots, snapshot, {
-      planFor: candidate => ({ wire: wireOf(candidate.entry) }),
+      // 池和路由分组共用同一套「每模型并发上限」：`limitOf` 默认 0（不限），
+      // 用户显式设过的上限在池里也必须生效，否则网关这条路会绕过它。
+      planFor: candidate => ({
+        wire: wireOf(candidate.entry),
+        hold: () => {
+          const model = candidate.entry.id
+          if (this.deps.gate === null || this.deps.gate === undefined) return null
+          if (this.deps.gate.acquire(model) !== true) return false
+          return () => this.deps.gate.release(model)
+        },
+      }),
       onCommit: (candidate, result) => {
         if (result?.ok === true) this.deps.routeStore?.clearFailed(candidate.entry.id)
         this.deps.trace?.({ kind: 'pool-commit', pool: entry.id, model: candidate.entry.id, ok: result?.ok === true })
@@ -338,11 +348,10 @@ export class FreeModelAdapter {
        */
       retryInstead: (candidate, result, remainingForMember) => {
         const decision = decideFailure(result?.verdict, remainingForMember)
-        if (decision === 'stop') {
-          // Let the chain end naturally with this member's real error; advancing
-          // would replace a "your request is wrong" with a string of the same.
-          return false
-        }
+        // `'stop'` 必须原样交给 `runChain`：请求本身被拒（context 溢出、400），
+        // 换成员只会把同一份坏请求重发并逐个写进熔断。这里曾返回 `false`
+        // （= 普通换人），正好是它要避免的那件事。
+        if (decision === 'stop') return 'stop'
         if (decision === 'retry') return 'retry'
         // `advance` on a member that still has queued retry slots means it died
         // for a reason a retry cannot cure — skip the rest of its slots.
@@ -424,7 +433,9 @@ export class FreeModelAdapter {
           || (candidate.entry.channel === 'host' ? undefined : options.reasoningEffort),
         hold: () => {
           const model = candidate.entry.id
-          if (this.deps.gate?.acquire(model) !== true) return null
+          // 没有闸门（测试/无头组合）= 不限制；`false` 表示"满员，跳过这个候选"。
+          if (this.deps.gate === null || this.deps.gate === undefined) return null
+          if (this.deps.gate.acquire(model) !== true) return false
           return () => this.deps.gate.release(model)
         },
       }),
@@ -492,6 +503,14 @@ export class FreeModelAdapter {
       const candidate = candidates[index]
       const plan = hooks.planFor?.(candidate, index) ?? {}
       const release = plan.hold?.() ?? null
+      // `false` = 闸门已满，这个候选根本不该发：`gate` 的契约是「第四个请求
+      // 不排队、换组内下一个空闲模型」。此前 `hold` 返回 null 时候选照跑，
+      // 并发上限形同虚设。
+      if (release === false) {
+        tried.push(`${candidate.entry.id} (busy: at its concurrency limit)`)
+        this.deps.trace?.({ kind: 'route-gate', model: candidate.entry.id, skipped: true })
+        continue
+      }
       try {
         const passOptions = plan.reasoningEffort !== undefined
           ? { ...options, reasoningEffort: plan.reasoningEffort }
@@ -569,9 +588,9 @@ export class FreeModelAdapter {
         } else if (directive === 'stop') {
           // Request-scoped refusal: the body itself is wrong, so no other member
           // can succeed. Hand back this member's real error instead of diluting
-          // it into "exhausted every candidate".
+          // it into "exhausted every candidate" — and do NOT report it as this
+          // member's fault (`onAdvance` writes the day-long circuit breaker).
           tried.push(`${candidate.entry.id} (${reason})`)
-          hooks.onAdvance?.(candidate, result, reason)
           rejectedTurn(index + 1)
           for (const chunk of held) yield chunk
           return
@@ -705,10 +724,18 @@ export class FreeModelAdapter {
       return { advance: false, verdict: null, ok: false, recovered: false }
     }
     // 转发失败的真实原因必须留在熔断记录里：只写 "unknown/transient" 的话，
-    // 面板上根本看不出是没装适配器、模型下线还是参数被拒。
+    // 面板上根本看不出是没装适配器、模型下线还是参数被拒。宿主 `finish` 的
+    // failure 偶尔带 `status` / `retryAfterMs`（429 的 Retry-After），一起交给
+    // 分类器，否则 401/403/429 会被归成 transient，冷却和「换人」都失效。
     const text = String(failure?.failure?.message ?? thrown?.message ?? thrown ?? '')
+    const detail = failure?.failure ?? {}
     const verdict = {
-      ...classifyFailure({ code: failure?.failure?.code ?? thrown?.code, message: text }),
+      ...classifyFailure({
+        code: detail.code ?? thrown?.code,
+        message: text,
+        ...Number.isFinite(Number(detail.status)) ? { status: Number(detail.status) } : {},
+        ...Number.isFinite(Number(detail.retryAfterMs)) ? { retryAfterMs: Number(detail.retryAfterMs) } : {},
+      }),
       rule: `forward: ${text.slice(0, 120)}`,
     }
     return { advance: true, verdict, ok: false, recovered: false }
@@ -951,9 +978,14 @@ export class FreeModelAdapter {
        * commits on, and once committed the combo ignores `advance` anyway, so
        * this predicate and the commit rule stay two views of one definition.
        */
-      const advanceVerdict = (code, message, status) => {
+      const advanceVerdict = (code, message, status, retryAfterMs) => {
         if (plan.allowAdvance !== true || options.signal?.aborted === true || sawAnswer) return { advance: false, verdict: null }
-        const verdict = classifyFailure({ status, code, message })
+        // `providerRetryAfterMs` 是 429 的 Retry-After，之前在这里被丢掉，
+        // 冷却只能退回规则默认值；交给分类器才会按上游要求的时间安静。
+        const verdict = classifyFailure({
+          status, code, message,
+          ...Number.isFinite(Number(retryAfterMs)) && Number(retryAfterMs) > 0 ? { retryAfterMs: Number(retryAfterMs) } : {},
+        })
         return { advance: shouldAdvance(verdict), verdict }
       }
       try {
@@ -1080,7 +1112,7 @@ export class FreeModelAdapter {
           ok: false,
           ...aborted
             ? { advance: false, verdict: null }
-            : advanceVerdict(failure.code, failure.message, failure.status),
+            : advanceVerdict(failure.code, failure.message, failure.status, failure.providerRetryAfterMs),
         }
       } finally {
         clearTimeout(timer)

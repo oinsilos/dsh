@@ -356,13 +356,19 @@ export function createCodelyExtras({ credentialOf, fetch: fetchImpl = fetch }) {
     const catalog = catalogResult.ok ? parseModelStatus(catalogResult.payload) : []
     const info = usageResult.ok ? parseUsageSummary(usageResult.payload) : null
     const checkin = checkinResult.ok ? parseCheckinState(checkinResult.payload) : null
+    // 目录：远端可用就用远端；拿不到时如实给兜底，并把原因分开写——401/网络失败
+    // 与「远端就是空的」是两件事，之前都写成「远端目录为空」，用户会以为上游真没模型。
+    const remoteCatalog = catalog.length > 0
     return {
       ...base,
-      // 目录：远端可用就用远端；空的时候如实给兜底（并在 note 里说明）。
-      catalog: catalog.length > 0
+      catalog: remoteCatalog
         ? catalog.map(row => ({ id: row.id, name: row.id, ...row.status === undefined ? {} : { status: row.status } }))
         : FALLBACK_MODELS.map(id => ({ id, name: id })),
-      ...catalog.length > 0 ? {} : { catalogNote: '远端目录为空，已列兜底的 8 个模型组' },
+      ...remoteCatalog
+        ? { source: 'live' }
+        : catalogResult.ok
+          ? { source: 'static', catalogNote: '远端目录为空，已列兜底的 8 个模型组' }
+          : { source: 'static', catalogError: `目录查询失败（HTTP ${catalogResult.status}）${String(catalogResult.error ?? '').slice(0, 120)}` },
       info,
       ...usageResult.ok ? {} : { infoError: `余额查询失败（HTTP ${usageResult.status}）` },
       checkin,

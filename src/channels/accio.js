@@ -391,12 +391,17 @@ export function createAccioExtras({ credentialOf, fetch: fetchImpl = fetch }) {
     const token = await tokenOf(account)
     if (token === '') return { ...base, error: '凭据不可用（需要重新登录）' }
 
-    // 目录：token 在 **body**
+    // 目录：token 在 **body**。Accio 的 modelCode 非人类可读，没有静态兜底表，
+    // 所以失败必须把原因带出去——否则面板上只剩「这个渠道 0 个模型」。
     let catalog = []
+    let catalogError
     try {
       const result = await call(fetchImpl, { path: CATALOG_PATH, method: 'POST', token, tokenIn: 'body', body: { token } })
       if (result.envelope.ok) catalog = parseCatalog(result.envelope.data)
-    } catch { /* 目录失败不影响余额那条腿 */ }
+      else catalogError = `目录查询失败：${result.envelope.message}`
+    } catch (failure) {
+      catalogError = `目录查询失败：${failure instanceof Error ? failure.message : String(failure)}`
+    }
 
     // 订阅：token 在 **query**
     let info = null
@@ -415,6 +420,8 @@ export function createAccioExtras({ credentialOf, fetch: fetchImpl = fetch }) {
       ...base,
       ...error === undefined ? {} : { error },
       ...info === null ? {} : { info },
+      ...catalogError === undefined ? {} : { catalogError },
+      ...catalog.length === 0 ? {} : { source: 'live' },
       // Accio 的 modelCode 非人类可读（如 `1Drift-N8kP2Q7wR5mX`），目录必须来自远端。
       catalog,
     }

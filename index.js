@@ -1562,26 +1562,35 @@ export function apply(ctx, config) {
       diagLog({ kind: 'provider', provider, accounts: accounts.length, signedIn: enabled[provider] })
       if (accounts.length === 0) continue
       const cached = ownCatalogs.get(provider)
-      const stale = cached === undefined || cached.error !== undefined || Date.now() - cached.at > OWN_CATALOG_TTL_MS
+      const stale = cached === undefined || cached.error !== undefined || cached.catalogError !== undefined
+        || Date.now() - cached.at > OWN_CATALOG_TTL_MS
       if (!refresh && !stale) continue
       try {
         const status = await channelExtras.status(provider)
-        const rows = Array.isArray(status?.catalog) ? status.catalog : []
+        const fresh = Array.isArray(status?.catalog) ? status.catalog : []
+        const cachedRows = Array.isArray(cached?.rows) ? cached.rows : []
+        // 这一轮没取到目录 ≠ 上游真没有模型：401/网络失败/形状变化都会走到这里。
+        // 保留上一份健康目录（本文件的既定取向：宁可旧目录，也不要整组消失），
+        // `at` 不前移，下一次同步立刻重试。
+        const kept = fresh.length === 0 && cachedRows.length > 0
+        const rows = kept ? cachedRows : fresh
         // `source` 由各渠道的 statusOf 决定：远端成功 = live；回退内置表 =
         // static/preset。没写 source 但给了目录的渠道按 live（它们自己已回退）。
-        const source = status?.source === 'static' ? 'preset' : (rows.length > 0 ? 'live' : 'preset')
+        const source = status?.source === 'static' ? 'preset' : (fresh.length > 0 ? 'live' : (kept ? cached?.source ?? 'preset' : 'preset'))
+        const catalogError = status?.catalogError
+          ?? (kept ? cached?.catalogError ?? '本轮没有取到目录，沿用上一份成功目录' : undefined)
         ownCatalogs.set(provider, {
           rows,
-          at: Date.now(),
+          at: kept ? cached?.at ?? 0 : Date.now(),
           source,
-          ...status?.catalogNote === undefined && status?.note === undefined
+          ...(status?.catalogNote ?? status?.note) === undefined
             ? {}
             : { note: status?.catalogNote ?? status?.note },
-          ...status?.catalogError === undefined ? {} : { catalogError: status.catalogError },
+          ...catalogError === undefined ? {} : { catalogError },
           // 倍率与目录同源：面板「模型」折叠直接显示，不再依赖另开「活动」折叠。
           ratios: status?.ratios !== null && typeof status?.ratios === 'object' ? status.ratios : {},
         })
-        diagLog({ kind: 'catalog', provider, rows: rows.length, source })
+        diagLog({ kind: 'catalog', provider, rows: rows.length, source, ...kept ? { kept: true } : {} })
       } catch (error) {
         // 抓取失败**不覆盖**已有行（宁可旧目录，也不要整组消失）。
         ownCatalogs.set(provider, {
@@ -1994,8 +2003,9 @@ export function apply(ctx, config) {
       },
       models: visible
         // 组合链不能进分组：`runChain` 把成员当实模型直接发下游，没有嵌套 combo 的
-        // 递归路径；把 `combo:` 放进组会以 chat 协议打到免费车道端点。
-        .filter(entry => !isRouteEntry(entry) && !isComboEntry(entry))
+        // 递归路径；把 `combo:` 放进组会以 chat 协议打到免费车道端点。转发池同理：
+        // 池是入口而不是成员，嵌套会二次换人。
+        .filter(entry => !isRouteEntry(entry) && !isComboEntry(entry) && !isPoolEntry(entry))
         .map(entry => ({
           id: entry.id,
           name: entry.name,
@@ -2144,8 +2154,13 @@ export function apply(ctx, config) {
         combos: normalizeCombos(settings.get().combos),
         // Every id a chain may reference, with the display name the picker uses —
         // the editor offers a searchable list instead of a free-text field, so a
-        // typo cannot become a chain link that silently never resolves.
-        models: state().catalog.map(entry => ({ id: entry.id, name: entry.name, channel: entry.channel ?? 'free', vision: entry.vision === true })),
+        // typo cannot become a chain link that silently never resolves. Virtual
+        // rows are not links: `runChain` would post `pool:`/`route:`/`combo:` to a
+        // real endpoint, and `buildComboCatalog` drops them anyway — offering them
+        // here only produced chains that silently lost their tail.
+        models: state().catalog
+          .filter(entry => !isPoolEntry(entry) && !isComboEntry(entry) && !isRouteEntry(entry))
+          .map(entry => ({ id: entry.id, name: entry.name, channel: entry.channel ?? 'free', vision: entry.vision === true })),
         strategies: ['fallback', 'round-robin'],
       }),
       save: async patch => {
@@ -2684,6 +2699,9 @@ export function apply(ctx, config) {
   ctx.effect(() => () => {
     disposed = true
     eacLoginPoller.reset()
+    // 关掉还开着的登录浏览器：面板关掉/插件卸载后这些 Chromium 进程没有别人收，
+    // 会一直挂在后台（用户以为点击已取消，实际窗口和 CDP 端口都还在）。
+    for (const accountId of [...browserLogins.keys()]) closeBrowserFlow(accountId)
     // The geography-reprobe timer belongs to this generation; without this it
     // outlives teardown and fires a forced probe round after the stores it
     // reads have been disposed (the rejection gets swallowed, quota burned).
