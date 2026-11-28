@@ -625,6 +625,8 @@ window.__ModuleLoader__.load({
         'gw.sub': '把渠道模型以 OpenAI 兼容接口发给本机与局域网工具：端点、密钥与转发端口都在这里。',
         'gw.gatewayTitle': '渠道模型网关（宿主，全部渠道，OpenAI 兼容）',
         'gw.gatewayHint': '覆盖全部已接入渠道（含渠道包与其它 provider）；Chat Completions 与 Responses 两套接口同时可用。它由宿主提供、与本插件转发各自独立监听。',
+        'gw.compatTitle': '兼容：宿主网关与其中继',
+        'gw.compatClosed': '推荐用上面的本地转发；自动路由只在那里生效。展开看宿主网关',
         'gw.running': '运行中',
         'gw.stopped': '未运行',
         'gw.envBlocked': '已被环境变量停用',
@@ -1523,6 +1525,8 @@ window.__ModuleLoader__.load({
         'gw.sub': 'Serve the channel models over an OpenAI-compatible API to this machine and the LAN: endpoint, key and relay port live here.',
         'gw.gatewayTitle': 'Channel gateway (host, all channels, OpenAI compatible)',
         'gw.gatewayHint': 'Covers every connected channel (incl. channel packs and other providers); Chat Completions and Responses are both served. Provided by the host, on its own listener separate from this plugin\'s forward port.',
+        'gw.compatTitle': 'Compatibility: host gateway and its relay',
+        'gw.compatClosed': 'Prefer the local forward above; the auto pool only works there. Expand for the host gateway',
         'gw.running': 'Running',
         'gw.stopped': 'Not running',
         'gw.envBlocked': 'Disabled by environment',
@@ -1914,6 +1918,11 @@ window.__ModuleLoader__.load({
 .ofm_panel{padding:16px;border-radius:16px;border:1px solid var(--dsw-alias-border-l2);background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 82%,transparent);box-shadow:inset 0 1px 0 rgb(255 255 255 / 5%),0 2px 6px rgb(0 0 0 / 4%);display:flex;flex-direction:column;gap:12px}
 .ofm_paneltitle{font-size:12px;font-weight:680;letter-spacing:.2px;color:var(--dsw-alias-label-secondary);display:flex;align-items:center;gap:8px}
 .ofm_paneltitle .ofm_sec_hint{font-weight:400;letter-spacing:0}
+/* 兼容折叠区（宿主网关 A + 中继 C）：整条是按钮，视觉上比主路径的 Section 轻。 */
+.ofm_compat-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px;margin:0;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.ofm_compat-toggle:hover{background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 80%,transparent)}
+.ofm_compat-toggle .ofm_note{display:block;margin-top:2px}
+.ofm_compat-body{display:flex;flex-direction:column;gap:14px;margin-top:12px}
 .ofm_row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 /* ══ 请求热度图 ════════════════════════════════════════════════════════ */
 .ofm_heat{display:grid;grid-auto-flow:column;grid-auto-columns:12px;grid-template-rows:repeat(7,12px);justify-content:start;gap:2px;overflow-x:auto;padding:2px 0 6px}
@@ -6419,6 +6428,10 @@ window.__ModuleLoader__.load({
       const showRelayKey = async () => {
         try { setRelayKey((await api('/chan-gateway/key')).key ?? '') } catch { setRelayKey('') }
       }
+      // 兼容区折叠态：宿主网关（A）与它的局域网中继（C）不是推荐路径——自动路由
+      // 只活在插件的转发端口上。默认收起，展开不卸载（保持已填状态），顶部加一行
+      // 说明为什么它排在最后。
+      const [compatOpen, setCompatOpen] = useState(false)
 
       // The RPC returns structured values, not strings: `address` is
       // { host, port } and `apiKey` is { value, fromEnv, path } — rendering
@@ -6431,10 +6444,10 @@ window.__ModuleLoader__.load({
       const apiKeyInfo = typeof status?.apiKey === 'object' && status?.apiKey !== null ? status.apiKey : null
       const apiKeyValue = apiKeyInfo?.value ?? ''
       const models = status?.models ?? []
-      return h('div', { className: 'ofm_page' },
-        h(PageHero, { title: t('gw.title'), sub: t('gw.sub') },
-          h(Button, { onClick: () => { void loadGateway(); void loadRelay() } }, t('dash.refresh'))),
-        notice !== '' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, notice)) : null,
+      // 兼容区内容（宿主网关 A + 其中继 C）：整块包进一个可折叠容器。折叠不卸载，
+      // RPC 状态照常拉取，展开即用。页面骨架（hero、notice）留在主 return 里，
+      // 只有 A/C 两个 Section 真正被折叠。
+      const compatBody = h(Fragment, null,
         h(Section, { title: t('gw.gatewayTitle'), hint: t('gw.gatewayHint') },
           status === undefined && rpcReady !== false ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
             // 宿主没有 connection RPC：这是环境事实，不是加载中。说清楚缺什么、
@@ -6528,38 +6541,24 @@ window.__ModuleLoader__.load({
                   onClick: async () => { try { setRelayKey((await post('/chan-gateway/rotate')).key ?? '') } catch (error) { setNotice(String(error?.message ?? error)) } },
                 }, t('gw.rotate'))),
               h('p', { className: 'ofm_note' }, t('gw.relayNote')),
-              h('p', { className: 'ofm_note' }, t('gw.freeLaneNote')))),
-        h(Section, { title: t('gw.clientsTitle'), hint: t('gw.clientsHint') },
-          clients.status === 'loading' ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
-            : clients.status === 'error'
-              ? h(PanelError, { t, title: t('gw.clientsTitle'), message: clients.error, onRetry: clients.reload })
-              // The recipes are generated from the port that actually bound, so a
-              // listener that is off has nothing honest to print: the route answers
-              // with a placeholder port and a placeholder key, and a pasted
-              // placeholder is a client that silently fails to connect.
-              : clients.data?.running !== true
-                ? h('div', { className: 'ofm_callout ofm_rise' },
-                  h('div', null, h('b', null, t('gw.clientsOff')), h('div', null, t('gw.clientsOffHint'))))
-                : h('div', { className: 'ofm_panel ofm_rise' },
-                  h('div', { className: 'ofm_row' },
-                    h('span', { className: 'ofm_note' }, t('forward.baseUrl')),
-                    h('code', { className: 'ofm_mono' }, clients.data.baseUrl),
-                    h(CopyButton, { t, text: clients.data.baseUrl }),
-                    h('span', { className: 'ofm_note' }, t('gw.clientsModels').replace('{n}', String((clients.data.models ?? []).length)))),
-                  clients.data.lanUrl === '' ? null
-                    : h('div', { className: 'ofm_row' },
-                      h('span', { className: 'ofm_note' }, t('forward.lanUrl')),
-                      h('code', { className: 'ofm_mono' }, clients.data.lanUrl),
-                      h(CopyButton, { t, text: clients.data.lanUrl })),
-                  h('div', { className: 'ofm_duo' }, (clients.data.snippets ?? []).map((snippet, index) => h('div', {
-                    key: snippet.id, className: 'ofm_card ofm_rise',
-                    style: { animationDelay: `${Math.min(index, 8) * 22}ms` },
-                  },
-                  h('div', { className: 'ofm_cardhead' },
-                    h('span', { className: 'ofm_cardname' }, snippet.name),
-                    h('span', { className: 'ofm_tag' }, snippet.language)),
-                  h('pre', { className: 'ofm_snippet' }, snippet.body),
-                  h('div', { className: 'ofm_row' }, h(CopyButton, { t, text: snippet.body }))))))))
+              h('p', { className: 'ofm_note' }, t('gw.freeLaneNote')))))
+
+      // 页面骨架：hero（刷新）+ 错误条 + 兼容折叠区。主路径的三个 Section
+      // （对外入口 / 本地转发 / 出口代理）由页签组装处渲染，见 gateway 分支。
+      return h('div', { className: 'ofm_page' },
+        h(PageHero, { title: t('gw.title'), sub: t('gw.sub') },
+          h(Button, { onClick: () => { void loadGateway(); void loadRelay() } }, t('dash.refresh'))),
+        notice !== '' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, notice)) : null,
+        h('div', { className: 'ofm_panel' },
+          h('button', {
+            type: 'button', className: 'ofm_compat-toggle',
+            onClick: () => setCompatOpen(v => !v),
+          },
+          h('span', null,
+            h('b', null, t('gw.compatTitle')),
+            h('span', { className: 'ofm_note' }, compatOpen ? '' : t('gw.compatClosed'))),
+          h('span', { className: 'ofm_chev' }, compatOpen ? '▾' : '▸')),
+          compatOpen ? h('div', { className: 'ofm_compat-body' }, compatBody) : null))
     }
 
     /** Shared page hero for the three gateway-console pages. The caller
@@ -9129,6 +9128,9 @@ window.__ModuleLoader__.load({
               : tab === 'retry'
                 ? h(RetryPage, { t })
                 : tab === 'gateway'
+                // 收敛后的三段式：主路径（池→转发→局域网）→ 出口代理 → 兼容区
+                //（宿主网关与其局域网中继折叠起来）。详见 ForwardPoolPage 顶部的
+                // 结构图注释。
                 ? h('div', { className: 'ofm_page' },
                   h(ForwardPoolPage, { t }),
                   h(Section, { title: t('section.forward'), hint: t('section.forwardHint') }, h(Forward, { settings: data.settings, t, onApply: apply, busy })),
