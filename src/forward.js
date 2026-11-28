@@ -96,7 +96,9 @@ function traceRequest(req, res, hop, onTrace) {
 
 /** Mint a forward-proxy key. Not derived from anything user-visible. */
 export function generateKey() {
-  return `ofm-${crypto.randomBytes(24).toString('base64url')}`
+  // `dmm-` = DSH Model Manager. The prefix is what tells a pasted key apart
+  // from every other local harness's token in a client config.
+  return `dmm-${crypto.randomBytes(24).toString('base64url')}`
 }
 
 /** Constant-time comparison of a bearer token against the issued key. */

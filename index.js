@@ -34,7 +34,7 @@ import { DATA_DIR_NAME, JsonStore, dayKey, decodeWindow, resolveDshHome } from '
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
 import { generateKey, rankLanAddresses, startForwardServer, startLanRelay } from './src/forward.js'
-import { chanGatewayCredential, chanGatewayEnabled, chanGatewayPort, pickGatewayPort, startChanRelay } from './src/chan-relay.js'
+import { pickGatewayPort } from './src/chan-relay.js'
 import { CODE, UpstreamError } from './src/http.js'
 import { egressActive, egressFetch, outletLabel, readOutletSelection, startEgressRelay } from './src/egress.js'
 import { directFetch } from './src/eac.js'
@@ -1076,118 +1076,6 @@ export function apply(ctx, config) {
     }
   }
 
-  // ── the channels' gateway relay ─────────────────────────────────────────────
-  /**
-   * The absorbed pack serves every 白嫖 provider through one OpenAI-compatible
-   * gateway on the loopback. The relay is this plugin's own door in front of
-   * it: callers authenticate with `chanGateway.relay.key` and the forwarded
-   * hop is re-stamped with the gateway's own credential, which never leaves
-   * the host. Off until asked for; the settings page owns the switch.
-   */
-  let chanRelay = null
-  let chanRelayError = ''
-  let chanRelaySyncInFlight = null
-
-  function chanRelayKey() {
-    const relay = settings.get().chanGateway?.relay ?? {}
-    if (typeof relay.key === 'string' && relay.key !== '') return relay.key
-    const minted = generateKey()
-    settings.update({ chanGateway: { ...(settings.get().chanGateway ?? {}), relay: { ...(settings.get().chanGateway?.relay ?? {}), key: minted } } })
-    settings.flush()
-    return minted
-  }
-
-  function rotateChanRelayKey() {
-    const minted = generateKey()
-    settings.update({ chanGateway: { ...(settings.get().chanGateway ?? {}), relay: { ...(settings.get().chanGateway?.relay ?? {}), key: minted } } })
-    settings.flush()
-    return minted
-  }
-
-  /** The gateway's address and credential, read fresh: both can move (env). */
-  function chanGatewayTarget() {
-    return {
-      port: chanGatewayPort(process.env),
-      enabledByEnv: chanGatewayEnabled(process.env),
-      credential: chanGatewayCredential({ profileContext: optional('profileContext'), env: process.env }),
-    }
-  }
-
-  async function syncChanRelay() {
-    while (chanRelaySyncInFlight !== null) await chanRelaySyncInFlight.catch(() => {})
-    const run = syncChanRelayOnce()
-    chanRelaySyncInFlight = run
-    try { await run } finally { if (chanRelaySyncInFlight === run) chanRelaySyncInFlight = null }
-  }
-  async function syncChanRelayOnce() {
-    const relay = settings.get().chanGateway?.relay ?? {}
-    const wanted = relay.enabled === true
-    const host = String(relay.host ?? '').trim() || '127.0.0.1'
-    const port = Number.isFinite(Number(relay.port)) && Number(relay.port) > 0 ? Math.trunc(Number(relay.port)) : 0
-    const target = chanGatewayTarget()
-    if (chanRelay !== null && wanted && chanRelay.host === host && chanRelay.port === port) return
-    if (chanRelay === null && !wanted) return
-    if (chanRelay !== null) {
-      const closing = chanRelay
-      chanRelay = null
-      await closing.close().catch(() => {})
-    }
-    if (!wanted) { chanRelayError = ''; return }
-    if (port !== 0 && target.port === port) {
-      chanRelayError = 'the relay needs a port of its own (the gateway listens on ' + target.port + ')'
-      logger.warn?.(`our-free-model: channel gateway relay not started (${chanRelayError})`)
-      return
-    }
-    try {
-      chanRelay = await startChanRelay({
-        config: () => {
-          const current = settings.get().chanGateway?.relay ?? {}
-          const targetNow = chanGatewayTarget()
-          return {
-            enabled: current.enabled === true,
-            host: String(current.host ?? '').trim() || '127.0.0.1',
-            port: current.port ?? 0,
-            lanKey: chanRelayKey(),
-            gatewayHost: '127.0.0.1',
-            gatewayPort: targetNow.port,
-            gatewayKey: targetNow.credential?.key ?? '',
-          }
-        },
-        log: message => logger.warn?.(`our-free-model channel relay: ${message}`),
-      })
-      chanRelayError = ''
-      // The bound port goes back into the settings, so the page shows the
-      // address that actually answers (the OS picks when 0 was asked for).
-      const settled = settings.get().chanGateway ?? {}
-      settings.update({ chanGateway: { ...settled, relay: { ...(settled.relay ?? {}), port: chanRelay.port } } })
-      settings.flush()
-    } catch (error) {
-      chanRelayError = String(error?.message ?? error)
-      logger.warn?.(`our-free-model: channel gateway relay could not start (${chanRelayError})`)
-    }
-  }
-
-  function chanRelayStatus() {
-    const relay = settings.get().chanGateway?.relay ?? {}
-    const target = chanGatewayTarget()
-    return {
-      relay: {
-        enabled: relay.enabled === true,
-        running: chanRelay !== null,
-        host: chanRelay?.host ?? (String(relay.host ?? '').trim() || '127.0.0.1'),
-        port: chanRelay?.port ?? relay.port ?? 0,
-        hasKey: typeof relay.key === 'string' && relay.key !== '',
-        error: chanRelayError,
-      },
-      gateway: {
-        port: target.port,
-        enabledByEnv: target.enabledByEnv,
-        keyFound: target.credential !== null,
-        keyFromEnv: target.credential?.fromEnv === true,
-        keyPath: target.credential?.path ?? '',
-      },
-    }
-  }
 
 
   // ── egress outlet ───────────────────────────────────────────────────────────
@@ -2282,6 +2170,14 @@ export function apply(ctx, config) {
             // models with the same display name stay distinguishable.
             provider: typeof entry.provider === 'string' ? entry.provider : null,
             vision: entry.vision === true,
+            // Where the row comes from, so the picker can say "预置" instead of
+            // presenting a registry template as if it were a live upstream model
+            // (the aggregate lane falls back to its registry list until a
+            // discovery round writes the real ids back).
+            source: entry.channel === 'aggregate'
+              ? (entry.source === 'discovered' ? 'discovered' : 'registry')
+              : entry.channel === 'host' ? 'host'
+                : entry.source === 'discovered' ? 'discovered' : null,
             // What the smart ranking sees today, so the panel can explain its order
             // rather than presenting it as a black box.
             today: (() => {
@@ -2504,33 +2400,6 @@ export function apply(ctx, config) {
     // Rebuilding the catalog is what makes the picker drop the hidden groups:
     // the client caches one catalog per Host generation, so it needs the event.
     onTopology: () => emitTopology(),
-    chanRelay: {
-      status: chanRelayStatus,
-      apply: async patch => {
-        const current = settings.get().chanGateway ?? {}
-        const relay = { ...(current.relay ?? {}) }
-        if (patch === null || typeof patch !== 'object') throw httpError(400, 'the request body must be a JSON object')
-        if (patch.enabled !== undefined) relay.enabled = patch.enabled === true
-        if (patch.host !== undefined) {
-          const host = String(patch.host ?? '').trim()
-          if (host !== '' && host !== '127.0.0.1' && host !== 'localhost' && host !== '0.0.0.0' && host !== '::') {
-            throw httpError(400, 'host must be one of 127.0.0.1, localhost, 0.0.0.0, ::')
-          }
-          relay.host = host === 'localhost' ? '127.0.0.1' : host
-        }
-        if (patch.port !== undefined) {
-          const port = Number(patch.port)
-          if (!Number.isInteger(port) || port < 0 || port > 65535) throw httpError(400, 'port must be an integer between 0 and 65535')
-          relay.port = port
-        }
-        settings.update({ chanGateway: { ...current, relay } })
-        settings.flush()
-        await syncChanRelay()
-        return chanRelayStatus()
-      },
-      key: () => chanRelayKey(),
-      rotate: rotateChanRelayKey,
-    },
     // Whether the co-paid lane is open on this host at all — the settings page's
     // one-bit answer to "why do I see no EAC group" (issue #60). Reads the gate,
     // not the listing: a closed gate and a dead relay are different sentences.
@@ -2721,7 +2590,6 @@ export function apply(ctx, config) {
   ctx.effect(() => () => {
     void forward?.close().catch(() => {})
     void relay?.close().catch(() => {})
-    void chanRelay?.close().catch(() => {})
     void outletRelay?.close().catch(() => {})
   }, 'our-free-model: forward listener')
 
@@ -3654,22 +3522,6 @@ export function createApiRoutes(deps) {
       }
       if (method === 'POST' && routePath === '/forward/rotate') {
         return send(200, { key: deps.rotateKey() })
-      }
-      // The channels' gateway relay (the pack's loopback OpenAI endpoint,
-   // re-exposed under this plugin's own key). Status never carries a secret;
-      // the key routes are read by the same fence as every other route here.
-      if (method === 'GET' && routePath === '/chan-gateway') {
-        return send(200, deps.chanRelay.status())
-      }
-      if (method === 'POST' && routePath === '/chan-gateway/apply') {
-        const body = await readJson(req)
-        return send(200, await deps.chanRelay.apply(body))
-      }
-      if (method === 'GET' && routePath === '/chan-gateway/key') {
-        return send(200, { key: deps.chanRelay.key() })
-      }
-      if (method === 'POST' && routePath === '/chan-gateway/rotate') {
-        return send(200, { key: deps.chanRelay.rotate() })
       }
       if (method === 'GET' && routePath === '/forward/lan/key') {
         return send(200, { key: deps.settings.get().forwardLanKey ?? '' })

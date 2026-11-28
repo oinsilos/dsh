@@ -175,9 +175,11 @@ export const SETTINGS_INITIAL = {
   hideUnavailableModels: false,
   /** Minutes between background availability re-probes. */
   probeIntervalMinutes: 15,
-  /** Serve the OpenAI-compatible forward listener for other local harnesses. */
+  /** Serve the OpenAI-compatible forward listener for other local harnesses.
+   *  On by default: the listener is loopback-only and key-gated, and the pool
+   *  (one external name, auto-retry + failover) only exists on this port. */
   forward: {
-    enabled: false,
+    enabled: true,
     host: '127.0.0.1',
     port: 18899,
     /** Reach that listener from other machines on the network; off by default,
@@ -189,12 +191,9 @@ export const SETTINGS_INITIAL = {
    *  'client'` dials one http/https/socks5/socks5h URL directly. Off by
    *  default — requests go straight out until this is turned on. */
   egress: { enabled: false, mode: 'subscription', url: '', mihomoPath: '' },
-  /** Expose the absorbed channels' OpenAI gateway (the pack's loopback
-   *  listener) to other machines under this plugin's own key. Off by default:
-   *  a LAN listener is a door, and doors stay shut until asked for. */
-  chanGateway: {
-    relay: { enabled: false, host: '127.0.0.1', port: 18326, key: '' },
-  },
+  /** 一次性迁移标记：本机转发从「默认关」改为「默认开」后，旧配置里写死的
+   *  `forward.enabled: false` 会被打开一次；之后用户自己的选择优先。 */
+  forwardDefaultOn: true,
   /** Cap a turn's output so a slow lane cannot run away. */
   defaultMaxTokens: 32768,
   /** 所有模型默认允许一次纯推理检查点续写，false 可关闭。 */

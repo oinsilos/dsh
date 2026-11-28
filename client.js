@@ -242,6 +242,12 @@ window.__ModuleLoader__.load({
         'pool.searchModel': '搜索模型名或 id',
         'pool.noModel': '没有匹配的模型。',
         'pool.todayStats': '今日 {calls} 次 · 失败 {failed} · 首字 {ttft}',
+        'pool.selectedCount': '已选 {n} 个',
+        'pool.groupCount': '{n} 个',
+        'pool.refreshCatalog': '刷新目录',
+        'pool.sourceRegistry': '预置',
+        'pool.sourceRegistryHint': '来自该提供商的注册表模板，不一定真实可用；点「发现模型」拉取真实清单后再勾选。',
+        'pool.sourceDiscovered': '已发现',
         'pool.todayShort': '今日 {calls} 次 / 失败 {failed}',
         'pool.unavailable': '当前不可用',
         'pool.unavailableHint': '这个模型此刻不在目录里，保存后会被剔除。',
@@ -733,6 +739,8 @@ window.__ModuleLoader__.load({
         'agg.discovered': '发现 {n} 个模型',
         'agg.discoveredNone': '该提供商不提供模型列表。',
         'agg.discoveredUse': '填入模型覆盖',
+        'agg.discoveredTick': '已发现 {n} 个，点名称加入或移出',
+        'agg.discoveredClear': '清空覆盖',
         'agg.save': '保存',
         'agg.saving': '保存中…',
         'agg.add': '添加',
@@ -1095,6 +1103,12 @@ window.__ModuleLoader__.load({
         'pool.noModel': 'No matching model.',
         'pool.todayStats': 'Today {calls} calls · {failed} failed · first token {ttft}',
         'pool.todayShort': 'Today {calls} calls / {failed} failed',
+        'pool.selectedCount': '{n} selected',
+        'pool.groupCount': '{n}',
+        'pool.refreshCatalog': 'Refresh catalog',
+        'pool.sourceRegistry': 'Preset',
+        'pool.sourceRegistryHint': 'A registry template for this provider, not necessarily live; run "Discover models" and tick the real ids.',
+        'pool.sourceDiscovered': 'Discovered',
         'pool.unavailable': 'Unavailable now',
         'pool.unavailableHint': 'This model is not in the catalog right now; it will be dropped on save.',
         'pool.unresolvedHint': '{n} ticked models are unavailable now; they will be dropped on save.',
@@ -1633,6 +1647,8 @@ window.__ModuleLoader__.load({
         'agg.discovered': 'Found {n} models',
         'agg.discoveredNone': 'This provider declares no model listing.',
         'agg.discoveredUse': 'Use these as the override',
+        'agg.discoveredTick': 'Found {n}; click a name to add or remove it',
+        'agg.discoveredClear': 'Clear override',
         'agg.save': 'Save',
         'agg.saving': 'Saving…',
         'agg.add': 'Add',
@@ -2881,6 +2897,19 @@ window.__ModuleLoader__.load({
 .ofm_duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(272px,100%),1fr));gap:12px;align-items:start}
 .ofm_duo>*{min-width:0}
 .ofm_picklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:8px;max-height:330px;overflow:auto;padding:2px}
+/* 候选池按渠道分组：每组一个标题（渠道名 + 数量），组内仍是卡片网格。 */
+.ofm_pickgroups{display:flex;flex-direction:column;gap:14px;max-height:460px;overflow:auto;padding:2px 2px 8px}
+.ofm_pickgroup{display:flex;flex-direction:column;gap:8px}
+.ofm_pickgrouphead{display:flex;align-items:baseline;gap:8px;padding:2px 2px 0;border-bottom:1px solid var(--dsw-alias-border-l1);padding-bottom:6px}
+.ofm_pickgrouphead b{font-size:12px;font-weight:700;letter-spacing:.3px}
+.ofm_pickgroup .ofm_picklist{max-height:none;overflow:visible;padding:0}
+.ofm_pickmark{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.ofm_pickrow[aria-pressed="true"] .ofm_pickmark{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff}
+.ofm_tagwarn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
+/* 发现结果的可点标签：点一下加入/移出模型覆盖，选中态用主题主色。 */
+.ofm_foundchip{font:inherit;font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.ofm_foundchip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
+.ofm_foundchip[aria-pressed="true"]{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-state-business-primary)}
 .ofm_pickrow{display:flex;flex-direction:column;gap:5px;align-items:stretch;text-align:left;font:inherit;padding:9px 11px;border-radius:11px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 62%,transparent);color:var(--dsw-alias-label-primary);cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease}
 .ofm_pickrow:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary);transform:translateY(-1px)}
 .ofm_pickrow[aria-pressed="true"]{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent)}
@@ -6238,6 +6267,49 @@ window.__ModuleLoader__.load({
       // then the cut, so a 300-model host still only showed 80 matches).
       const rows = members.filter(row => needle === ''
         || `${row.id} ${row.name ?? ''} ${row.provider ?? ''}`.toLowerCase().includes(needle))
+      // 分组展示：模型列表现在混着免费/聚合/自有/宿主四类，平铺时同名模型
+      // 无法分辨、勾选也容易点错。按渠道分组后每组有标题和计数，行内只剩
+      // 真正用于区分的字段（provider / 预置 vs 已发现 / 今日统计）。
+      const groupRank = channel => {
+        const index = ['free', 'aggregate', 'own', 'host'].indexOf(channel)
+        return index < 0 ? 99 : index
+      }
+      const grouped = (() => {
+        const map = new Map()
+        for (const row of rows) {
+          const key = row.channel ?? 'free'
+          if (!map.has(key)) map.set(key, [])
+          map.get(key).push(row)
+        }
+        return [...map.entries()].sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0]))
+      })()
+      // 一行一张卡：勾选标记 + 名称，第二行只放用于区分的信息。
+      const pickRow = row => h('button', {
+        key: row.id, type: 'button', className: 'ofm_pickrow', disabled: busy,
+        'aria-pressed': chosen.includes(row.id) ? 'true' : 'false',
+        onClick: () => toggle(row.id),
+      },
+      h('span', { className: 'ofm_pickhead' },
+        h('span', { className: 'ofm_pickmark', 'aria-hidden': 'true' }, chosen.includes(row.id) ? '✓' : '＋'),
+        h('b', { title: row.name }, row.name ?? row.id)),
+      h('span', { className: 'ofm_pickmeta' },
+        h('span', { className: 'ofm_id' }, row.id),
+        row.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
+        row.vision === true ? h('span', { className: 'ofm_tag' }, t('tag.vision')) : null,
+        row.source === 'registry' ? h('span', { className: 'ofm_tag ofm_tagwarn', title: t('pool.sourceRegistryHint') }, t('pool.sourceRegistry')) : null,
+        row.source === 'discovered' ? h('span', { className: 'ofm_tag' }, t('pool.sourceDiscovered')) : null,
+        row.today === null || row.today === undefined ? null
+          : h('span', { className: 'ofm_note' }, t('pool.todayShort')
+            .replace('{calls}', String(row.today.calls)).replace('{failed}', String(row.today.failed)))))
+      const picker = rows.length === 0
+        ? h('p', { className: 'ofm_note' }, t('pool.noModel'))
+        : h('div', { className: 'ofm_pickgroups' }, grouped.map(([channel, list]) => h('div', {
+            key: channel, className: 'ofm_pickgroup',
+          },
+          h('div', { className: 'ofm_pickgrouphead' },
+            h('b', null, lanes[channel] ?? channel),
+            h('span', { className: 'ofm_note' }, t('pool.groupCount').replace('{n}', String(list.length)))),
+          h('div', { className: 'ofm_picklist' }, list.map(pickRow)))))
       const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify({ ...pool, members: pool.members })
 
       const toggle = id => setDraft(current => current === null ? current : {
@@ -6257,7 +6329,10 @@ window.__ModuleLoader__.load({
         if (draft === null) return
         setBusy(true); setError(''); setNotice('')
         try {
-          const result = await api('/forward-pool', { method: 'POST', body: {
+          // `post()` (not `api()` with a raw object body): fetch would stringify
+          // the object to "[object Object]", the host's readJson would reject it
+          // with 400 and nothing would ever be written to disk.
+          const result = await post('/forward-pool', {
             enabled: draft.enabled === true,
             name: draft.name,
             members: draft.members,
@@ -6265,7 +6340,7 @@ window.__ModuleLoader__.load({
             stickyLimit: Number(draft.stickyLimit) || 1,
             memberRetries: Number(draft.memberRetries) || 0,
             hideOthers: draft.hideOthers !== false,
-          } })
+          })
           panel.reload()
           setNotice(result?.renamed
             ? t('pool.savedRenamed').replace('{from}', result.renamed.from).replace('{to}', result.renamed.to)
@@ -6349,23 +6424,18 @@ window.__ModuleLoader__.load({
                   h('input', {
                     className: 'ofm_input', value: query, placeholder: t('pool.searchModel'), disabled: busy,
                     onChange: event => setQuery(event.target.value),
-                  }))),
-              rows.length === 0
-                ? h('p', { className: 'ofm_note' }, t('pool.noModel'))
-                : h('div', { className: 'ofm_picklist' }, rows.map(row => h('button', {
-                  key: row.id, type: 'button', className: 'ofm_pickrow', disabled: busy,
-                  'aria-pressed': chosen.includes(row.id) ? 'true' : 'false',
-                  onClick: () => toggle(row.id),
-                },
-                h('span', { className: 'ofm_pickhead' }, h('b', { title: row.name }, row.name ?? row.id)),
-                h('span', { className: 'ofm_pickmeta' },
-                  h('span', { className: 'ofm_id' }, row.id),
-                  h('span', { className: 'ofm_tag' }, lanes[row.channel] ?? row.channel),
-                  row.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
-                  row.vision === true ? h('span', { className: 'ofm_tag' }, t('tag.vision')) : null,
-                  row.today === null || row.today === undefined ? null
-                    : h('span', { className: 'ofm_note' }, t('pool.todayShort')
-                      .replace('{calls}', String(row.today.calls)).replace('{failed}', String(row.today.failed))))))),
+                  })),
+                h('span', { className: 'ofm_note', style: { marginLeft: 'auto' } },
+                  t('pool.selectedCount').replace('{n}', String(chosen.length))),
+                // 目录可能是缓存的（聚合车道的注册表清单尤其如此）。给一个显式
+                // 刷新入口，而不是让面板看起来像在展示一份预制清单。
+                miniBtn(t('pool.refreshCatalog'), async () => {
+                  setBusy(true); setError('')
+                  try { await post('/refresh', undefined, 600_000); panel.reload() }
+                  catch (failure) { setError(String(failure?.message ?? failure)) }
+                  finally { setBusy(false) }
+                }, { disabled: busy })),
+              picker,
 
               h('div', { className: 'ofm_row' },
                 h(Button, { disabled: busy || dirty !== true, onClick: submit }, busy ? t('common.saving') : t('common.save')),
@@ -6384,181 +6454,43 @@ window.__ModuleLoader__.load({
                 : null)))
     }
 
-    /** The gateway page: the pack's OpenAI endpoint plus this plugin's relay. */
+    /** 接入客户端：本插件转发端口的地址、密钥与代码配方。
+     *
+     * 宿主渠道网关（A）与它的局域网中继（C）已删除。它们曾经是独立监听，
+     * 但自动路由池只活在本插件自己的转发端口上——外部工具无论如何都应该
+     * 连这里，另开一套网关只在「到底该填哪个地址」上制造歧义。 */
     function GatewayPage(props) {
-      const { t, ctx } = props
-      const { available, rpc } = useChannelRpc(ctx)
-      const [status, setStatus] = useState(undefined)
-      // 宿主是否真的能应答网关 RPC。false 时不再渲染骨架屏，而是明说缺什么。
-      const [rpcReady, setRpcReady] = useState(undefined)
-      const [busy, setBusy] = useState(false)
-      const [notice, setNotice] = useState('')
-      const [keyShown, setKeyShown] = useState(false)
-      const [relay, setRelay] = useState(undefined)
-      const [relayKey, setRelayKey] = useState('')
-      const [relayBusy, setRelayBusy] = useState(false)
-      // 免费车道转发端口的接入配方。它和上面这块网关是两条独立监听：这里的地址与
-      // 密钥由宿主按实际绑定的端口生成，端口没开就只给一句说明而不是一堆会骗人的
-      // 配方（未启用时 /clients 回的是占位端口与占位 Key）。
+      const { t } = props
       const clients = usePanel(() => api('/clients'), [])
-
-      const loadGateway = useCallback(async () => {
-        // 宿主没有 connection RPC 时 `rpc()` 必然抛异常。过去这里直接 `return`，
-        // `status` 就永远停在 undefined、页面顶部那张卡片永远是骨架屏——用户看到
-        // 的就是「网关不可用」。现在把「宿主没提供这个服务」作为一等状态显式渲染。
-        if (!available) { setStatus(null); setRpcReady(false); return }
-        setRpcReady(true)
-        // RPC 抛错时也必须把 status 落到一个非 undefined 的值，否则页面会一直
-        // 停在骨架屏；错误信息走上面的 notice 条。
-        try { setStatus(await rpc('gateway.getEnabled', {}, 30_000)) } catch (error) { setStatus(null); setNotice(String(error?.message ?? error)) }
-      }, [available, rpc])
-      const loadRelay = useCallback(async () => {
-        try { setRelay(await api('/chan-gateway')) } catch { setRelay(null) }
-      }, [])
-      useEffect(() => { void loadGateway(); void loadRelay() }, [loadGateway, loadRelay])
-
-      const toggleGateway = async enabled => {
-        setBusy(true); setNotice('')
-        try { setStatus(await rpc('gateway.setEnabled', { enabled }, 60_000)) } catch (error) { setNotice(String(error?.message ?? error)) } finally { setBusy(false) }
-      }
-      const applyRelay = async patch => {
-        setRelayBusy(true); setNotice('')
-        try { setRelay(await post('/chan-gateway/apply', patch)) } catch (error) { setNotice(String(error?.message ?? error)) } finally { setRelayBusy(false) }
-      }
-      const showRelayKey = async () => {
-        try { setRelayKey((await api('/chan-gateway/key')).key ?? '') } catch { setRelayKey('') }
-      }
-      // 兼容区折叠态：宿主网关（A）与它的局域网中继（C）不是推荐路径——自动路由
-      // 只活在插件的转发端口上。默认收起，展开不卸载（保持已填状态），顶部加一行
-      // 说明为什么它排在最后。
-      const [compatOpen, setCompatOpen] = useState(false)
-
-      // The RPC returns structured values, not strings: `address` is
-      // { host, port } and `apiKey` is { value, fromEnv, path } — rendering
-      // either directly hands React an object, which is a crash (#31), not a
-      // wrong sentence.
-      const address = status?.address ?? null
-      const gatewayUrl = address !== null && typeof address === 'object'
-        ? `http://${address.host}:${address.port}/v1`
-        : ''
-      const apiKeyInfo = typeof status?.apiKey === 'object' && status?.apiKey !== null ? status.apiKey : null
-      const apiKeyValue = apiKeyInfo?.value ?? ''
-      const models = status?.models ?? []
-      // 兼容区内容（宿主网关 A + 其中继 C）：整块包进一个可折叠容器。折叠不卸载，
-      // RPC 状态照常拉取，展开即用。页面骨架（hero、notice）留在主 return 里，
-      // 只有 A/C 两个 Section 真正被折叠。
-      const compatBody = h(Fragment, null,
-        h(Section, { title: t('gw.gatewayTitle'), hint: t('gw.gatewayHint') },
-          status === undefined && rpcReady !== false ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
-            // 宿主没有 connection RPC：这是环境事实，不是加载中。说清楚缺什么、
-            // 哪些功能仍然可用，用户才不会把整页当成“坏了”。
-            : rpcReady === false ? h('div', { className: 'ofm_callout ofm_error' },
-              h('span', { 'aria-hidden': 'true' }, '⚠'),
-              h('div', null,
-                h('b', null, t('gw.rpcOff')),
-                h('p', null, t('gw.rpcOffHint')),
-                h('p', null, t('gw.rpcOffWhy')),
-                h('div', { style: { marginTop: 8 } },
-                  h(Button, { kind: 'ghost', onClick: () => { void loadGateway() } }, t('gw.retry')))))
-              : status === null
-                // 宿主服务在、但这块网关没回数据（关闭 / 报错）：给一句明确的
-                // 状态说明，而不是让用户对着骨架屏猜。
-                ? h('div', { className: 'ofm_callout' },
-                  h('div', null,
-                    h('b', null, t('gw.stopped')),
-                    h('p', null, t('gw.gatewayHint'))))
-              : h('div', { className: 'ofm_panel' },
-              h('div', { className: 'ofm_row' },
-                h(Pill, { strong: true, tone: status.running === true ? 'ok' : 'warn' }, status.running === true ? t('gw.running') : t('gw.stopped')),
-                status.blockedByEnv === true ? h(Pill, { tone: 'err' }, t('gw.envBlocked')) : null,
-                h(Switch, { checked: status.enabled === true, label: t('gw.switch'), onChange: () => void toggleGateway(status.enabled !== true), disabled: busy })),
-              // 开关是开的却没在监听：这是真故障（端口冲突 / 初始化失败），
-              // 必须把宿主给出的原因和一次重试放在同一处，否则用户只知道「不可用」。
-              status.running !== true && status.enabled === true && status.blockedByEnv !== true
-                ? h('div', { className: 'ofm_callout ofm_error' },
-                  h('div', null,
-                    h('b', null, t('gw.notRunning')),
-                    h('p', null, typeof status.error === 'string' && status.error !== '' ? status.error : t('gw.notRunningHint')),
-                    // EACCES 是「系统保留了这段端口」，与「被别人占用」的处置完全不同：
-                    // 前者杀进程没用，只能换端口（插件已自动做），必须说明白。
-                    /EACCES/.test(String(status.error ?? '')) ? h('p', null, t('gw.portReserved')) : null,
-                    h('div', { style: { marginTop: 8 } },
-                      h(Button, { disabled: busy, onClick: () => void toggleGateway(true) }, t('gw.restart')))))
-                : null,
-              status.running !== true && (status.enabled !== true || status.blockedByEnv === true)
-                && typeof status.error === 'string' && status.error !== ''
-                ? h('div', { className: 'ofm_callout' }, h('div', null, status.error)) : null,
-              h('div', { className: 'ofm_row' },
-                h('span', { className: 'ofm_note' }, t('gw.endpoint')),
-                gatewayUrl === '' ? h('span', { className: 'ofm_note' }, '—')
-                  : h(Fragment, null, h('code', { className: 'ofm_mono' }, gatewayUrl), h(Button, { kind: 'ghost', onClick: () => copy(gatewayUrl, () => {}) }, t('eac.copy')))),
-              h('div', { className: 'ofm_row' },
-                h('span', { className: 'ofm_note' }, t('gw.key')),
-                apiKeyValue === '' ? h('span', { className: 'ofm_note' }, t('gw.keyNone'))
-                  : h(Fragment, null,
-                    h('code', { className: 'ofm_mono' }, keyShown ? apiKeyValue : '••••••••••••••••'),
-                    h(Button, { kind: 'ghost', onClick: () => setKeyShown(value => !value) }, keyShown ? t('gw.hide') : t('gw.show')),
-                    h(Button, { kind: 'ghost', onClick: () => copy(apiKeyValue, () => {}) }, t('eac.copy'))),
-                h('span', { className: 'ofm_note' }, apiKeyInfo === null ? t('gw.keyNoneHint') : t('gw.keyNote'))),
-              h('div', { className: 'ofm_row' },
-                h('span', { className: 'ofm_note' }, `${t('gw.models')} ${models.length}`),
-                h('span', { className: 'ofm_note' }, t('gw.portNote'))))),
-        h(Section, { title: t('gw.relayTitle'), hint: t('gw.relayHint') },
-          relay === undefined ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
-            : h('div', { className: 'ofm_panel' },
-              h('div', { className: 'ofm_row' },
-                h(Pill, { strong: true, tone: relay.relay?.running === true ? 'ok' : 'warn' }, relay.relay?.running === true ? t('gw.running') : t('gw.stopped')),
-                h(Switch, {
-                  checked: relay.relay?.enabled === true, label: t('gw.relaySwitch'), disabled: relayBusy,
-                  onChange: () => void applyRelay({ enabled: relay.relay?.enabled !== true }),
-                })),
-              relay.relay?.error ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, relay.relay.error)) : null,
-              h('div', { className: 'ofm_row' },
-                h('div', { className: 'ofm_field' }, h('span', null, t('gw.relayBind')),
-                  h('select', {
-                    className: 'ofm_input', value: relay.relay?.host ?? '127.0.0.1',
-                    onChange: event => void applyRelay({ host: event.target.value }),
-                  },
-                  h('option', { value: '127.0.0.1' }, t('gw.bindLocal')),
-                  h('option', { value: '0.0.0.0' }, t('gw.bindLan')))),
-                h('div', { className: 'ofm_field' }, h('span', null, t('gw.relayPort')),
-                  h('input', {
-                    className: 'ofm_input', type: 'number', min: 0, max: 65535, style: { width: 120 },
-                    defaultValue: relay.relay?.port ?? 18326,
-                    onBlur: event => { const port = Number(event.target.value); if (Number.isInteger(port) && port >= 0 && port <= 65535 && port !== (relay.relay?.port ?? 0)) void applyRelay({ port }) },
-                  }))),
-              relay.relay?.running === true ? h('div', { className: 'ofm_row' },
-                h('span', { className: 'ofm_note' }, t('gw.relayUrl')),
-                h('code', { className: 'ofm_mono' }, `http://${relay.relay.host === '0.0.0.0' || relay.relay.host === '::' ? '<lan-ip>' : relay.relay.host}:${relay.relay.port}/v1`),
-                h(Button, { kind: 'ghost', onClick: () => copy(`http://${relay.relay.host}:${relay.relay.port}/v1`, () => {}) }, t('eac.copy'))) : null,
-              h('div', { className: 'ofm_row' },
-                h('span', { className: 'ofm_note' }, t('gw.relayKey')),
-                h('code', { className: 'ofm_mono' }, relayKey === '' ? '••••••••••••••••' : relayKey),
-                h(Button, { kind: 'ghost', onClick: () => void showRelayKey() }, t('gw.show')),
-                relayKey === '' ? null : h(Button, { kind: 'ghost', onClick: () => copy(relayKey, () => {}) }, t('eac.copy')),
-                h(Button, {
-                  kind: 'ghost', disabled: relayBusy,
-                  onClick: async () => { try { setRelayKey((await post('/chan-gateway/rotate')).key ?? '') } catch (error) { setNotice(String(error?.message ?? error)) } },
-                }, t('gw.rotate'))),
-              h('p', { className: 'ofm_note' }, t('gw.relayNote')),
-              h('p', { className: 'ofm_note' }, t('gw.freeLaneNote')))))
-
-      // 页面骨架：hero（刷新）+ 错误条 + 兼容折叠区。主路径的三个 Section
-      // （对外入口 / 本地转发 / 出口代理）由页签组装处渲染，见 gateway 分支。
-      return h('div', { className: 'ofm_page' },
-        h(PageHero, { title: t('gw.title'), sub: t('gw.sub') },
-          h(Button, { onClick: () => { void loadGateway(); void loadRelay() } }, t('dash.refresh'))),
-        notice !== '' ? h('div', { className: 'ofm_callout ofm_error' }, h('div', null, notice)) : null,
-        h('div', { className: 'ofm_panel' },
-          h('button', {
-            type: 'button', className: 'ofm_compat-toggle',
-            onClick: () => setCompatOpen(v => !v),
-          },
-          h('span', null,
-            h('b', null, t('gw.compatTitle')),
-            h('span', { className: 'ofm_note' }, compatOpen ? '' : t('gw.compatClosed'))),
-          h('span', { className: 'ofm_chev' }, compatOpen ? '▾' : '▸')),
-          compatOpen ? h('div', { className: 'ofm_compat-body' }, compatBody) : null))
+      return h(Section, { title: t('gw.clientsTitle'), hint: t('gw.clientsHint') },
+        clients.status === 'loading' ? h('div', { className: 'ofm_skel', style: { minHeight: 96 } })
+          : clients.status === 'error'
+            ? h(PanelError, { t, title: t('gw.clientsTitle'), message: clients.error, onRetry: clients.reload })
+            // 配方由真实绑定的端口生成：没在监听时给一句说明，而不是一堆
+            // 占位端口/占位 Key 的假配方（粘过去只会静默失败）。
+            : clients.data?.running !== true
+              ? h('div', { className: 'ofm_callout ofm_rise' },
+                h('div', null, h('b', null, t('gw.clientsOff')), h('div', null, t('gw.clientsOffHint'))))
+              : h('div', { className: 'ofm_panel ofm_rise' },
+                h('div', { className: 'ofm_row' },
+                  h('span', { className: 'ofm_note' }, t('forward.baseUrl')),
+                  h('code', { className: 'ofm_mono' }, clients.data.baseUrl),
+                  h(CopyButton, { t, text: clients.data.baseUrl }),
+                  h('span', { className: 'ofm_note' }, t('gw.clientsModels').replace('{n}', String((clients.data.models ?? []).length)))),
+                clients.data.lanUrl === '' ? null
+                  : h('div', { className: 'ofm_row' },
+                    h('span', { className: 'ofm_note' }, t('forward.lanUrl')),
+                    h('code', { className: 'ofm_mono' }, clients.data.lanUrl),
+                    h(CopyButton, { t, text: clients.data.lanUrl })),
+                h('div', { className: 'ofm_duo' }, (clients.data.snippets ?? []).map((snippet, index) => h('div', {
+                  key: snippet.id, className: 'ofm_card ofm_rise',
+                  style: { animationDelay: `${Math.min(index, 8) * 22}ms` },
+                },
+                h('div', { className: 'ofm_cardhead' },
+                  h('span', { className: 'ofm_cardname' }, snippet.name),
+                  h('span', { className: 'ofm_tag' }, snippet.language)),
+                h('pre', { className: 'ofm_snippet' }, snippet.body),
+                h('div', { className: 'ofm_row' }, h(CopyButton, { t, text: snippet.body })))))))
     }
 
     /** Shared page hero for the three gateway-console pages. The caller
@@ -6907,9 +6839,23 @@ window.__ModuleLoader__.load({
         verdict !== null && verdict.message !== '' ? h('p', { className: 'ofm_note' }, verdict.message) : null,
         found === null
           ? null
-          : h('div', { className: 'ofm_row' },
-            h('span', { className: 'ofm_note' }, found.length === 0 ? t('agg.discoveredNone') : t('agg.discovered').replace('{n}', String(found.length))),
-            found.length === 0 ? null : miniBtn(t('agg.discoveredUse'), () => setModels(found.join(', ')))),
+          : h('div', { className: 'ofm_field' },
+            h('div', { className: 'ofm_row' },
+              h('span', { className: 'ofm_note' }, found.length === 0 ? t('agg.discoveredNone') : t('agg.discoveredTick').replace('{n}', String(found.length))),
+              // 直接点模型名即可加入/移出覆盖清单——旧版把发现结果压成一句
+              // 「改用这些」，点模型本身没有反应，看起来像坏了。
+              found.length === 0 ? null : miniBtn(t('agg.discoveredUse'), () => setModels(found.join(', '))),
+              found.length === 0 ? null : miniBtn(t('agg.discoveredClear'), () => setModels(''))),
+            found.length === 0 ? null : h('div', { className: 'ofm_pickmeta', style: { marginTop: 6 } },
+              found.map(id => h('button', {
+                key: id, type: 'button', className: 'ofm_foundchip',
+                'aria-pressed': parseModelIds(models).includes(id) ? 'true' : 'false',
+                title: id,
+                onClick: () => setModels(current => {
+                  const list = parseModelIds(current)
+                  return (list.includes(id) ? list.filter(item => item !== id) : [...list, id]).join(', ')
+                }),
+              }, id)))),
         error === '' ? null : h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, h('b', null, t('agg.failed')), h('div', null, error))))
     }
@@ -9128,14 +9074,13 @@ window.__ModuleLoader__.load({
               : tab === 'retry'
                 ? h(RetryPage, { t })
                 : tab === 'gateway'
-                // 收敛后的三段式：主路径（池→转发→局域网）→ 出口代理 → 兼容区
-                //（宿主网关与其局域网中继折叠起来）。详见 ForwardPoolPage 顶部的
-                // 结构图注释。
+                // 网关只剩一条路：对外入口（池）→ 本地转发（含局域网）→ 出口代理
+                // → 接入客户端。宿主渠道网关与它的中继已删除。
                 ? h('div', { className: 'ofm_page' },
                   h(ForwardPoolPage, { t }),
                   h(Section, { title: t('section.forward'), hint: t('section.forwardHint') }, h(Forward, { settings: data.settings, t, onApply: apply, busy })),
                   h(Section, { title: t('section.egress'), hint: t('section.egressHint') }, h(Egress, { settings: data.settings, t, onApply: apply, busy })),
-                  h(GatewayPage, { t, ctx }))
+                  h(GatewayPage, { t }))
                 : h(FreePage, { t, data, counts, summary, stats, busy, apply, bench, benches, refresh, reprobe })
 
       const dialogNav = h('header', { className: 'ofm_dlghead' },

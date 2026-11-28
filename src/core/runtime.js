@@ -35,6 +35,14 @@ export function createRuntimeStores({ dataDir, logger = console }) {
   const availability = open('availability.json', { version: 1, at: 0, egress: null, results: {} })
   const catalogStore = open('catalog.json', { version: 1, at: 0, entries: FALLBACK_CATALOG.map(entry => entry.id) })
   if (stats.get().version !== STATS_VERSION) stats.edit(migrateStats)
+  // 一次性的默认值迁移：本机转发由「默认关」改为「默认开」。旧配置里
+  // `forward.enabled` 是初始化时写死的 false，与「用户主动关掉」无法区分，
+  // 所以只在从未迁移过时打开一次；之后完全尊重用户的选择。
+  if (settings.get().forwardDefaultOn !== true) {
+    const forward = settings.get().forward ?? {}
+    settings.update({ forward: { ...forward, enabled: true }, forwardDefaultOn: true })
+    settings.flush()
+  }
   return {
     settings, stats, availability, catalogStore,
     dispose() {
