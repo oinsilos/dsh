@@ -134,8 +134,8 @@ function positiveInt(value, fallback, allowZero = false) {
 export function buildPoolRow(pool, catalog) {
   if (pool.enabled !== true) return null
   const byId = new Map()
-  for (const entry of catalog) if (!isPoolEntry(entry)) byId.set(entry.id, entry)
-  const members = pool.members.map(id => byId.get(id)).filter(entry => entry !== undefined)
+  for (const entry of catalog) if (!isPoolEntry(entry)) byId.set(entry.id.toLowerCase(), entry)
+  const members = pool.members.map(id => byId.get(id.toLowerCase())).filter(entry => entry !== undefined)
   if (members.length === 0) return null
   const windows = members.map(entry => contextWindow(entry)).filter(value => value !== undefined)
   const outputs = members.map(entry => maxOutput(entry)).filter(value => value !== undefined)
@@ -197,8 +197,8 @@ function maxOutput(entry) {
 export function poolChain(entry, catalog, options = {}) {
   const ids = Array.isArray(entry?.pool) ? entry.pool : []
   const byId = new Map()
-  for (const row of catalog) byId.set(row.id, row)
-  const members = ids.map(id => byId.get(id)).filter(row => row !== undefined)
+  for (const row of catalog) byId.set(row.id.toLowerCase(), row)
+  const members = ids.map(id => byId.get(id.toLowerCase())).filter(row => row !== undefined)
   if (members.length <= 1) return members
   const strategy = entry.strategy
   if (strategy === 'fallback') return members

@@ -118,12 +118,18 @@ export function windowActive(windows, hour) {
  */
 export function memberEntry(member, catalog) {
   if (!member || typeof member !== 'object') return undefined
-  const byId = catalog instanceof Map ? catalog : new Map((catalog ?? []).map(entry => [entry.id, entry]))
+  // 宿主渠道（loomy/codearts 等）的 model id 通常含大小写，但用户手动粘贴/
+  // 迁移配置时大小写不一致会直接导致精确查找失败（真机：GLM-5.3-Flash 被写
+  // 成 glm-5.3-flash 后整条链路走不通）。建 Map 时统一小写键，查找也用小写。
+  const rawList = catalog instanceof Map ? Array.from(catalog.values()) : (catalog ?? [])
+  const byId = new Map(rawList.map(entry => [String(entry?.id ?? '').toLowerCase(), entry]))
   const tried = new Set()
   const test = id => {
-    if (typeof id !== 'string' || id === '' || tried.has(id)) return undefined
-    tried.add(id)
-    return byId.get(id)
+    if (typeof id !== 'string' || id === '') return undefined
+    const key = id.toLowerCase()
+    if (tried.has(key)) return undefined
+    tried.add(key)
+    return byId.get(key)
   }
   const model = String(member.model ?? '')
   const provider = String(member.provider ?? '').trim()
@@ -142,12 +148,12 @@ export function memberEntry(member, catalog) {
   // 面板按宿主目录拼出来的坐标会带 adapter 路由名（`our-free-model/<目录 id>`）。
   // 目录 id 本身形态各异：免费车道是裸名，Kilo 是 `org/model:free`，聚合渠道是
   // `provider/model`；统一剥掉这一层再精确匹配。
-  const alias = [...ADAPTER_ROUTE_ALIASES].find(name => model.startsWith(`${name}/`))
+  const alias = [...ADAPTER_ROUTE_ALIASES].find(name => model.toLowerCase().startsWith(`${name}/`.toLowerCase()))
   if (alias !== undefined) {
     entry = test(model.slice(alias.length + 1))
     if (entry !== undefined) return entry
   }
-  if (provider !== '' && model.startsWith(`${provider}/${provider}/`)) {
+  if (provider !== '' && model.toLowerCase().startsWith(`${provider}/${provider}/`.toLowerCase())) {
     entry = test(model.slice(provider.length + 1))
     if (entry !== undefined) return entry
   }

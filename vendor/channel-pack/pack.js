@@ -69239,5 +69239,9 @@ export {
   makeReadImage,
   makeReadImageRequest,
   name,
-  parseWindowsProxy
+  parseWindowsProxy,
+  // 2026-11-29（our-free-model）：导出账本写入口，供宿主插件把**不经本包注册
+  // 路径**的车道（聚合渠道、免费车道直连注册）的用量也记进同一份流水账 ——
+  // 「Token 用量」面板的数据源只有这一份，宿主车道不写就会整组缺席。
+  recordTokenUsage
 };

@@ -100,11 +100,11 @@ export function normalizeCombos(raw) {
  */
 export function buildComboCatalog(combos, catalog) {
   const byId = new Map()
-  for (const entry of catalog) if (!isComboEntry(entry)) byId.set(entry.id, entry)
+  for (const entry of catalog) if (!isComboEntry(entry)) byId.set(entry.id.toLowerCase(), entry)
   const out = []
   for (const combo of combos) {
     if (combo.enabled === false) continue
-    const members = combo.models.map(id => byId.get(id)).filter(entry => entry !== undefined)
+    const members = combo.models.map(id => byId.get(id.toLowerCase())).filter(entry => entry !== undefined)
     if (members.length === 0) continue
     out.push({
       id: combo.id,
@@ -148,8 +148,8 @@ function number(value) {
 export function comboChain(entry, catalog, options = {}) {
   const ids = Array.isArray(entry?.combo) ? entry.combo : []
   const byId = new Map()
-  for (const row of catalog) byId.set(row.id, row)
-  const members = ids.map(id => byId.get(id)).filter(row => row !== undefined)
+  for (const row of catalog) byId.set(row.id.toLowerCase(), row)
+  const members = ids.map(id => byId.get(id.toLowerCase())).filter(row => row !== undefined)
   if (members.length <= 1 || entry.strategy !== 'round-robin') return members
   const limit = Number.isFinite(Number(entry.stickyLimit)) && Number(entry.stickyLimit) > 0 ? Math.trunc(Number(entry.stickyLimit)) : 1
   const cursor = rotation.get(entry.id) ?? { index: 0, used: 0 }

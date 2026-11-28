@@ -47,12 +47,21 @@ export const ROUTE_REGION = 'our-free-model-region'
  * 和 `combo:xxx`。它们不是免费模型，给它们自己一条路由和方法名。
  */
 export const ROUTE_GROUPS = 'our-free-model-route'
+/**
+ * 聚合渠道（用户自己填 Key 的第三方 provider）单独一条路由。
+ *
+ * 这些行 `channel: 'aggregate'`，不是免费车道：它们既不能拿免费网关探活，
+ * 也没有匿名额度。以前它们落入 `ROUTE_MAIN`，于是选择器「免费模型」组里
+ * 混着一堆 `volcengine-ark/…`、`nvidia_nim/…`，用户分不清哪条是免费的。
+ */
+export const ROUTE_AGGREGATE = 'our-free-model-aggregate'
 
 /** Group headings — the only strings the picker shows as a section title. */
 export const ROUTE_LABELS = {
   [ROUTE_MAIN]: '免费模型',
   [ROUTE_REGION]: '免费模型 · 地区受限',
   [ROUTE_GROUPS]: '路由分组与组合链',
+  [ROUTE_AGGREGATE]: '聚合渠道',
 }
 
 const STYLE_FOR_WIRE = { chat: 'chat', responses: 'flat', messages: 'claude' }
@@ -230,6 +239,17 @@ export class FreeModelAdapter {
     if (entry !== null && isRouteEntry(entry)) {
       yield * this.runRoute(effective, entry, snapshot)
       return
+    }
+    // 宿主其它渠道的行（`channel: 'host'`，loomy/codearts 等）没有本插件的
+    // 端点：它们只能经宿主 `llm.stream` 转发（`runForeign`）。`runChain` 里
+    // 已经分流，但直接落在 `runStream` 上的调用（面板的池探针 `test`）此前
+    // 会掉进 `runSingle`，拿 `loomy/GLM-5.3-Flash` 去打免费车道网关 —— 上游
+    // 回 "Model is unavailable."，探针误报成员坏（真机踩过）。
+    if (entry !== null && entry.channel === 'host') {
+      // capture：`yield*` 裸委托会把内层的 return 值当表达式值丢掉（外层裸
+      // return 不带值 → 调用方拿到 undefined）。`runChain` 靠这个摘要决定
+      // advance/verdict，池探针也读 `ok`。
+      return yield * this.runForeign(effective, entry, {})
     }
     // 会话钉在一个刚被停用/刚被删掉的分组上：目录里已经没有这一行，但仍要
     // 说清是哪个分组、为什么没走。否则会掉进 `runSingle`，拿一个 `route:` id
@@ -666,6 +686,9 @@ export class FreeModelAdapter {
       this.deps.recordUsage?.({
         at: started,
         model: entry.id,
+        // 这一轮已经由宿主渠道自己的 adapter 记过 pack 流水账（runForeign 只是
+        // 转交），这里再写一条就是双份。
+        skipLedger: true,
         effort: typeof request.reasoningEffort === 'string' ? request.reasoningEffort : '',
         ok,
         input: usage.inputTokens,

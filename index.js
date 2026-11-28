@@ -29,7 +29,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from './src/adapter.js'
+import { ROUTE_AGGREGATE, ROUTE_LABELS, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from './src/adapter.js'
 import { DATA_DIR_NAME, JsonStore, dayKey, decodeWindow, resolveDshHome } from './src/store.js'
 import { isEacEntry, isKiloEntry } from './src/catalog.js'
 import { STATE } from './src/probe.js'
@@ -91,6 +91,17 @@ import { addSavings, describeSavingsTotal, emptySavings, saverConfig, savingsPer
 import { CAVEMAN_LEVELS, PONYTAIL_LEVELS } from './src/token-saver/prompts.js'
 import { OPTIMIZATIONS } from './src/local-optimize.js'
 import { createModelRuntime, createRuntimeStores } from './src/core/runtime.js'
+/**
+ * pack 的 Token 流水账写入口（2026-11-29 动态绑定）。
+ *
+ * 观测页的「Token 用量」面板只读 pack 流水账（`usage.tokenLedger`），而 pack
+ * 只给**走它注册路径**的 adapter 包装记账。本插件的聚合渠道 / 免费车道是
+ * `ctx.llm.registerAdapter` 直连注册的，永远不进账本 —— 用户看到「聚合渠道
+ * 完全没有用量」。pack 现在导出 `recordTokenUsage`，这里在 pack 加载完成后
+ * 绑定，runtime 的 `recordUsage` 钩子每落一条 stats 就同步喂一条账本记录。
+ * pack 加载失败（无头组合）时保持 null，记账静默跳过。
+ */
+let packLedgerRecord = null
 
 export { fromOpenAiMessages } from './src/core/completion.js'
 import { buildStats } from './src/core/stats.js'
@@ -662,6 +673,10 @@ export function apply(ctx, config) {
     resolveImage: imageResolver(ctx, logger),
     sealedCredential: sealedCredentialOf,
     ownCredential: ownCredentialFor,
+    // pack 流水账桥（见顶部注释）：每条用量记录同步进「Token 用量」面板的数据源。
+    // ⚠️ 必须**延迟绑定**：pack 是异步 import，runtime 构造时 `packLedgerRecord`
+    // 还是 null（第一版直接传值，于是桥永远是 null，账本一条都不写）。
+    ledgerRecord: record => packLedgerRecord?.(record),
     routeStore,
     gate,
     routeGroups: () => routeStore.groups,
@@ -816,7 +831,7 @@ export function apply(ctx, config) {
    *
    * 故逐条注册、撞了就稍后重试：旧 fiber 一释放，下一次尝试就成功。
    */
-  const registration = ctx.llm.registerAdapter([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS], adapter)
+  const registration = ctx.llm.registerAdapter([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS, ROUTE_AGGREGATE], adapter)
   const ownRouteHandles = new Set()
   let ownRouteAttempt = 0
   function registerOwnProviderRoutes() {
@@ -846,7 +861,7 @@ export function apply(ctx, config) {
   registerOwnProviderRoutes()
   /** 主路由只换主路由的两条 id；自有路由的生命周期在各自的 handle 里。 */
   const routes = () => Object.keys(state().membership)
-    .filter(route => route === ROUTE_MAIN || route === ROUTE_REGION || route === ROUTE_GROUPS)
+    .filter(route => route === ROUTE_MAIN || route === ROUTE_REGION || route === ROUTE_GROUPS || route === ROUTE_AGGREGATE)
   ctx.llm.registerConfigurableProviders?.([
     { provider: ROUTE_MAIN, displayName: ROUTE_LABELS[ROUTE_MAIN], settingsNs: ctx.fiber?.entry?.options?.id ?? name, settingsPath: [] },
   ])
@@ -1427,6 +1442,8 @@ export function apply(ctx, config) {
       .catch(error => logger.warn?.(`our-free-model: gateway port probe failed (${error?.message ?? error})`))
       .then(() => import('./vendor/channel-pack/pack.js')).then(pack => {
       if (stopped) return
+      // 绑定账本写入口（见 import 处注释）：本插件各车道的用量由此进观测页。
+      if (typeof pack.recordTokenUsage === 'function') packLedgerRecord = pack.recordTokenUsage
       pack.apply(scoped, {
         disableOpencode: true,
         outlet: { active: egressActive, fetch: egressFetch },
@@ -1964,7 +1981,7 @@ export function apply(ctx, config) {
     if (!force && Date.now() - hostCatalogAt < HOST_CATALOG_TTL) return
     if (hostCatalogRun !== null) return hostCatalogRun
     hostCatalogRun = (async () => {
-      const skip = new Set([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS, ...OWN_PROVIDERS])
+      const skip = new Set([ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS, ROUTE_AGGREGATE, ...OWN_PROVIDERS])
       const rows = []
       const counts = []
       let providers = []
@@ -4058,7 +4075,8 @@ function buildSummary(deps) {
       // `null` here is what the picker does not advertise; the roster still lists
       // those models, because "the probe refused it" is the user's only evidence.
       route: (state.membership[ROUTE_MAIN] ?? []).includes(entry.id) ? ROUTE_MAIN
-        : (state.membership[ROUTE_REGION] ?? []).includes(entry.id) ? ROUTE_REGION : null,
+        : (state.membership[ROUTE_REGION] ?? []).includes(entry.id) ? ROUTE_REGION
+          : (state.membership[ROUTE_AGGREGATE] ?? []).includes(entry.id) ? ROUTE_AGGREGATE : null,
     })),
     settings: publicSettings(deps.settings.get(), forwardInfo, deps.egressInfo()),
     egress: forwardInfo.egress ?? snapshot.egress ?? null,

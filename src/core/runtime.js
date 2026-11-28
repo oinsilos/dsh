@@ -1,6 +1,6 @@
 ﻿import fs from 'node:fs'
 import path from 'node:path'
-import { FreeModelAdapter, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from '../adapter.js'
+import { FreeModelAdapter, ROUTE_AGGREGATE, ROUTE_MAIN, ROUTE_REGION, ROUTE_GROUPS } from '../adapter.js'
 import { buildCatalog, buildEacCatalog, buildKiloCatalog, isEacEntry, isKiloEntry, parseListing, reviveKiloCatalog } from '../catalog.js'
 import { buildAggregateCatalog, isAggregateEntry } from '../aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from '../combos.js'
@@ -81,6 +81,15 @@ export function createModelRuntime({
   hostStream = null,
   /** 一行一条的排障读数（分组这一轮选了谁、跳了谁、最后谁答的）。 */
   trace = () => {},
+  /**
+   * pack Token 流水账的写入口（pack.recordTokenUsage，可 null）。
+   *
+   * 观测页的「Token 用量」面板只读 pack 流水账，而 pack 只给走它注册路径的
+   * adapter 记账。本插件的聚合渠道 / 免费车道是直连注册的，不桥接就整组缺席
+   * （2026-11-29 用户实测：看板「聚合渠道都没有」）。每条 stats 用量在此同步
+   * 喂一条账本记录；写入失败绝不影响 stats 主流程。
+   */
+  ledgerRecord = null,
   onSealedUnavailable = () => {},
   onTopology = () => {},
 }) {
@@ -201,6 +210,32 @@ export function createModelRuntime({
       if (disposed) return
       recordUsage(stats, record)
       stats.edit(value => pruneDays(value, 120))
+      // 同步进 pack 流水账（「Token 用量」面板的数据源）。channel 固定 direct：
+      // 这里的车道都是本插件直连上游，不是 pack 的匿名网关。
+      // provider 取模型 id 的渠道前缀（`volcengine-ark/…` 归聚合渠道）；免费车道
+      // 与虚拟行没有前缀，统一归到主路由名下，账本里一眼能分开。
+      // `skipLedger` 的行（runForeign 转交宿主渠道）已在 pack 自己的 adapter 里
+      // 记过账，再写一次就是双份。
+      if (typeof ledgerRecord === 'function' && record.skipLedger !== true) {
+        try {
+          const model = String(record.model ?? '')
+          ledgerRecord({
+            channel: 'direct',
+            provider: model.includes('/') ? model.slice(0, model.indexOf('/')) : ROUTE_MAIN,
+            model,
+            usageReported: record.input > 0 || record.output > 0,
+            inputTokens: record.input ?? 0,
+            outputTokens: record.output ?? 0,
+            ...record.cacheRead > 0 ? { cacheReadTokens: record.cacheRead } : {},
+            ...record.reasoning > 0 ? { reasoningTokens: record.reasoning } : {},
+            ...Number.isFinite(record.ttftMs) && record.ttftMs > 0 ? { ttftMs: record.ttftMs } : {},
+            durationMs: Number.isFinite(record.elapsedMs) ? Math.max(0, Math.trunc(record.elapsedMs)) : 0,
+            // 失败的一轮也要让账本记成 error（面板按这个字段算失败率）；
+            // 不需要具体原因 —— stats.json 里的明细才是排查入口。
+            ...record.ok === false ? { error: 'turn failed' } : {},
+          })
+        } catch { /* 账本失败不影响 stats */ }
+      }
     },
     recordTurn: record => { if (!disposed) recordTurn(stats, record) },
     /** 池的智能排序读数：今天这个模型的实际调用/失败/首字。缺省时退回声明顺序。 */
@@ -476,12 +511,21 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
   // `unavailable`，照单全收就会让 14 个分组一起从选择器里消失。
   // 虚拟行（路由分组 / 组合链 / 对外入口池）同理：它们没有自己的端点，一条
   // 历史探测结论（`pool:auto = unavailable`）不该让整行从网关和选择器消失。
-  const alwaysVisible = entry => isOwnRow(entry) || isRouteEntry(entry) || isComboEntry(entry) || isPoolEntry(entry)
+  const alwaysVisible = entry => isOwnRow(entry) || isAggregateEntry(entry) || isRouteEntry(entry) || isComboEntry(entry) || isPoolEntry(entry)
   const usable = refusedAll
     ? catalog
     : catalog.filter(entry => alwaysVisible(entry) || verdictOf(entry) !== STATE.unavailable)
   const main = []
   const region = []
+  /**
+   * 聚合渠道行按独立路由分组。
+   *
+   * 它们不是免费模型：走的是用户自己填的第三方 Key，不能拿免费网关探活，
+   * 也没有匿名额度。以前它们没有分支，直接落进 `main` → `ROUTE_MAIN`，
+   * 于是选择器「免费模型」组里混着 `volcengine-ark/…` / `nvidia_nim/…`。
+   * 给它们自己的路由，标题由 `ROUTE_LABELS[ROUTE_AGGREGATE]` 取。
+   */
+  const aggregate = []
   /**
    * 自有渠道按**渠道**分组。
    *
@@ -504,6 +548,11 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
       virtual.push(entry.id)
       continue
     }
+    // 聚合渠道不是免费模型：给它们独立路由（见上方 aggregate 注释）。
+    if (isAggregateEntry(entry)) {
+      aggregate.push(entry.id)
+      continue
+    }
     if (verdictOf(entry) === STATE.regionBlocked) {
       if (expose) region.push(entry.id)
       continue
@@ -514,6 +563,7 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
   if (main.length > 0) membership[ROUTE_MAIN] = main
   if (region.length > 0) membership[ROUTE_REGION] = region
   if (virtual.length > 0) membership[ROUTE_GROUPS] = virtual
+  if (aggregate.length > 0) membership[ROUTE_AGGREGATE] = aggregate
   for (const [provider, ids] of Object.entries(own)) membership[provider] = ids
   return membership
 }
