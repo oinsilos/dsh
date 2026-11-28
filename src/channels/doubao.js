@@ -893,6 +893,9 @@ export function doubaoQuotaWindows(payload) {
   const data = payload?.data
   if (data === null || typeof data !== 'object') return []
   const out = []
+  // 两处 section 常常下发**同一批**窗口；汇总按窗口累加，不在这里去重的话
+  // 面板上的总额度会正好翻倍。
+  const seen = new Set()
   for (const section of [data.incentive_quota_section, data.window_limit_section]) {
     const groups = section?.window_limit_groups
     if (!Array.isArray(groups)) continue
@@ -903,12 +906,17 @@ export function doubaoQuotaWindows(payload) {
         const total = doubaoAmount(limit?.total_amount)
         const used = doubaoAmount(limit?.used_amount)
         if (total === undefined && used === undefined) continue
+        const featureGroup = typeof group?.feature_group === 'string' ? group.feature_group : ''
+        const endTime = typeof limit?.end_time === 'number' ? limit.end_time : undefined
+        const key = `${featureGroup}|${endTime ?? ''}|${total ?? ''}|${used ?? ''}`
+        if (seen.has(key)) continue
+        seen.add(key)
         out.push({
-          featureGroup: typeof group?.feature_group === 'string' ? group.feature_group : '',
+          featureGroup,
           featureGroupName: typeof group?.feature_group_name === 'string' ? group.feature_group_name : '',
           total: total ?? 0,
           used: used ?? 0,
-          ...typeof limit?.end_time === 'number' ? { endTime: limit.end_time } : {},
+          ...endTime === undefined ? {} : { endTime },
           ...typeof limit?.used_percent === 'number' ? { usedPercent: limit.used_percent } : {},
         })
       }

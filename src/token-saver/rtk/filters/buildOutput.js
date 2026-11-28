@@ -22,6 +22,7 @@ export function buildOutput(input) {
   const errors = []
   const warnings = []
   const deprecations = []
+  const other = []
   let summary = null
   let compilingCount = 0
   let downloadingCount = 0
@@ -105,6 +106,11 @@ export function buildOutput(input) {
       summary = summary ? `${summary}\n${line}` : line
       continue
     }
+
+    // Unclassified. Build tools put the *reason* here — Gradle's
+    // "What went wrong:", "Execution failed for task …", "> error: …" — so
+    // dropping every one of them left "BUILD FAILED" with nothing to act on.
+    other.push(line)
   }
 
   let out = ''
@@ -124,6 +130,15 @@ export function buildOutput(input) {
   }
 
   for (const e of errors) out += `${e}\n`
+
+  // Only on a failure: on a successful build the unclassified lines are the
+  // progress noise this filter exists to drop, but on a failure they are the
+  // explanation.
+  if (errors.length > 0 && other.length > 0) {
+    const keepOther = other.slice(0, 20)
+    for (const line of keepOther) out += `${line}\n`
+    if (other.length > keepOther.length) out += `... +${other.length - keepOther.length} more lines\n`
+  }
 
   const keepWarnings = warnings.slice(0, 5)
   for (const w of keepWarnings) out += `${w}\n`

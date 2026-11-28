@@ -147,6 +147,12 @@ const FLOWS = {
 export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
   /** accountId → { provider, state, intervalMs, startedAt, expiresInMs } */
   const pending = new Map()
+  /** 收掉占位账号；测试注入的 accounts 可能只有 create/attach。 */
+  const dropAccount = async accountId => {
+    try {
+      if (typeof accounts?.remove === 'function') await accounts.remove(accountId)
+    } catch { /* 账号表拒绝删除时留给 prunePending */ }
+  }
 
   return {
     supports(provider) {
@@ -191,6 +197,9 @@ export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
       if (flow === undefined) return { done: true, success: false, error: '登录流程不存在或已结束，请重新发起' }
       if (Date.now() - flow.startedAt > flow.expiresInMs) {
         pending.delete(accountId)
+        // The placeholder row has no credential and can never get one; leaving it
+        // shows a permanent "待登录" account until the next process restart.
+        await dropAccount(accountId)
         return { done: true, success: false, error: '登录等待超时，请重新发起' }
       }
       const polled = await FLOWS[flow.provider].poll(flow.state, { fetch: fetchImpl })
@@ -207,6 +216,7 @@ export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
       }
       if (polled.status === 'denied' || polled.status === 'expired' || polled.status === 'completed' || polled.status === 'error') {
         pending.delete(accountId)
+        await dropAccount(accountId)
         return {
           done: true,
           success: false,
@@ -218,7 +228,12 @@ export function createDeviceLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
     },
 
     cancel(accountId) {
-      return pending.delete(accountId)
+      const existed = pending.delete(accountId)
+      // Cancel leaves the same kind of orphan as a timeout: drop the placeholder
+      // too. Fire-and-forget keeps the route's synchronous contract (the panel
+      // only needs the boolean), and a failed delete is retried by prunePending.
+      if (existed) void dropAccount(accountId)
+      return existed
     },
   }
 }

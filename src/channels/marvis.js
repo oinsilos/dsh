@@ -252,7 +252,7 @@ export function isMarvisExpired(credential, now = Date.now()) {
  * ⚠️ `loginType` 恒为字面量 `'Marvis'`（不是 QC/WX）；
  * ⚠️ `expires_in` 是字符串，必须宽容解析，否则「续期成功也不推进到期时间」。
  */
-export async function refreshMarvisCredential(credential, { fetch: fetchImpl = fetch, now = Date.now() } = {}) {
+export async function refreshMarvisCredential(credential, { fetch: fetchImpl = fetch, now = Date.now } = {}) {
   const refreshToken = typeof credential?.refresh_token === 'string' ? credential.refresh_token : ''
   if (refreshToken === '') return { error: '凭据里没有 refresh_token（需要重新登录）' }
   const body = JSON.stringify({
@@ -287,9 +287,13 @@ export async function refreshMarvisCredential(credential, { fetch: fetchImpl = f
   const accessToken = typeof info.access_token === 'string' && info.access_token !== '' ? info.access_token : credential.access_token
   const nextRefresh = typeof info.refresh_token === 'string' && info.refresh_token !== '' ? info.refresh_token : refreshToken
   const expiresIn = readSeconds(info.expires_in)
+  // `now` 是注入点（测试传函数）。默认值曾经在解构时**调用**了一次，于是
+  // 函数体里 `now()` 拿到的是数字 → TypeError；而且此时上游已经轮换过
+  // refresh_token，失败一次就把账号废掉。
+  const at = typeof now === 'function' ? now() : Number.isFinite(Number(now)) ? Number(now) : Date.now()
   const expiresAt = expiresIn === undefined
-    ? (Number(credential.expires_at) > 0 ? Number(credential.expires_at) : now() + MARVIS_QQ_TTL_MS)
-    : now() + expiresIn * 1000
+    ? (Number(credential.expires_at) > 0 ? Number(credential.expires_at) : at + MARVIS_QQ_TTL_MS)
+    : at + expiresIn * 1000
   return {
     credential: { ...credential, access_token: accessToken, refresh_token: nextRefresh, expires_at: expiresAt, provider: 'marvis' },
     refreshed: true,

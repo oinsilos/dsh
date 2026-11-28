@@ -146,13 +146,27 @@ export function classifyFailure(status, payload, retryAfterMs) {
   if (status >= 400 && status < 500 && status !== 408 && status !== 425) {
     return new UpstreamError(message, CODE.client, { status, type })
   }
-  return new UpstreamError(message, CODE.server, { status, type })
+  // 408/425 and 5xx land here. A `Retry-After` on these is the gateway asking
+  // for quiet; carrying it keeps the router's cooldown honest (it used to be
+  // read only on the 429 branch).
+  return new UpstreamError(message, CODE.server, {
+    status,
+    type,
+    ...Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? { providerRetryAfterMs: retryAfterMs } : {},
+  })
 }
 
-/** Parse `Retry-After` into milliseconds, when the header carries a number. */
+/** Parse `Retry-After` into milliseconds: delta-seconds or an HTTP-date. */
 function retryAfter(header) {
+  if (typeof header !== 'string' || header.trim() === '') return undefined
   const seconds = Number(header)
-  return Number.isFinite(seconds) && seconds > 0 ? Math.trunc(seconds * 1000) : undefined
+  if (Number.isFinite(seconds) && seconds > 0) return Math.trunc(seconds * 1000)
+  // HTTP-date is the header's other legal form; `Number()` made it NaN and the
+  // requested wait was silently dropped.
+  const at = Date.parse(header)
+  if (!Number.isFinite(at)) return undefined
+  const wait = at - Date.now()
+  return wait > 0 ? wait : undefined
 }
 
 /**
@@ -460,10 +474,29 @@ export async function readSse(source, onData, signal, timeoutMs = 300000) {
     }
   }
   try {
+    // The idle budget has to be on the *read*, not after it: an upstream that
+    // stops sending bytes but holds the connection open parks `next()` forever,
+    // so the old "check the clock once a chunk arrives" left `timeoutMs`
+    // unenforced (a silent lane could hang a turn indefinitely).
+    const nextWithinDeadline = async () => {
+      const remaining = Math.max(1, deadline - Date.now())
+      let timer
+      const overdue = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          stop()
+          reject(new UpstreamError('our-free-model: upstream stream idle past its deadline', CODE.timeout))
+        }, remaining)
+        timer.unref?.()
+      })
+      try {
+        return await Promise.race([next(), overdue])
+      } finally {
+        clearTimeout(timer)
+      }
+    }
     while (true) {
-      const { value, done } = await next()
+      const { value, done } = await nextWithinDeadline()
       if (done) break
-      if (Date.now() > deadline) throw new UpstreamError('our-free-model: upstream stream idle past its deadline', CODE.timeout)
       if (value !== undefined) buffer += decoder.decode(value, { stream: true })
       let newline = buffer.indexOf('\n')
       while (newline !== -1) {

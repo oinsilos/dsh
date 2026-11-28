@@ -328,13 +328,18 @@ function prefixAnswer(request) {
 /** A title prompt is recognised by its system text, and never carries tools. */
 function titleAnswer(request) {
   if (hasTools(request)) return null
+  // 标题请求恒为「一条 user 摘要」；没有这道门，一个普通多轮会话只要 system 里
+  // 带了 title/JSON 约束（很常见）就会被本地答成 "Conversation"，模型永远收不到。
+  if (singleUserTurn(request) === undefined) return null
   const system = systemText(request).toLowerCase()
   if (!system.includes('title')) return null
   const sentenceCase = system.includes('sentence-case title')
   const jsonField = system.includes('return json') && system.includes('field')
     && (system.includes('coding session') || system.includes('this session'))
   if (!sentenceCase && !jsonField) return null
-  return { text: 'Conversation', usage: { input: 100, output: 5 } }
+  // JSON 模式必须回 JSON：回裸字符串会让调用方 JSON.parse 直接失败。
+  const text = jsonField && !sentenceCase ? '{"title":"Conversation"}' : 'Conversation'
+  return { text, usage: { input: 100, output: 5 } }
 }
 
 /** The suggestion-mode marker may sit in any user message; the answer is "none". */

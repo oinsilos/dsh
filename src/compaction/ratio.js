@@ -93,6 +93,11 @@ export function applyRatio(ctx, ratio) {
   for (const engine of compactionEngines(ctx)) {
     const config = engine.config
     if (config === undefined) continue
+    // `resolveCompactSpec` throws when thresholdRatio <= retainRatio. `ratioFloor`
+    // clamps to MAX_RATIO, which still sits at/below a retainRatio of 0.95 —
+    // skip that engine instead of letting one unusable engine abort the apply.
+    const retained = config.retainRatio
+    if (typeof retained === 'number' && Number.isFinite(retained) && value <= retained) continue
     const base = baselineOf(engine)
     if (base === undefined) continue
     if (config.thresholdRatio !== value

@@ -28,7 +28,14 @@ export function createPushHub({ logger = console, heartbeatMs = HEARTBEAT_MS } =
     heartbeat = setInterval(() => {
       for (const res of clients) {
         if (res.writableEnded === true || res.destroyed === true) { clients.delete(res); continue }
-        res.write(': ping\n\n')
+        // The same guard as `sendTo`: a peer that vanished between the close
+        // event and this tick must not throw out of a `setInterval` callback
+        // (there is no `error` listener on these responses).
+        try {
+          res.write(': ping\n\n')
+        } catch {
+          clients.delete(res)
+        }
       }
       if (clients.size === 0) stopHeartbeat()
     }, heartbeatMs)
@@ -65,6 +72,9 @@ export function createPushHub({ logger = console, heartbeatMs = HEARTBEAT_MS } =
       }
       req.on('close', drop)
       res.on('close', drop)
+      // An SSE response can emit `error` (EPIPE/ECONNRESET) asynchronously; with
+      // no listener that event is an uncaught exception, not a dropped client.
+      res.on('error', drop)
     },
     sendTo(res, event, data) {
       if (res.writableEnded === true || res.destroyed === true) { clients.delete(res); return }

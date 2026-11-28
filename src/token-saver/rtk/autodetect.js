@@ -104,7 +104,10 @@ export function autoDetectFilter(text) {
  * two colons matter, so content containing colons does not disqualify the line.
  */
 function isGrepLine(line) {
-  const first = line.indexOf(':')
+  // A Windows absolute path owns the first colon (`C:\…`): start past the drive
+  // prefix, or `C:\repo\a.js:12:match` never parses as a grep hit.
+  const drive = /^[A-Za-z]:[\\/]/.test(line) ? 2 : 0
+  const first = line.indexOf(':', drive)
   if (first === -1) return false
   const second = line.indexOf(':', first + 1)
   if (second === -1) return false

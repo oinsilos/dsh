@@ -16,7 +16,7 @@
  */
 
 import crypto from 'node:crypto'
-import { classifyFailure } from './http.js'
+import { classifyFailure, CODE } from './http.js'
 import { restoreToolName } from './upstream.js'
 
 /** DeepSeek v4-family models occasionally leak internal DSML control markup
@@ -50,7 +50,11 @@ function createDsmlScrubber() {
     flush() {
       const out = held
       held = ''
-      if (out === '' || DSML_OPENING.startsWith(out) || (out.startsWith(DSML_OPENING) && !out.includes('>'))) return ''
+      // A lone `<` at the end of a turn is ordinary content (a comparison, the
+      // tail of a code answer). `DSML_OPENING.startsWith('<')` is true, and the
+      // old flush dropped it — every answer ending in "<" lost its last char.
+      if (out.length < 2) return out
+      if (DSML_OPENING.startsWith(out) || (out.startsWith(DSML_OPENING) && !out.includes('>'))) return ''
       return out.replace(DSML_TAG, '')
     },
   }
@@ -314,10 +318,17 @@ function feedClaude(sink, event, onFinish, renameMap) {
   if (event.type === 'message_start') {
     const usage = event.message?.usage
     if (usage) {
+      // Anthropic's `input_tokens` EXCLUDES both cache figures (they are
+      // separate fields), while `mapUsage` treats its `prompt_tokens` as the
+      // total and subtracts the cached part itself. Passing input_tokens alone
+      // therefore subtracted the cache read a second time — a cached-heavy
+      // Claude turn reported a fraction of its real prompt and total.
+      const cacheRead = number(usage.cache_read_input_tokens) ?? 0
+      const cacheWrite = number(usage.cache_creation_input_tokens) ?? 0
       const mapped = mapUsage({
-        prompt_tokens: number(usage.input_tokens),
+        prompt_tokens: (number(usage.input_tokens) ?? 0) + cacheRead + cacheWrite,
         completion_tokens: number(usage.output_tokens),
-        prompt_tokens_details: { cached_tokens: number(usage.cache_read_input_tokens), cache_write_tokens: number(usage.cache_creation_input_tokens) },
+        prompt_tokens_details: { cached_tokens: cacheRead, cache_write_tokens: number(usage.cache_creation_input_tokens) },
       })
       if (mapped) onFinish(mapped, 'usage')
     }
@@ -489,6 +500,14 @@ export async function * readStream(lines, wire, renameMap, now = () => Date.now(
         const failure = payload.error ?? payload
         const classified = classifyFailure(undefined, payload)
         if (typeof failure.message !== 'string') classified.message = 'upstream error'
+        // An in-stream error has no HTTP status, so a request-scoped refusal
+        // (`invalid_request_error`: prompt too long, unsupported field) can only
+        // be recognized by its type. Without this it fell through to the
+        // retryable default and the identical bad body was sent again.
+        if (classified.code === CODE.server
+          && (failure.type === 'invalid_request_error' || failure.code === 'invalid_request_error')) {
+          classified.code = CODE.client
+        }
         throw Object.assign(classified, { upstream: payload })
       }
       if (state.firstDeltaAt === undefined && carriesDelta(payload, wire)) state.firstDeltaAt = now()

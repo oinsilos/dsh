@@ -162,6 +162,11 @@ export function parseLoginPayload(payload) {
   if (accessToken === '') return { error: '登录响应缺少 access_token' }
   const obtainedAt = Date.now()
   const expiresAt = expiresAtMs(data.expires_at ?? data.expires_in, obtainedAt)
+  // `??` would keep an empty `user_name` (empty string is not nullish) and then
+  // block the phone fallback — the account ended up named "" and every such
+  // login collided on the same nickname key.
+  const nickname = typeof data.user_name === 'string' && data.user_name !== '' ? data.user_name
+    : typeof data.user_phone === 'string' && data.user_phone !== '' ? data.user_phone : undefined
   return {
     credential: {
       access_token: accessToken,
@@ -171,8 +176,7 @@ export function parseLoginPayload(payload) {
       ...typeof data.device_id === 'string' ? { device_id: data.device_id } : {},
       ...expiresAt === undefined ? {} : { expires_at: expiresAt },
     },
-    ...typeof data.user_name === 'string' && data.user_name !== '' ? { nickname: data.user_name } : {},
-    ...typeof data.user_phone === 'string' && data.user_phone !== '' ? { nickname: data.user_name ?? data.user_phone } : {},
+    ...nickname === undefined ? {} : { nickname },
   }
 }
 

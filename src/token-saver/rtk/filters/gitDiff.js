@@ -57,6 +57,16 @@ export function gitDiff(diff, maxLines = 500) {
       removed = 0
       inHunk = false
       hunkShown = 0
+    } else if (line.startsWith('+++ ')) {
+      // `diff -u old new` / `patch` output has no `diff --git` line: without
+      // this the compacted output listed hunks with no file name at all.
+      if (currentFile === '') {
+        const name = line.slice(4).trim().replace(/^b\//, '')
+        if (name !== '' && name !== '/dev/null') {
+          currentFile = name
+          result.push(`\n${name}`)
+        }
+      }
     } else if (line.startsWith('@@')) {
       if (hunkSkipped > 0) {
         result.push(`  ... (${hunkSkipped} lines truncated)`)

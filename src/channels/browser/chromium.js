@@ -264,6 +264,12 @@ export async function startChromiumSession({ url, executable, userDataDir, headl
     windowsHide: false,
     detached: process.platform !== 'win32',
   })
+  // Without a listener Node turns a failed spawn (ENOENT/EACCES/AV block) into
+  // an uncaught `error` event — that crashes the host process, not just this
+  // login. Record it and fail the flow with the real reason instead of waiting
+  // out the 20 s debug-port budget.
+  let spawnError
+  child.on('error', error => { spawnError = error })
   const close = () => {
     killTree(child.pid)
     if (userDataDir === undefined) {
@@ -275,12 +281,14 @@ export async function startChromiumSession({ url, executable, userDataDir, headl
     const deadline = Date.now() + LAUNCH_TIMEOUT_MS
     let parsed
     while (Date.now() < deadline) {
+      if (spawnError !== undefined) throw spawnError
       if (fs.existsSync(activePort)) {
         parsed = parseDevToolsActivePort(fs.readFileSync(activePort, 'utf8'))
         if (parsed !== undefined) break
       }
       await sleep(100)
     }
+    if (spawnError !== undefined) throw spawnError
     if (parsed === undefined) throw new Error(`浏览器没有暴露调试端口（${LAUNCH_TIMEOUT_MS / 1000}s 超时）`)
     const cdp = new CdpConnection(`ws://127.0.0.1:${parsed.port}${parsed.browserPath}`)
     await cdp.ready

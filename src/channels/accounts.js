@@ -122,6 +122,12 @@ export function createChannelAccounts(store, credentials, resolve) {
       const entry = this.find(accountId)
       if (entry === undefined) return undefined
       await credentials.set(entry.credentialRef, JSON.stringify(value))
+      // 面板可能在这个 await 期间删除了账号（remove 先删行、再删凭据）。
+      // 行已经不在时，刚写下去的凭据就是一份无主令牌 —— 面板再也删不到它。
+      if (this.find(accountId) === undefined) {
+        try { await credentials.delete(entry.credentialRef) } catch { /* best effort */ }
+        return undefined
+      }
       return this.update(accountId, patch)
     },
     /** 解析某个账号的凭据 JSON；缺失/损坏时为 null（**不抛**）。 */

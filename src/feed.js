@@ -104,6 +104,10 @@ function parseItem(row, now) {
 }
 
 function timestamp(value) {
+  // JSON has no date type, so a feed written by a script naturally carries
+  // epoch milliseconds. Only accepting strings made those entries never expire
+  // (and gave them a createdAt of 0, pinning them to the bottom forever).
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 0 ? value : undefined
   if (typeof value !== 'string' || value.trim() === '') return undefined
   const ms = Date.parse(value)
   return Number.isFinite(ms) ? ms : undefined
@@ -203,7 +207,11 @@ export class AnnouncementFeed {  /**
     // URL.hostname keeps brackets on IPv6 (`[::1]`); everything loopback never
     // leaves the machine, so plain http stays acceptable there.
     const host = (parsed?.hostname ?? '').toLowerCase()
-    const loopback = host === 'localhost' || host === '[::1]' || host === '::1' || host.startsWith('127.')
+    // `hostname` is a *name* until proven otherwise: `127.evil.example` also
+    // starts with "127.", and the old prefix test let it through as loopback,
+    // turning this override into a plaintext channel to a remote host.
+    const loopback = host === 'localhost' || host === '[::1]' || host === '::1'
+      || /^127(?:\.\d{1,3}){3}$/.test(host)
     const acceptable = parsed !== null && parsed.username === '' && parsed.password === ''
       && (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && loopback))
     if (!acceptable) {

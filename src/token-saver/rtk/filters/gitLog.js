@@ -18,6 +18,10 @@ export function gitLog(text, maxLines = GIT_LOG_MAX_LINES) {
   if (!text) return ''
 
   const input = String(text)
+  // `git show` / `git log -p` embed a patch. Compacting the log would replace
+  // the one part that answers "what changed" with a one-line marker, so this
+  // filter steps aside and hands the blob back untouched.
+  if (/^diff --git /m.test(input)) return input
   const lines = input.split('\n')
   const out = []
   let skipped = 0

@@ -43,11 +43,24 @@ export function createSmsLogin({ accounts, fetch: fetchImpl = fetch } = {}) {
       const result = await loginWithCode(phone, code, { fetch: fetchImpl, product })
       if (result.error !== undefined) return result
       const nickname = result.nickname ?? phone
-      const existing = accounts.list(provider).find(entry => entry.nickname === nickname)
+      const userId = result.credential?.user_id
+      // Nickname alone is not an identity: two numbers can share a display name
+      // (and an empty one is possible upstream), and reusing the row would
+      // overwrite the other account's credential. When both sides carry a
+      // user_id, only the same id counts as "the same account".
+      let existing
+      for (const entry of accounts.list(provider)) {
+        if (entry.nickname !== nickname) continue
+        const stored = await accounts.credentialOf(entry)
+        if (userId !== undefined && stored?.user_id !== undefined && String(stored.user_id) !== String(userId)) continue
+        existing = entry
+        break
+      }
       const account = existing ?? accounts.create(provider, { nickname })
       const expiresAt = Number(result.credential?.expires_at)
       await accounts.attach(account.id, result.credential, {
-        ...existing === undefined ? { nickname } : {},
+        // 重新登录 = 用户主动把这个号接回来：顺手解除停用，否则渠道仍然不可见。
+        ...existing === undefined ? { nickname } : { enabled: true },
         // 到期时间必须写回账号表：面板的「有效期」和续期闸门都读这个字段，
         // 只写在凭据里等于界面永远显示「永久」。
         ...Number.isFinite(expiresAt) && expiresAt > 0 ? { expiresAt } : {},

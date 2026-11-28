@@ -51,9 +51,14 @@ export async function probeModel(model, { attributionUserAgent, signal, timeoutM
   const session = sessionForConversation('probe:our-free-model')
   const wire = wireFor(model.id)
   const body = buildPing(model.id, wire)
-  applyFingerprint(body, wire === 'responses')
+  // `applyFingerprint` speaks three styles: true = Responses, false = Chat,
+  // 'claude' = Messages. Passing a boolean for the Messages wire wrote Chat
+  // tool shapes and a string `tool_choice` into an Anthropic body — a 400 on
+  // every probe, so `union-alpha` sat in the picker as unavailable forever.
+  applyFingerprint(body, wire === 'messages' ? 'claude' : wire === 'responses')
 
   let firstDelta
+  let sawTerminal = false
   let streamError
   try {
     await postStreamed({
@@ -70,23 +75,32 @@ export async function probeModel(model, { attributionUserAgent, signal, timeoutM
         // expected (src/stream.js classifies the same frames for real turns).
         // Reading only "did a delta look like a delta" called such a stream
         // available, and a model that fails every honest turn sat in the picker
-        // with a green badge.
-        if (streamError === undefined && /"(?:type"\s*:\s*"error"|"error"\s*:)/.test(payload)) {
+        // with a green badge. Responses wire nests it as `response.failed` /
+        // `response.error`, which the flat shape check used to miss.
+        if (streamError === undefined && /"(?:type"\s*:\s*"(?:error|response\.failed)"|"error"\s*:)/.test(payload)) {
           try {
             const parsed = JSON.parse(payload)
-            const failure = parsed?.error ?? (parsed?.type === 'error' ? parsed : undefined)
+            const failure = parsed?.error ?? parsed?.response?.error ?? (parsed?.type === 'error' ? parsed : undefined)
             if (failure !== undefined && failure !== null) {
               streamError = typeof failure.message === 'string' ? failure.message : 'upstream error'
               return
             }
           } catch { /* not JSON the lane emits; the delta regex below still runs */ }
         }
-        if (firstDelta !== undefined) return
-        if (/"(delta|content|text|output_item)"|response\.(output_item|output_text|function_call)/.test(payload)) firstDelta = Date.now()
+        if (firstDelta === undefined) {
+          if (/"(delta|content|text|output_item)"|response\.(output_item|output_text|function_call)/.test(payload)) firstDelta = Date.now()
+          // A terminal frame with no output still proves the route works; a
+          // stream that carries neither is an empty 200 and says nothing about
+          // the model being usable.
+          if (/finish_reason|message_stop|response\.(completed|incomplete)/.test(payload)) sawTerminal = true
+        }
       },
     })
     if (streamError !== undefined) {
       return { state: STATE.unknown, detail: streamError.slice(0, 200), latencyMs: Date.now() - started }
+    }
+    if (firstDelta === undefined && sawTerminal !== true) {
+      return { state: STATE.unknown, detail: '上游流没有任何输出，也没有终帧（空流）', latencyMs: Date.now() - started }
     }
     return { state: STATE.available, latencyMs: Date.now() - started, ttftMs: firstDelta === undefined ? undefined : firstDelta - started }
   } catch (error) {

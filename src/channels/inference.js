@@ -43,6 +43,7 @@ import {
   doubaoWebQuery,
   readDoubaoFrames,
 } from './doubao.js'
+import { MINIMAX_PRODUCTS, accessTokenOf } from './minimax.js'
 
 const TURN_TIMEOUT_MS = 300_000
 const KEY_TIMEOUT_MS = 15_000
@@ -475,14 +476,19 @@ async function buildRequest(lane, credential, body, { fetch: fetchImpl, signal }
     const requestId = `req-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
     const messageId = crypto.createHash('md5').update(`${requestId}:${Math.random()}`).digest('hex')
     const contents = []
+    // Gemini 形状没有 `system` role：system 必须走 `systemInstruction`。
+    // 以前把它当 user 发出去（且 `systemInstruction` 只读一个从不存在的
+    // `body.systemInstruction` 字段），人设/约束混进对话，指令层级错位。
+    const systemParts = []
     for (const message of Array.isArray(body.messages) ? body.messages : []) {
-      const role = message.role === 'assistant' ? 'model' : 'user'
       const text = typeof message.content === 'string'
         ? message.content
         : Array.isArray(message.content)
           ? message.content.map(part => (typeof part?.text === 'string' ? part.text : '')).join('')
           : ''
       if (text === '') continue
+      if (message.role === 'system') { systemParts.push(text); continue }
+      const role = message.role === 'assistant' ? 'model' : 'user'
       contents.push({ role, parts: [{ text }] })
     }
     const payload = toSnake({
@@ -493,7 +499,7 @@ async function buildRequest(lane, credential, body, { fetch: fetchImpl, signal }
       requestId,
       userRequestId: requestId,
       contents,
-      systemInstruction: typeof body.systemInstruction === 'string' && body.systemInstruction !== '' ? body.systemInstruction : undefined,
+      systemInstruction: systemParts.length === 0 ? undefined : { role: 'system', parts: [{ text: systemParts.join('\n\n') }] },
       temperature: body.temperature,
       maxOutputTokens: body.max_tokens,
       stopSequences: [],
@@ -523,7 +529,12 @@ async function buildRequest(lane, credential, body, { fetch: fetchImpl, signal }
   if (lane.id === 'minimaxintl') {
     // Anthropic Messages：`body` 已经是 `{model, messages, system?, max_tokens, stream}`
     // 的形状，原样发出去 —— 这里**不重排**字段，也不塞 OpenAI 的 `stream_options`。
-    const token = String(credential.access_token ?? '').trim()
+    // Token 必须走站别校验：串进来国内站的凭据时，发到国际站只会得到 401，
+    // 面板显示「凭据失效」，真正原因是「这份凭据属于另一站」。
+    const token = accessTokenOf(credential, MINIMAX_PRODUCTS.minimaxintl)
+    if (token === '') {
+      throw new UpstreamError('MiniMax 国际站凭据不可用（可能来自国内站，需要重新登录）', CODE.credential)
+    }
     return {
       url: `${lane.base}${lane.path}`,
       headers: {

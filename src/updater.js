@@ -573,6 +573,17 @@ export class PluginUpdater {
   reconcileRecovery() {
     const state = this.loadUpgradeState()
     if (upgradeLocks.has(this.deps.pkgDir) || !['installing', 'activating', 'recovery-required'].includes(state?.phase)) return
+    // The upgrade actually landed: disk and the running module are both the
+    // target version. A crash between "installed" and "activation recorded" —
+    // or a restart during that window — leaves exactly this state, and without
+    // this branch the stale `installing/activating` marker blocks every later
+    // upgrade (the rollback check below can never match: disk is the NEW tree).
+    const installed = this.currentVersion()
+    const running = this.deps.runningVersion ?? installed
+    if (state.to !== undefined && running === state.to && installed === state.to) {
+      this.saveUpgradeState({ ...state, phase: 'complete', error: '', activationVerified: true })
+      return
+    }
     try {
       verifySnapshot(this.deps.pkgDir, backupSnapshot(this.backupDir))
       if ((this.deps.runningVersion ?? this.currentVersion()) !== state.from) return
@@ -603,7 +614,13 @@ export class PluginUpdater {
     this.history = [...this.loadHistory(), entry].slice(-20)
     try {
       fs.mkdirSync(this.deps.dataDir, { recursive: true })
-      fs.writeFileSync(path.join(this.deps.dataDir, 'updates.json'), JSON.stringify({ applied: this.history }, undefined, 2))
+      // tmp + rename like `saveUpgradeState`: an in-place write that dies
+      // halfway leaves truncated JSON, and `loadHistory` then reports "no
+      // history" instead of the previous entries.
+      const file = path.join(this.deps.dataDir, 'updates.json')
+      const pending = `${file}.tmp`
+      fs.writeFileSync(pending, JSON.stringify({ applied: this.history }, undefined, 2))
+      fs.renameSync(pending, file)
     } catch (error) {
       this.deps.log?.(`our-free-model: could not write update history (${error?.message ?? error})`)
     }

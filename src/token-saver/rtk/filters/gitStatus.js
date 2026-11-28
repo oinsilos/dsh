@@ -31,9 +31,17 @@ export function gitStatus(input) {
   let modified = 0
   let untracked = 0
   let conflicts = 0
+  let untrackedSection = false
+  let sawUntrackedHeader = false
 
   for (const raw of lines) {
-    if (!raw.trim()) continue
+    if (!raw.trim()) { untrackedSection = false; continue }
+    if (/^Untracked files:/.test(raw)) { untrackedSection = true; sawUntrackedHeader = true; continue }
+    // Any other section header ends the untracked list.
+    if (/^(Changes not staged for commit|Changes to be committed|Unmerged paths|no changes added to commit)/.test(raw)) {
+      untrackedSection = false
+      continue
+    }
 
     // Long-form branch detection (LLM usually sends this, not porcelain)
     const longBranch = raw.match(/^On branch (\S+)/)
@@ -81,8 +89,17 @@ export function gitStatus(input) {
       continue
     }
 
-    // "Untracked files:" section — gather bare paths after this marker
-    // Handled implicitly: plain paths without markers are skipped (safer).
+    // "Untracked files:" section — bare indented paths, one per line. The old
+    // code skipped every one of them ("safer"), so a tree full of new files was
+    // reported as clean and the model was told there was nothing to commit.
+    if (untrackedSection) {
+      if (/^\s+\(use /.test(raw)) continue
+      if (/^\s+\S/.test(raw)) {
+        untracked++
+        untrackedFiles.push(raw.trim())
+        continue
+      }
+    }
   }
 
   let out = ''
@@ -119,7 +136,10 @@ export function gitStatus(input) {
   // An empty status is a fact the model must be told explicitly: silence reads
   // as "the command failed", and the model then runs status again.
   if (staged === 0 && modified === 0 && untracked === 0 && conflicts === 0) {
-    out += 'clean — nothing to commit\n'
+    // A long-form status that *had* an untracked section is not clean even when
+    // every path line failed to parse — claiming otherwise is how the model
+    // concludes there is nothing to commit.
+    out += sawUntrackedHeader ? '? Untracked: present (paths not parsed)\n' : 'clean — nothing to commit\n'
   }
 
   return out.replace(/\n+$/, '')

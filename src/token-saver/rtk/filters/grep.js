@@ -17,21 +17,27 @@ import { GREP_PER_FILE_MAX } from '../constants.js'
 
 export function grep(input) {
   const byFile = new Map()
+  const passthrough = []
   let total = 0
 
   for (const line of input.split('\n')) {
     // splitn(3, ':') — only split on the first 2 colons, so a match whose
     // content contains ':' (JSON, a ternary, a URL) keeps its content intact.
-    const first = line.indexOf(':')
-    if (first === -1) continue
+    // A Windows absolute path owns the first colon (`C:\…`), so start after the
+    // drive prefix or every such line reads as file "C".
+    const drive = /^[A-Za-z]:[\\/]/.test(line) ? 2 : 0
+    const first = line.indexOf(':', drive)
+    if (first === -1) { if (line.trim() !== '') passthrough.push(line); continue }
     const second = line.indexOf(':', first + 1)
-    if (second === -1) continue
+    if (second === -1) { if (line.trim() !== '') passthrough.push(line); continue }
     const file = line.slice(0, first)
     const lineNumStr = line.slice(first + 1, second)
     const content = line.slice(second + 1)
     // Rust: parts[1].parse::<usize>().is_ok() — a non-numeric middle field
     // means this is not a grep line at all (e.g. "src/a.js: export ...").
-    if (!/^\d+$/.test(lineNumStr)) continue
+    // Keep it: these are `rg -C` context lines and stack frames, and dropping
+    // them silently made the summary claim matches whose context was gone.
+    if (!/^\d+$/.test(lineNumStr)) { if (line.trim() !== '') passthrough.push(line); continue }
     total++
     if (!byFile.has(file)) byFile.set(file, [])
     byFile.get(file).push([lineNumStr, content])
@@ -57,6 +63,13 @@ export function grep(input) {
     if (matches.length > GREP_PER_FILE_MAX) {
       out += `  +${matches.length - GREP_PER_FILE_MAX}\n`
     }
+    out += '\n'
+  }
+
+  if (passthrough.length > 0) {
+    out += `[other] ${passthrough.length} line(s) kept verbatim:\n`
+    for (const line of passthrough.slice(0, 40)) out += `${line}\n`
+    if (passthrough.length > 40) out += `... +${passthrough.length - 40} more\n`
     out += '\n'
   }
 

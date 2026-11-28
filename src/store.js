@@ -107,7 +107,18 @@ export class JsonStore {
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true })
       const temp = `${this.file}.${process.pid}.tmp`
-      fs.writeFileSync(temp, JSON.stringify(this.value, undefined, 2), { mode: 0o600 })
+      // fsync before rename: without it a power cut can leave the renamed file
+      // present but zero-length (rename lands, contents do not), and the next
+      // load treats that as a corrupt settings file and falls back to defaults
+      // — silently losing every key and acknowledged setting.
+      const body = JSON.stringify(this.value, undefined, 2)
+      const fd = fs.openSync(temp, 'w', 0o600)
+      try {
+        fs.writeFileSync(fd, body)
+        fs.fsyncSync(fd)
+      } finally {
+        fs.closeSync(fd)
+      }
       fs.renameSync(temp, this.file)
       this.writeFailed = false
     } catch (error) {
