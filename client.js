@@ -270,6 +270,7 @@ window.__ModuleLoader__.load({
         'common.loading': '加载中…',
         'common.saving': '保存中…',
         'common.save': '保存',
+        'common.failed': '操作失败',
         'section.egress': '出口代理（订阅分流）',
         'section.egressHint': '把推理与探测请求从代理出口发出，缓解按 IP 的频率限制。',
         'egress.enabled': '启用出口',
@@ -1145,6 +1146,7 @@ window.__ModuleLoader__.load({
         'common.loading': 'Loading…',
         'common.saving': 'Saving…',
         'common.save': 'Save',
+        'common.failed': 'Action failed',
         'section.egress': 'Egress outlet (subscription routing)',
         'section.egressHint': 'Send inference and probe traffic through a proxy outlet to ease per-IP rate limits.',
         'egress.enabled': 'Enable outlet',
@@ -4088,7 +4090,19 @@ window.__ModuleLoader__.load({
             h('code', { className: 'ofm_mono', style: { padding: '4px 8px', flex: 1, minWidth: 200, letterSpacing: shown ? 0 : 1 } }, key === '' ? '…' : shown ? key : '•'.repeat(24)),
             h(Button, { kind: 'ghost', onClick: () => setShown(value => !value) }, shown ? t('forward.hide') : t('forward.show')),
             h(Button, { kind: 'ghost', onClick: () => doCopy('key', key) }, copied === 'key' ? t('forward.copied') : t('forward.copy')),
-            h(Button, { kind: 'ghost', title: t('forward.rotateWarn'), onClick: async () => { const payload = await post('/forward/rotate'); setKey(payload.key ?? ''); setShown(true) } }, t('forward.rotate'))),
+            h(Button, { kind: 'ghost', title: t('forward.rotateWarn'), onClick: async () => {
+              // Regenerating invalidates every configured client; a stray click
+              // must not do that silently, and a failed request must say so
+              // instead of leaving an unhandled rejection behind.
+              if (typeof window !== 'undefined' && !window.confirm(t('forward.rotateWarn'))) return
+              try {
+                const payload = await post('/forward/rotate')
+                setKey(payload.key ?? '')
+                setShown(true)
+              } catch (error) {
+                showToast({ title: t('common.failed'), body: String(error?.message ?? error), tone: 'warn' })
+              }
+            } }, t('forward.rotate'))),
           h('div', { className: 'ofm_sec', style: { gap: 4 } }, h('span', { className: 'ofm_note' }, t('forward.example')),
             h('pre', { className: 'ofm_mono' }, curl),
             h('div', null, h(Button, { kind: 'ghost', onClick: () => doCopy('curl', curl) }, copied === 'curl' ? t('forward.copied') : t('forward.copy'))))) : null,
@@ -4115,7 +4129,16 @@ window.__ModuleLoader__.load({
               h('code', { className: 'ofm_mono', style: { padding: '4px 8px', flex: 1, minWidth: 200, letterSpacing: lanShown ? 0 : 1 } }, lanKey === '' ? '…' : lanShown ? lanKey : '•'.repeat(24)),
               h(Button, { kind: 'ghost', onClick: () => setLanShown(value => !value) }, lanShown ? t('forward.hide') : t('forward.show')),
               h(Button, { kind: 'ghost', onClick: () => doCopy('lanKey', lanKey) }, copied === 'lanKey' ? t('forward.copied') : t('forward.copy')),
-              h(Button, { kind: 'ghost', title: t('forward.lanRotateWarn'), onClick: async () => { const payload = await post('/forward/lan/rotate'); setLanKey(payload.key ?? ''); setLanShown(true) } }, t('forward.rotate')))) : null))
+              h(Button, { kind: 'ghost', title: t('forward.lanRotateWarn'), onClick: async () => {
+                if (typeof window !== 'undefined' && !window.confirm(t('forward.lanRotateWarn'))) return
+                try {
+                  const payload = await post('/forward/lan/rotate')
+                  setLanKey(payload.key ?? '')
+                  setLanShown(true)
+                } catch (error) {
+                  showToast({ title: t('common.failed'), body: String(error?.message ?? error), tone: 'warn' })
+                }
+              } }, t('forward.rotate')))) : null))
     }
 
     // ── egress outlet ─────────────────────────────────────────────────────────
@@ -4225,13 +4248,19 @@ window.__ModuleLoader__.load({
       const settings = summary.settings
       const [draft, setDraft] = useState(settings)
       useEffect(() => setDraft(settings), [summary])
+      // 开关读本地 draft 而不是 props 快照：加载完成前连点两次会各自基于旧值
+      // 发出同一个目标值，实际只切换了一半。busy 期间直接禁用。
+      const togglePref = (key, next) => {
+        setDraft(current => ({ ...(current ?? settings ?? {}), [key]: next }))
+        onApply({ [key]: next })
+      }
       return h(Panel, null,
         h('div', { className: 'ofm_row', style: { gap: 20 } },
-          h(Switch, { checked: settings.enabled !== false, label: t('pref.enabled'), onChange: () => onApply({ enabled: !(settings.enabled !== false) }) }),
-          h(Switch, { checked: settings.exposeRegionModels !== false, label: t('pref.exposeRegion'), onChange: () => onApply({ exposeRegionModels: !(settings.exposeRegionModels !== false) }) }),
-          h(Switch, { checked: settings.hideChannelModels === true, label: t('pref.hideChannels'), onChange: () => onApply({ hideChannelModels: !(settings.hideChannelModels === true) }) })),
+          h(Switch, { checked: draft?.enabled !== false, disabled: busy, label: t('pref.enabled'), onChange: () => togglePref('enabled', !(draft?.enabled !== false)) }),
+          h(Switch, { checked: draft?.exposeRegionModels !== false, disabled: busy, label: t('pref.exposeRegion'), onChange: () => togglePref('exposeRegionModels', !(draft?.exposeRegionModels !== false)) }),
+          h(Switch, { checked: draft?.hideChannelModels === true, disabled: busy, label: t('pref.hideChannels'), onChange: () => togglePref('hideChannelModels', !(draft?.hideChannelModels === true)) })),
         h('div', { className: 'ofm_row', style: { gap: 10 } },
-          h(Switch, { checked: settings.hideUnavailableModels === true, label: t('pref.hideUnavailable'), onChange: () => onApply({ hideUnavailableModels: !(settings.hideUnavailableModels === true) }) }),
+          h(Switch, { checked: draft?.hideUnavailableModels === true, disabled: busy, label: t('pref.hideUnavailable'), onChange: () => togglePref('hideUnavailableModels', !(draft?.hideUnavailableModels === true)) }),
           h('span', { className: 'ofm_note' }, t('pref.hideUnavailableHint'))),
         h('div', { className: 'ofm_row' },
           field(t('pref.interval'), h('input', { className: 'ofm_input', style: { maxWidth: 100 }, value: draft?.probeIntervalMinutes ?? 15, onChange: e => setDraft(c => ({ ...c, probeIntervalMinutes: Number(e.target.value.replace(/\D/g, '')) || 0 })) })),
@@ -4688,7 +4717,10 @@ window.__ModuleLoader__.load({
             setTasks(out)
             return
           }
-          const list = accounts ?? await rpc('account.list', { provider: channel.id }).then(value => value?.accounts ?? [])
+          // 不能信任 `accounts` 这个 prop：`toggle('tasks')` 刚 await 完
+          // loadAccounts()，但本闭包仍是上一次渲染的列表 —— 新加的账号在
+          // 「任务」折叠里永远查不到。每次直接向渠道包要一份最新的。
+          const list = await rpc('account.list', { provider: channel.id }).then(value => value?.accounts ?? [])
           const out = {}
           for (const row of list) {
             try {
@@ -6087,7 +6119,14 @@ window.__ModuleLoader__.load({
             rpc('usage.tokenLedgerHistory', { sinceDays: 90 }, 60_000),
           ])
           setState({ status: 'ready', snapshot: ledger?.snapshot ?? null, history: history?.history ?? [], totals: history?.totals ?? null, error: '' })
-        } catch (error) { setState(current => ({ ...current, status: 'error', error: String(error?.message ?? error) })) }
+        } catch (error) {
+          // A refresh that fails must not throw away the last good reading: the
+          // logs page polls every 10 s, and one blip used to blank the whole
+          // ledger (status 'error' renders the skeleton, not the data).
+          setState(current => current.snapshot !== null || current.history.length > 0
+            ? { ...current, status: 'ready', error: String(error?.message ?? error) }
+            : { ...current, status: 'error', error: String(error?.message ?? error) })
+        }
       }, [available, rpc])
       useEffect(() => { void load() }, [load])
       return { ...state, reload: load }
@@ -6403,9 +6442,12 @@ window.__ModuleLoader__.load({
       /** 把第 index 个成员挪到 position（1 起）——数字输入框的写回。 */
       const moveTo = (index, position) => setDraft(current => {
         if (current === null) return current
+        const wanted = Number(position)
+        // 清空输入框 / 非数字：什么都不做，不要把人挪到第 1 位。
+        if (!Number.isFinite(wanted) || wanted <= 0) return current
         const next = [...current.members]
         const [row] = next.splice(index, 1)
-        const target = Math.max(0, Math.min(next.length, (Number(position) || 1) - 1))
+        const target = Math.max(0, Math.min(next.length, Math.round(wanted) - 1))
         next.splice(target, 0, row)
         return { ...current, members: next }
       })
@@ -6528,11 +6570,19 @@ window.__ModuleLoader__.load({
                     // 路由分组读法一致（那里也是右侧一个数字框）。
                     h('div', { className: 'ofm_chainacts' },
                       h('input', {
+                        // 每次按键就重排会让多位数输入失控（输 "12" 先跳到 1）。
+                        // 改为失焦/回车提交；key 跟着位置变，序号才会回显新值。
+                        key: `${id}:${index}`,
                         className: 'ofm_chainno', type: 'number', min: '1', max: String(chosen.length),
-                        value: String(index + 1), disabled: busy,
+                        defaultValue: String(index + 1), disabled: busy,
                         'aria-label': t('pool.priority'),
                         title: t('pool.priorityHint'),
-                        onChange: event => moveTo(index, Number(event.target.value)),
+                        onKeyDown: event => {
+                          if (event.key !== 'Enter') return
+                          moveTo(index, event.currentTarget.value)
+                          event.currentTarget.blur()
+                        },
+                        onBlur: event => moveTo(index, event.currentTarget.value),
                       }),
                       miniBtn(t('pool.testMember'), () => void probeMember(id), { disabled: probe.busy === true || busy, title: t('pool.testMemberHint') }),
                       miniBtn('↑', () => move(index, -1), { disabled: index === 0 || busy }),
@@ -7539,11 +7589,16 @@ window.__ModuleLoader__.load({
         showToast({ title: t('routing.saved'), body: t('routing.savedBody'), holdMs: 3200 })
       }
       const remove = async id => {
-        const answer = await post('/combos', { combos: chains.filter(chain => chain.id !== id) })
-        panel.patch({ combos: answer.combos, usable: answer.usable })
-        panel.reload()
-        setConfirm('')
-        showToast({ title: t('routing.saved'), body: t('routing.savedBody'), holdMs: 3200 })
+        try {
+          const answer = await post('/combos', { combos: chains.filter(chain => chain.id !== id) })
+          panel.patch({ combos: answer.combos, usable: answer.usable })
+          panel.reload()
+          setConfirm('')
+          showToast({ title: t('routing.saved'), body: t('routing.savedBody'), holdMs: 3200 })
+        } catch (error) {
+          // `void remove(id)` 的调用方不会接住 rejection：失败必须自己说。
+          showToast({ title: t('route.failed'), body: String(error?.message ?? error), tone: 'warn' })
+        }
       }
       // A fresh chain is the same editor with an empty draft: the fields, the
       // member list and the validation are identical, only the id is absent.
@@ -7828,15 +7883,22 @@ window.__ModuleLoader__.load({
         showToast({ title: t('route.saved'), body: t('route.savedBody'), holdMs: 3200 })
       }
       const remove = async id => {
-        await post('/routes', { groups: groups.filter(group => group.id !== id) })
-        panel.reload()
-        setConfirm('')
-        showToast({ title: t('route.saved'), body: t('route.savedBody'), holdMs: 3200 })
+        try {
+          await post('/routes', { groups: groups.filter(group => group.id !== id) })
+          panel.reload()
+          setConfirm('')
+          showToast({ title: t('route.saved'), body: t('route.savedBody'), holdMs: 3200 })
+        } catch (error) {
+          showToast({ title: t('route.failed'), body: String(error?.message ?? error), tone: 'warn' })
+        }
       }
       const saveSettings = async () => {
         setBusy(true)
         try {
-          const seconds = Number(draft?.cooldown)
+          // `Number('')` is 0: an empty box used to mean "no cooldown" instead of
+          // the intended 30 s default.
+          const rawCooldown = String(draft?.cooldown ?? '').trim()
+          const seconds = rawCooldown === '' ? 30 : Number(rawCooldown)
           await post('/settings', {
             route: {
               defaultConcurrency: Number(draft?.concurrency) || 0,
@@ -8324,6 +8386,8 @@ window.__ModuleLoader__.load({
       }
       const deleteGroup = group => {
         if (groups.length <= 1) return
+        // 删除分组会连带丢掉会话绑定，和 RoutesPage 一样必须先确认。
+        if (typeof window !== 'undefined' && !window.confirm(t('route.deleteWarn'))) return
         setSelected(null)
         save(groups.filter(item => item.id !== group.id).map(shape))
       }
@@ -8471,7 +8535,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'ofm_mpickerspacer' }),
             h('button', { type: 'button', className: 'ofm_btn primary', disabled: busy !== '', onClick: () => onUse(active) }, t('panel.routes.use')),
             h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: remap }, t('panel.routes.remap')),
-            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '', onClick: () => deleteGroup(active) }, t('panel.routes.delete'))),
+            h('button', { type: 'button', className: 'ofm_minibtn', disabled: busy !== '' || groups.length <= 1, title: t('route.deleteWarn'), onClick: () => deleteGroup(active) }, t('panel.routes.delete'))),
           h('div', { className: 'ofm_mpickerlist' },
             members.length === 0
               ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.routes.noMembers')), h('span', null, t('panel.routes.addHint')))
@@ -9008,6 +9072,8 @@ window.__ModuleLoader__.load({
           const answer = await post('/compaction', { thresholdRatio: next / 100 })
           panel.patch(answer)
         } catch (error) {
+          // The chip must not keep showing a ratio that was never saved.
+          setRatio(Math.round((panel.data?.thresholdRatio ?? 0.75) * 100))
           showToast({ title: t('compact.saveFailed'), body: String(error?.message ?? error), tone: 'warn' })
         } finally { setBusy(false) }
       }
@@ -9222,11 +9288,15 @@ window.__ModuleLoader__.load({
 
       const refresh = async () => {
         setBusy(true)
-        try { await post('/refresh', undefined, 600_000); summary.reload(); stats.reload() } finally { setBusy(false) }
+        try { await post('/refresh', undefined, 600_000); summary.reload(); stats.reload() }
+        catch (error) { showToast({ title: t('common.failed'), body: String(error?.message ?? error), tone: 'warn' }) }
+        finally { setBusy(false) }
       }
       const reprobe = async () => {
         setBusy(true)
-        try { await post('/reprobe', undefined, 600_000); summary.reload() } finally { setBusy(false) }
+        try { await post('/reprobe', undefined, 600_000); summary.reload() }
+        catch (error) { showToast({ title: t('common.failed'), body: String(error?.message ?? error), tone: 'warn' }) }
+        finally { setBusy(false) }
       }
 
       const tabs = [

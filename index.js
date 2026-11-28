@@ -349,6 +349,25 @@ export function apply(ctx, config) {
         signal: AbortSignal.timeout(15_000),
       })
       const data = await response.json().catch(() => null)
+      // A definite refusal is not "the gateway did not answer": 401/403 means
+      // the token this machine holds is no longer accepted. Reporting it as
+      // authorized-but-unverified kept the card green until the next real turn
+      // failed.
+      if (response.status === 401 || response.status === 403) {
+        const rejected = {
+          ...base,
+          authorized: false,
+          unverified: false,
+          rejected: true,
+          configured: data?.configured === true,
+          required: data?.required === true,
+          reason: typeof data?.reason === 'string' ? data.reason : null,
+          checkedAt: Date.now(),
+        }
+        eacAuthCache.at = Date.now()
+        eacAuthCache.data = rejected
+        return rejected
+      }
       if (!response.ok || data === null) throw new Error('bad answer')
       const result = {
         ...base,
@@ -931,7 +950,7 @@ export function apply(ctx, config) {
       return
     }
     try {
-      forward = await startForwardServer({
+      const startedForward = await startForwardServer({
         config: () => {
           const current = settings.get().forward ?? {}
           return { host: current.host || '127.0.0.1', port: current.port ?? 0, enabled: current.enabled === true, key: forwardKey() }
@@ -945,6 +964,12 @@ export function apply(ctx, config) {
         log: message => logger.warn?.(`our-free-model forward: ${message}`),
         onTrace: event => logger.info?.(`our-free-model request: ${JSON.stringify(event)}`),
       })
+      // Teardown can run while the bind is in flight; the disposer only closes
+      // handles that existed at that moment. Close the late arrival here, or an
+      // orphan listener keeps the port and the next generation falls back to
+      // another one (rewriting the port in the settings).
+      if (disposed) { await startedForward.close().catch(() => {}); return }
+      forward = startedForward
       forwardError = ''
       // The requested port is somebody else's for good — a `netsh interface
       // portproxy` rule outlives this plugin, and on Windows it surfaces as
@@ -1046,7 +1071,7 @@ export function apply(ctx, config) {
       return
     }
     try {
-      relay = await startLanRelay({
+      const startedRelay = await startLanRelay({
         config: () => {
           const current = settings.get().forward ?? {}
           const currentLan = current.lan ?? {}
@@ -1062,6 +1087,8 @@ export function apply(ctx, config) {
         log: message => logger.warn?.(`our-free-model lan relay: ${message}`),
         onTrace: event => logger.info?.(`our-free-model request: ${JSON.stringify(event)}`),
       })
+      if (disposed) { await startedRelay.close().catch(() => {}); return }
+      relay = startedRelay
       relayError = ''
       // The port that was actually bound goes back into the settings, so the
       // address the page shows is the address that answers. Out of the CURRENT
@@ -1166,7 +1193,7 @@ export function apply(ctx, config) {
       return
     }
     try {
-      outletRelay = await startEgressRelay({
+      const startedOutlet = await startEgressRelay({
         config: () => {
           const current = settings.get().egress ?? {}
           return {
@@ -1179,6 +1206,8 @@ export function apply(ctx, config) {
         log: message => logger.info?.(`our-free-model egress: ${message}`),
         onDead: scheduleOutletRestart,
       })
+      if (disposed) { await startedOutlet.close().catch(() => {}); return }
+      outletRelay = startedOutlet
       outletFingerprint = fingerprint
       outletError = ''
       outletUpSince = Date.now()
@@ -1211,6 +1240,9 @@ export function apply(ctx, config) {
     logger.warn?.(`our-free-model: egress outlet went down; restarting in ${Math.round(delay / 1000)}s (attempt ${outletRestartAttempts})`)
     outletRestartTimer = setTimeout(() => {
       outletRestartTimer = null
+      // A generation torn down while the backoff was pending must not start a
+      // second mihomo: the disposer already closed the one it knew about.
+      if (disposed) return
       void syncEgress().catch(() => {})
     }, delay)
     outletRestartTimer.unref?.()
@@ -2052,6 +2084,9 @@ export function apply(ctx, config) {
     // ReferenceError（真机表现：点「模型」折叠 → 操作失败：diagLog is not defined）。
     diagLog,
     refreshCatalog, refreshAvailability, syncForward, syncRelay, syncEgress,
+    // 热重载监听的开关（autoReloadWatch）：保存设置后必须重新对账，否则面板
+    // 显示已开启、实际没有 watcher，只有重启才生效。
+    syncWatcher,
     // 池的候选要在读取时刷新宿主目录；和 diagLog 同一批 apply 作用域闭包，
     // 直接裸引用会 ReferenceError（见下方 2470 行的注释）。
     syncHostCatalog,
@@ -2685,6 +2720,9 @@ export function apply(ctx, config) {
   // ── boot + background loop ──────────────────────────────────────────────────
   ctx.effect(() => () => {
     modelRuntime.dispose()
+    // 自己的一份 JsonStore，不在 `stores` 里：热重载时旧配额的挂起写
+    // （800ms 合并）会落在新代际的 channels.json 上，把账号表回滚成旧快照。
+    channelAccountStore.dispose()
     stores.dispose()
   }, 'our-free-model: stores')
 
@@ -2699,6 +2737,9 @@ export function apply(ctx, config) {
   ctx.effect(() => () => {
     disposed = true
     eacLoginPoller.reset()
+    // 出口重启的退避定时器不进 ctx.effect：不在这里清掉，旧一代会在卸载后
+    // 再拉起一个 mihomo，而它的 close 已经在上面执行过了。
+    if (outletRestartTimer !== null) { clearTimeout(outletRestartTimer); outletRestartTimer = null }
     // 关掉还开着的登录浏览器：面板关掉/插件卸载后这些 Chromium 进程没有别人收，
     // 会一直挂在后台（用户以为点击已取消，实际窗口和 CDP 端口都还在）。
     for (const accountId of [...browserLogins.keys()]) closeBrowserFlow(accountId)
@@ -2727,8 +2768,6 @@ export function apply(ctx, config) {
       await syncForward()
       if (disposed) return
       await syncRelay()
-      if (disposed) return
-      await syncChanRelay()
       if (disposed) return
       // Every await here is a chance for teardown to have run underneath this
       // boot: a resumed refresh would force a probe round against stores it
@@ -3512,11 +3551,12 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/announcements/ack') {
         const body = await readJson(req)
         const acked = ackedSet(deps)
-        if (body.all === true) {
+        // JSON `null` is a legal body; guard it rather than answering 500.
+        if (body?.all === true) {
           // "mark all read": every announcement currently in the feed.
           for (const item of deps.announcements.view().items) acked.add(item.id)
         }
-        if (typeof body.id === 'string' && body.id !== '') acked.add(body.id)
+        if (typeof body?.id === 'string' && body.id !== '') acked.add(body.id)
         deps.announcements.ack(acked)
         return send(200, { ok: true, view: deps.announcements.view() })
       }
@@ -3559,6 +3599,10 @@ export function createApiRoutes(deps) {
       }
       if (method === 'POST' && routePath === '/settings') {
         const patch = await readJson(req)
+        // JSON `null` is a legal body and `readJson` hands it back as-is; the
+        // field reads below then throw a TypeError that comes out as a 500 with
+        // the engine's own wording. Refuse it as the client error it is.
+        if (patch === null || typeof patch !== 'object') return send(400, { error: 'the request body must be a JSON object' })
         const current = deps.settings.get()
         const next = sanitizeSettings({ ...current, ...pick(patch, ['enabled', 'exposeRegionModels', 'hideChannelModels', 'hideUnavailableModels', 'probeIntervalMinutes', 'defaultMaxTokens', 'announcementAck', 'feedUrl', 'feedPollMinutes', 'notifyOs', 'updateCheckHours', 'autoReloadWatch', 'compaction', 'modelEffort', 'route']) }, current)
         if (patch.forward !== undefined) {
@@ -3616,6 +3660,9 @@ export function createApiRoutes(deps) {
         // is what tells the picker to re-fetch instead of keeping its cache.
         deps.channelVisibility().sync()
         if (next.hideChannelModels !== current.hideChannelModels) deps.onTopology()
+        // The watcher is a live resource, not a config read at boot: toggling
+        // the switch must start/stop it now, or the panel's value is a lie.
+        if (next.autoReloadWatch !== current.autoReloadWatch) deps.syncWatcher?.()
         await deps.syncForward()
         await deps.syncRelay()
         await deps.syncEgress()
@@ -3657,7 +3704,7 @@ export function createApiRoutes(deps) {
       }
       if (method === 'POST' && routePath === '/bench') {
         const body = await readJson(req)
-        const result = await deps.testModel(String(body.model ?? ''), body.effort === undefined ? undefined : String(body.effort))
+        const result = await deps.testModel(String(body?.model ?? ''), body?.effort === undefined ? undefined : String(body.effort))
         return send(200, result)
       }
       return send(404, { error: 'not found' })
