@@ -2991,7 +2991,19 @@ window.__ModuleLoader__.load({
         const text = await response.text()
         let payload
         try { payload = text === '' ? {} : JSON.parse(text) } catch { payload = { error: text.slice(0, 200) } }
-        if (!response.ok) throw new Error(payload?.error ?? `HTTP ${response.status}`)
+        if (!response.ok) {
+          // A route that exists in the code on disk but not in the running host
+          // answers 404 with an HTML page, which used to surface as a wall of
+          // markup — read as "the feature is broken" instead of "this process
+          // still runs the old build".
+          const reported = typeof payload?.error === 'string' ? payload.error : ''
+          const readable = reported !== '' && !/^\s*</.test(reported)
+            ? reported
+            : response.status === 404
+              ? 'this route is not served by the running plugin backend — the host is still running an older build; restart DSH to load the code on disk'
+              : `HTTP ${response.status}`
+          throw new Error(readable)
+        }
         return payload
       } finally {
         clearTimeout(timer)
