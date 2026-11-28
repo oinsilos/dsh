@@ -43,6 +43,13 @@ export function createRuntimeStores({ dataDir, logger = console }) {
     settings.update({ forward: { ...forward, enabled: true }, forwardDefaultOn: true })
     settings.flush()
   }
+  // 宿主渠道网关（A）已彻底删除：它留下的 `chanGateway` 配置块只会在文件里
+  // 读取时被忽略。写成 `undefined` 后 JSON.stringify 会丢掉这个键，从而真正
+  // 从 settings.json 里清掉，而不是留一份会让人误以为功能还在的残留。
+  if ('chanGateway' in settings.get()) {
+    settings.update({ chanGateway: undefined })
+    settings.flush()
+  }
   return {
     settings, stats, availability, catalogStore,
     dispose() {

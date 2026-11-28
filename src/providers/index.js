@@ -213,3 +213,34 @@ export function modelsEndpoint(provider) {
   const url = record.modelsUrl.trim()
   return url === '' ? null : url
 }
+
+/** OpenAI-style wires serve `GET {base}/models`; both formats share that path. */
+const LISTING_BY_CONVENTION = new Set(['openai-chat', 'openai-responses'])
+
+/**
+ * The listing URL a record implies but does not name, or null.
+ *
+ * The registry leaves `modelsUrl` empty for providers it only documented for
+ * chat (Volcengine Ark's coding endpoint is one). Without a listing the settings
+ * page could neither discover that provider's models nor verify its key, and
+ * both buttons looked dead. For the two OpenAI-shaped wires `{base}/models` is
+ * the protocol itself, not a guess, so it is derived here; every other format
+ * still answers null rather than inventing a path.
+ *
+ * @param {object|string} provider
+ * @returns {string|null}
+ */
+export function derivedModelsEndpoint(provider) {
+  const record = resolve(provider)
+  if (record === null) return null
+  if (typeof record.modelsUrl === 'string' && record.modelsUrl.trim() !== '') return null
+  if (!LISTING_BY_CONVENTION.has(record.format)) return null
+  const base = typeof record.baseUrl === 'string' ? record.baseUrl.trim().replace(/\/+$/, '') : ''
+  if (base === '' || /\{[^}]*\}/.test(base)) return null
+  return `${base}/models`
+}
+
+/** Declared listing first, then the one the wire convention implies. */
+export function listingEndpoint(provider) {
+  return modelsEndpoint(provider) ?? derivedModelsEndpoint(provider)
+}

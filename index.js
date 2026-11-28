@@ -83,7 +83,7 @@ import { interceptCallback, startChromiumSession } from './src/channels/browser/
 import { createPushHub } from './src/push.js'
 import { rejectionFor, isLoopbackHost, connectionAdmissionView } from './src/trust.js'
 import { resolveAttributionUserAgent } from './adapter/kernel.js'
-import { buildAggregateCatalog, fetchProviderModels, isAggregateEntry, testProvider } from './src/aggregate.js'
+import { buildAggregateCatalog, isAggregateEntry, probeProviderListing, testModel, testProvider } from './src/aggregate.js'
 import { buildComboCatalog, isComboEntry, normalizeCombos, pruneRotation } from './src/combos.js'
 import { buildPoolRow, normalizePool, isPoolEntry } from './src/forward-pool.js'
 import { getProvider, listProviders } from './src/providers/index.js'
@@ -2112,8 +2112,11 @@ export function apply(ctx, config) {
       discover: async id => {
         const providerId = String(id ?? '').trim()
         if (getProvider(providerId) === null) throw httpError(400, `unknown provider "${providerId}"`)
-        const ids = await fetchProviderModels(settings.get().aggregate ?? {}, providerId)
-        if (ids === null) return { models: null, note: 'this provider declares no model listing' }
+        // A verdict, not a nullable list: the page has to be able to say *why*
+        // nothing came back (no listing URL, 401, timeout, unexpected shape).
+        const probe = await probeProviderListing(settings.get().aggregate ?? {}, providerId)
+        if (!probe.ok) return { ok: false, models: null, status: probe.status, message: String(probe.message ?? '') }
+        const ids = probe.models ?? []
         const section = settings.get().aggregate ?? {}
         const providers = { ...(section.providers ?? {}) }
         if (providers[providerId] !== undefined) {
@@ -2122,7 +2125,17 @@ export function apply(ctx, config) {
           settings.flush()
           syncAggregateCatalog()
         }
-        return { models: ids }
+        diagLog({ kind: 'aggregate-discover', provider: providerId, models: ids.length })
+        return { ok: true, models: ids, status: probe.status, message: String(probe.message ?? '') }
+      },
+      // One tiny generation against one model: the listing proves the key, this
+      // proves the model is actually entitled for this account.
+      testModel: async patch => {
+        const providerId = String(patch?.providerId ?? '').trim()
+        const modelId = String(patch?.modelId ?? '').trim()
+        if (getProvider(providerId) === null) throw httpError(400, `unknown provider "${providerId}"`)
+        if (modelId === '') throw httpError(400, 'a modelId is required')
+        return testModel(settings.get().aggregate ?? {}, providerId, modelId, { timeoutMs: 60_000 })
       },
     },
     // ── fallback chains ─────────────────────────────────────────────────────
@@ -2200,7 +2213,10 @@ export function apply(ctx, config) {
       save: async patch => {
         if (patch === null || typeof patch !== 'object') throw httpError(400, 'the request body must be a JSON object')
         const before = normalizePool(settings.get().forwardPool)
-        const next = normalizePool(patch)
+        // A partial patch keeps what it does not name: without this, a client
+        // that only flips `enabled` would silently reset the member list to the
+        // default empty array (an empty `members` is still an explicit clear).
+        const next = normalizePool({ ...before, ...patch })
         // Refuse a name that collides with a real model or another virtual row: two
         // catalog entries with one id is a resolution ambiguity, not a preference.
         if (next.enabled === true) {
@@ -2210,6 +2226,10 @@ export function apply(ctx, config) {
         settings.update({ forwardPool: next })
         settings.flush()
         syncAggregateCatalog()
+        // One line per save: the panel's "saved" notice and the log now agree,
+        // so a save that did not persist is visible as a missing line instead of
+        // an unexplained revert.
+        diagLog({ kind: 'pool-save', enabled: next.enabled, name: next.name, members: next.members.length })
         // Resolve against the same directory the picker offered, or a saved host
         // member would come back as "unresolved" the moment it is not in `catalog`.
         const row = buildPoolRow(next, state().routeCatalog ?? state().catalog)
@@ -2936,6 +2956,10 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/providers/discover') {
         const body = await readJson(req)
         return send(200, await deps.providers.discover(body?.providerId))
+      }
+      if (method === 'POST' && routePath === '/providers/test-model') {
+        const body = await readJson(req)
+        return send(200, await deps.providers.testModel(body))
       }
       // ── fallback chains ────────────────────────────────────────────────────
       if (method === 'GET' && routePath === '/combos') {

@@ -51,6 +51,8 @@ window.__ModuleLoader__.load({
         'panel.title': '模型面板',
         'panel.providers': '提供商',
         'panel.allModels': '免费模型',
+        'panel.laneFree': '免费车道',
+        'panel.laneAggregate': '聚合渠道',
         'panel.providerModels': '这个渠道共有 {n} 个模型',
         'panel.searchProvider': '搜索提供商',
         'panel.searchModel': '搜索模型名称或 ID',
@@ -259,6 +261,7 @@ window.__ModuleLoader__.load({
         'pool.savedRenamed': '已保存。入口名从「{from}」改为「{to}」，旧配置里的名字已失效，需要同步修改。',
         'common.loading': '加载中…',
         'common.saving': '保存中…',
+        'common.save': '保存',
         'section.egress': '出口代理（订阅分流）',
         'section.egressHint': '把推理与探测请求从代理出口发出，缓解按 IP 的频率限制。',
         'egress.enabled': '启用出口',
@@ -738,9 +741,13 @@ window.__ModuleLoader__.load({
         'agg.discovering': '发现中…',
         'agg.discovered': '发现 {n} 个模型',
         'agg.discoveredNone': '该提供商不提供模型列表。',
+        'agg.discoveredEmpty': '列表返回 0 个模型。',
         'agg.discoveredUse': '填入模型覆盖',
         'agg.discoveredTick': '已发现 {n} 个，点名称加入或移出',
         'agg.discoveredClear': '清空覆盖',
+        'agg.discoverFailed': '发现失败',
+        'agg.testModel': '测',
+        'agg.testModelHint': '真实调用一次（最多 16 tokens），验证这个模型本身能不能用',
         'agg.save': '保存',
         'agg.saving': '保存中…',
         'agg.add': '添加',
@@ -959,6 +966,8 @@ window.__ModuleLoader__.load({
         'panel.title': 'Model panel',
         'panel.providers': 'Providers',
         'panel.allModels': 'Free models',
+        'panel.laneFree': 'Free lane',
+        'panel.laneAggregate': 'Aggregate',
         'panel.providerModels': '{n} models in this channel',
         'panel.searchProvider': 'Search providers',
         'panel.searchModel': 'Search model name or ID',
@@ -1119,6 +1128,7 @@ window.__ModuleLoader__.load({
         'pool.savedRenamed': 'Saved. Entry name changed from "{from}" to "{to}" — configs pinning the old name need updating.',
         'common.loading': 'Loading…',
         'common.saving': 'Saving…',
+        'common.save': 'Save',
         'section.egress': 'Egress outlet (subscription routing)',
         'section.egressHint': 'Send inference and probe traffic through a proxy outlet to ease per-IP rate limits.',
         'egress.enabled': 'Enable outlet',
@@ -1646,9 +1656,13 @@ window.__ModuleLoader__.load({
         'agg.discovering': 'Discovering…',
         'agg.discovered': 'Found {n} models',
         'agg.discoveredNone': 'This provider declares no model listing.',
+        'agg.discoveredEmpty': 'The listing answered with 0 models.',
         'agg.discoveredUse': 'Use these as the override',
         'agg.discoveredTick': 'Found {n}; click a name to add or remove it',
         'agg.discoveredClear': 'Clear override',
+        'agg.discoverFailed': 'Discovery failed',
+        'agg.testModel': 'Test',
+        'agg.testModelHint': 'One real call (16 tokens max) to prove this model itself answers',
         'agg.save': 'Save',
         'agg.saving': 'Saving…',
         'agg.add': 'Add',
@@ -2910,6 +2924,18 @@ window.__ModuleLoader__.load({
 .ofm_foundchip{font:inherit;font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .ofm_foundchip:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
 .ofm_foundchip[aria-pressed="true"]{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 14%,transparent);color:var(--dsw-alias-state-business-primary)}
+/* 折叠后的发现结果：一模型一行（名称可点加入，右侧单独实测）。 */
+.ofm_foundlist{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:230px;overflow:auto;padding:6px;border-radius:10px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 55%,transparent)}
+.ofm_foundrow{display:flex;align-items:center;gap:6px;min-width:0}
+.ofm_foundrow .ofm_foundchip{flex:1;min-width:0;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:8px}
+.ofm_foundtest{font:inherit;font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.ofm_foundtest:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary)}
+.ofm_foundtest:disabled{opacity:.5;cursor:default}
+.ofm_foundpill{font-size:9.5px;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:999px;border:1px solid transparent}
+.ofm_foundpill[data-ok="true"]{color:var(--ok, #2f9e6b);border-color:color-mix(in srgb,var(--ok, #2f9e6b) 45%,transparent)}
+.ofm_foundpill[data-ok="false"]{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+/* 模型面板里把聚合渠道的行从免费车道里分出来的小标题。 */
+.ofm_mpicklane{display:flex;align-items:center;gap:8px;padding:8px 8px 2px;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--dsw-alias-label-caption)}
 .ofm_pickrow{display:flex;flex-direction:column;gap:5px;align-items:stretch;text-align:left;font:inherit;padding:9px 11px;border-radius:11px;border:1px solid var(--dsw-alias-border-l1);background:color-mix(in srgb,var(--dsw-alias-bg-layer-1) 62%,transparent);color:var(--dsw-alias-label-primary);cursor:pointer;transition:border-color .16s ease,background .16s ease,transform .16s ease}
 .ofm_pickrow:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary);transform:translateY(-1px)}
 .ofm_pickrow[aria-pressed="true"]{border-color:var(--dsw-alias-state-business-primary);background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent)}
@@ -6341,6 +6367,10 @@ window.__ModuleLoader__.load({
             memberRetries: Number(draft.memberRetries) || 0,
             hideOthers: draft.hideOthers !== false,
           })
+          // Merge the host's authoritative answer first: if the follow-up GET
+          // fails (route error, dropped connection), the panel still shows what
+          // was actually written instead of snapping back to the old draft.
+          if (result?.pool !== undefined) panel.patch({ pool: result.pool, resolved: result.resolved ?? [] })
           panel.reload()
           setNotice(result?.renamed
             ? t('pool.savedRenamed').replace('{from}', result.renamed.from).replace('{to}', result.renamed.to)
@@ -6735,7 +6765,13 @@ window.__ModuleLoader__.load({
       const [key, setKey] = useState('')
       const [models, setModels] = useState((state?.models ?? []).join(', '))
       const [verdict, setVerdict] = useState(state?.lastTest ?? null)
+      // `null` = never discovered; otherwise the probe's honest verdict. The
+      // list starts folded, because a 200-model answer printed inline buried
+      // every control under it.
       const [found, setFound] = useState(null)
+      const [foundOpen, setFoundOpen] = useState(false)
+      // Per-model probes: id -> {busy:boolean, ok:boolean|undefined, message:string}
+      const [probes, setProbes] = useState({})
       const [confirm, setConfirm] = useState(false)
       const [busy, setBusy] = useState('')
       const [error, setError] = useState('')
@@ -6767,11 +6803,24 @@ window.__ModuleLoader__.load({
       })
       const discover = () => run('discover', async () => {
         const answer = await post('/providers/discover', { providerId: provider.id }, 60_000)
-        setFound(Array.isArray(answer.models) ? answer.models : null)
+        const models = Array.isArray(answer.models) ? answer.models : []
+        setFound({ ok: answer.ok === true, models, message: String(answer.message ?? '') })
+        // A failed probe keeps the previous list visible but folded: reopening it
+        // is optional, and the message beside it says why the round failed.
+        setFoundOpen(false)
         // The host persisted the ids and rebuilt the catalog; re-read both views
         // so the contribution counts and the key fingerprint stay true.
         onChanged?.()
       })
+      const testOne = async id => {
+        setProbes(current => ({ ...current, [id]: { busy: true, message: '' } }))
+        try {
+          const answer = await post('/providers/test-model', { providerId: provider.id, modelId: id }, 70_000)
+          setProbes(current => ({ ...current, [id]: { busy: false, ok: answer.ok === true, message: String(answer.message ?? '') } }))
+        } catch (failure) {
+          setProbes(current => ({ ...current, [id]: { busy: false, ok: false, message: String(failure?.message ?? failure) } }))
+        }
+      }
 
       return h('div', { className: 'ofm_rise', style: { display: 'flex', flexDirection: 'column', gap: 10 } },
         h('div', { className: 'ofm_pickmeta' },
@@ -6834,28 +6883,65 @@ window.__ModuleLoader__.load({
               h('span', { className: 'ofm_note' }, t('agg.testAt').replace('{when}', ago(verdict.at, t.locale)))),
           busy === 'test' ? h('span', { className: 'ofm_note' }, t('agg.testing')) : null,
           busy === 'discover' ? h('span', { className: 'ofm_note' }, t('agg.discovering')) : null),
-        verdict !== null && verdict.ok !== true && verdict.status === 0
+        // 只有「这家不提供模型列表」才配这句话；status 0 也覆盖网络不通/超时，
+        // 那些情况下面那行已经给出真实原因，再挂一句「不提供列表」会误导。
+        verdict !== null && verdict.ok !== true && verdict.status === 0 && /declares no model listing/i.test(String(verdict.message ?? ''))
           ? h('p', { className: 'ofm_note' }, t('agg.testUnverifiedWhy')) : null,
         verdict !== null && verdict.message !== '' ? h('p', { className: 'ofm_note' }, verdict.message) : null,
         found === null
           ? null
+          // One folded row: the count and the verdict, with the list itself one
+          // click away. The old block printed every discovered id inline and
+          // auto-opened on every round, which is why the page felt like it was
+          // showing a pre-made清单 rather than an answer.
           : h('div', { className: 'ofm_field' },
             h('div', { className: 'ofm_row' },
-              h('span', { className: 'ofm_note' }, found.length === 0 ? t('agg.discoveredNone') : t('agg.discoveredTick').replace('{n}', String(found.length))),
-              // 直接点模型名即可加入/移出覆盖清单——旧版把发现结果压成一句
-              // 「改用这些」，点模型本身没有反应，看起来像坏了。
-              found.length === 0 ? null : miniBtn(t('agg.discoveredUse'), () => setModels(found.join(', '))),
-              found.length === 0 ? null : miniBtn(t('agg.discoveredClear'), () => setModels(''))),
-            found.length === 0 ? null : h('div', { className: 'ofm_pickmeta', style: { marginTop: 6 } },
-              found.map(id => h('button', {
-                key: id, type: 'button', className: 'ofm_foundchip',
-                'aria-pressed': parseModelIds(models).includes(id) ? 'true' : 'false',
-                title: id,
-                onClick: () => setModels(current => {
-                  const list = parseModelIds(current)
-                  return (list.includes(id) ? list.filter(item => item !== id) : [...list, id]).join(', ')
-                }),
-              }, id)))),
+              h('button', {
+                type: 'button', className: 'ofm_minibtn',
+                'aria-expanded': foundOpen ? 'true' : 'false',
+                disabled: busy !== '' || found.models.length === 0,
+                onClick: () => setFoundOpen(value => !value),
+              }, `${foundOpen ? '▾' : '▸'} ${found.models.length === 0
+                ? (found.ok === true ? t('agg.discoveredEmpty') : t('agg.discoveredNone'))
+                : t('agg.discoveredTick').replace('{n}', String(found.models.length))}`),
+              found.ok === true && found.models.length > 0 ? miniBtn(t('agg.discoveredUse'), () => setModels(found.models.join(', '))) : null,
+              found.ok === true && found.models.length > 0 ? miniBtn(t('agg.discoveredClear'), () => setModels('')) : null,
+              found.ok === true ? null : h('span', { className: 'ofm_tag ofm_tagwarn' }, t('agg.discoverFailed'))),
+            found.message === '' ? null
+              : h('p', { className: 'ofm_note', style: found.ok === true ? undefined : { color: 'var(--warn)' } }, found.message),
+            foundOpen && found.models.length > 0
+              ? h('div', { className: 'ofm_foundlist' },
+                found.models.map(id => {
+                  const probe = probes[id] ?? {}
+                  const picked = parseModelIds(models).includes(id)
+                  return h('span', { key: id, className: 'ofm_foundrow' },
+                    h('button', {
+                      type: 'button', className: 'ofm_foundchip',
+                      'aria-pressed': picked ? 'true' : 'false',
+                      title: id,
+                      disabled: busy !== '' || probe.busy === true,
+                      onClick: () => setModels(current => {
+                        const list = parseModelIds(current)
+                        return (list.includes(id) ? list.filter(item => item !== id) : [...list, id]).join(', ')
+                      }),
+                    }, id),
+                    // Each model gets its own real call: the listing proves the
+                    // key, only a turn proves *this* model is entitled.
+                    h('button', {
+                      type: 'button', className: 'ofm_foundtest',
+                      disabled: busy !== '' || probe.busy === true,
+                      title: t('agg.testModelHint'),
+                      onClick: () => void testOne(id),
+                    }, probe.busy === true ? '…' : t('agg.testModel')),
+                    probe.busy === true || probe.ok === undefined
+                      ? null
+                      : h('span', {
+                        className: 'ofm_foundpill',
+                        'data-ok': probe.ok === true ? 'true' : 'false',
+                        title: probe.message,
+                      }, probe.ok === true ? 'OK' : 'FAIL'))
+                }))
+              : null),
         error === '' ? null : h('div', { className: 'ofm_callout ofm_error' },
           h('div', null, h('b', null, t('agg.failed')), h('div', null, error))))
     }
@@ -8463,6 +8549,17 @@ window.__ModuleLoader__.load({
       const visible = searchAll
         ? groups.map(group => ({ group, models: group.models.filter(model => keepModel(model) && matches(group, model)) })).filter(entry => entry.models.length > 0)
         : groups.filter(group => group.id === activeProvider).map(group => ({ group, models: group.models.filter(keepModel) }))
+      /**
+       * 聚合渠道的行和免费车道的行车在同一个提供商组里（都挂在本插件的路由上），
+       * 平铺时外观一模一样。按 `summary.catalog` 的 `channel` 把一组再拆成两段，
+       * 中间加一条小标题；只有聚合行时才拆，免费车道保持原样。
+       */
+      const laneOfModel = model => verdicts.get(String(model.id ?? ''))?.channel === 'aggregate' ? 'aggregate' : 'free'
+      const splitLanes = list => {
+        const free = list.filter(model => laneOfModel(model) !== 'aggregate')
+        const aggregate = list.filter(model => laneOfModel(model) === 'aggregate')
+        return [['free', free], ['aggregate', aggregate]].filter(([, rows]) => rows.length > 0)
+      }
       // 当前视图（同一家提供商 / 同一次搜索）里被折叠掉的行数。页脚的 hiddenCount
       // 说的是整份清单，空状态要说的是"你眼前这一屏为什么是空的"。
       const viewHidden = (searchAll ? groups : groups.filter(group => group.id === activeProvider))
@@ -8548,6 +8645,86 @@ window.__ModuleLoader__.load({
             h('b', null, t('panel.sessionRequired')),
             h('button', { type: 'button', className: 'ofm_minibtn', onClick: () => { onClose(); openSettingsPanel('free') } }, t('panel.settingsLink'))))
       }
+      /** One provider group, split into the free lane and the aggregate lane.
+       *  Returns a flat keyed array, so the caller can `flatMap` without another
+       *  level of fragments per group. */
+      const laneSections = entry => {
+        const lanes = splitLanes(entry.models)
+        const nodes = []
+        if (activeProvider === null || searchAll) {
+          nodes.push(h('div', { key: `${entry.group.id}:head`, className: 'ofm_mpickgroup' },
+            entry.group.name,
+            h('span', { className: 'ofm_mpickgroupcount' }, String(entry.models.length))))
+        }
+        for (const [lane, rows] of lanes) {
+          if (lanes.length > 1) {
+            nodes.push(h('div', { key: `${entry.group.id}:${lane}:head`, className: 'ofm_mpicklane' },
+              t(lane === 'aggregate' ? 'panel.laneAggregate' : 'panel.laneFree'),
+              h('span', { className: 'ofm_mpickgroupcount' }, String(rows.length))))
+          }
+          for (const model of rows) nodes.push(modelRow(entry.group, model))
+        }
+        return nodes
+      }
+      /** One selectable model row (plus its effort shortcuts). */
+      const modelRow = (group, model) => {
+        const isCurrent = current !== null && current.provider === group.id && current.model === model.id
+        const key = `${group.id}/${model.id}`
+        const efforts = Array.isArray(model.reasoning?.efforts) ? model.reasoning.efforts : []
+        const activeEffort = current?.reasoningEffort ?? model.reasoning?.defaultEffort
+        const badge = badgeTextOf(model.badge)
+        // 可用性角标：有结论且不是「可用」才画，可用行保持干净。
+        // 未探测的行同样要标出来——否则它和刚探测通过的行长得一样，
+        // 用户点下去才发现要等一次失败。
+        const verdict = verdictOf(model)
+        const availability = verdict?.availability
+        const dead = isDead(model)
+        const stateBadge = availability === undefined || availability === 'available'
+          ? null
+          : availability === 'unknown'
+            // 一次探测都还没跑（probedAt 为 0）时全目录都是 unknown，
+            // 给每一行都挂「未探测」只是噪音；已经有探测时间戳却不
+            // 是可用/不可用，才是值得标出来的「这一行没结论」。
+            ? ((summary.data?.probedAt ?? 0) > 0 ? { text: t('state.unknown'), tone: 'dim' } : null)
+            : availability === 'region-blocked'
+              ? { text: t('state.region-blocked'), tone: 'region' }
+              : availability === 'throttled'
+                ? { text: t('state.throttled'), tone: 'warn' }
+                : { text: t('state.unavailable'), tone: 'warn' }
+        return h('div', { key, className: 'ofm_mpickitem' },
+          h('button', {
+            type: 'button', className: 'ofm_mpickrow',
+            'data-current': isCurrent ? 'true' : 'false',
+            'data-dead': dead ? 'true' : 'false',
+            disabled: busy !== '',
+            title: verdict?.detail === undefined || verdict.detail === '' ? model.id : `${model.id}\n${verdict.detail}`,
+            onClick: () => void choose(group.id, model.id),
+          },
+            h('span', { className: 'ofm_mpickmain' },
+              h('span', { className: 'ofm_mpicknamerow' },
+                h('span', { className: 'ofm_mpickname' }, model.name ?? model.id),
+                badge === '' ? null : h('span', { className: 'ofm_mpickbadge' }, badge),
+                stateBadge === null
+                  ? null
+                  : h('span', { className: 'ofm_mpickbadge', 'data-tone': stateBadge.tone }, stateBadge.text)),
+              model.description === undefined || model.description === ''
+                ? null
+                : h('span', { className: 'ofm_mpickdesc' }, model.description)),
+            h('span', { className: 'ofm_mpickid' }, model.id),
+            isCurrent ? h('span', { className: 'ofm_mpickcurrent' }, t('panel.current')) : null,
+            busy === key ? h('span', { className: 'ofm_mpickspinner' }, '…') : null),
+          // 档位跟着模型走：不先把模型切过去也能直接「这个模型 + 这一档」。
+          // 当前模型的档位高亮，其余模型只做入口，点一下即切换。
+          efforts.length > 1
+            ? h('div', { className: 'ofm_mpickefforts' }, efforts.map(effort => h('button', {
+              key: effort.id, type: 'button', className: 'ofm_minibtn',
+              'data-on': isCurrent && activeEffort === effort.id ? 'true' : 'false',
+              disabled: busy !== '',
+              title: effort.description ?? '',
+              onClick: () => void choose(group.id, model.id, effort.id),
+            }, effort.name)))
+            : null)
+      }
       const modelBody = h('div', { className: 'ofm_mpickerbody' },
         h('aside', { className: 'ofm_mpickerrail' },
           h('div', { className: 'ofm_mpickerrailtitle' }, t('panel.providers')),
@@ -8574,70 +8751,7 @@ window.__ModuleLoader__.load({
                   ? (viewHidden > 0
                     ? h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.hiddenAll')), h('span', null, t('panel.hiddenAllHint')))
                     : h('div', { className: 'ofm_mpickempty' }, h('b', null, t('panel.noMatch'))))
-                  : visible.map(entry => h(Fragment, { key: entry.group.id },
-                    activeProvider === null || searchAll
-                      ? h('div', { className: 'ofm_mpickgroup' },
-                        entry.group.name,
-                        h('span', { className: 'ofm_mpickgroupcount' }, String(entry.models.length)))
-                      : null,
-                    entry.models.map(model => {
-                      const isCurrent = current !== null && current.provider === entry.group.id && current.model === model.id
-                      const key = `${entry.group.id}/${model.id}`
-                      const efforts = Array.isArray(model.reasoning?.efforts) ? model.reasoning.efforts : []
-                      const activeEffort = current?.reasoningEffort ?? model.reasoning?.defaultEffort
-                      const badge = badgeTextOf(model.badge)
-                      // 可用性角标：有结论且不是「可用」才画，可用行保持干净。
-                      // 未探测的行同样要标出来——否则它和刚探测通过的行长得一样，
-                      // 用户点下去才发现要等一次失败。
-                      const verdict = verdictOf(model)
-                      const availability = verdict?.availability
-                      const dead = isDead(model)
-                      const stateBadge = availability === undefined || availability === 'available'
-                        ? null
-                        : availability === 'unknown'
-                          // 一次探测都还没跑（probedAt 为 0）时全目录都是 unknown，
-                          // 给每一行都挂「未探测」只是噪音；已经有探测时间戳却不
-                          // 是可用/不可用，才是值得标出来的「这一行没结论」。
-                          ? ((summary.data?.probedAt ?? 0) > 0 ? { text: t('state.unknown'), tone: 'dim' } : null)
-                          : availability === 'region-blocked'
-                            ? { text: t('state.region-blocked'), tone: 'region' }
-                            : availability === 'throttled'
-                              ? { text: t('state.throttled'), tone: 'warn' }
-                              : { text: t('state.unavailable'), tone: 'warn' }
-                      return h('div', { key, className: 'ofm_mpickitem' },
-                        h('button', {
-                          type: 'button', className: 'ofm_mpickrow',
-                          'data-current': isCurrent ? 'true' : 'false',
-                          'data-dead': dead ? 'true' : 'false',
-                          disabled: busy !== '',
-                          title: verdict?.detail === undefined || verdict.detail === '' ? model.id : `${model.id}\n${verdict.detail}`,
-                          onClick: () => void choose(entry.group.id, model.id),
-                        },
-                          h('span', { className: 'ofm_mpickmain' },
-                            h('span', { className: 'ofm_mpicknamerow' },
-                              h('span', { className: 'ofm_mpickname' }, model.name ?? model.id),
-                              badge === '' ? null : h('span', { className: 'ofm_mpickbadge' }, badge),
-                              stateBadge === null
-                                ? null
-                                : h('span', { className: 'ofm_mpickbadge', 'data-tone': stateBadge.tone }, stateBadge.text)),
-                            model.description === undefined || model.description === ''
-                              ? null
-                              : h('span', { className: 'ofm_mpickdesc' }, model.description)),
-                          h('span', { className: 'ofm_mpickid' }, model.id),
-                          isCurrent ? h('span', { className: 'ofm_mpickcurrent' }, t('panel.current')) : null,
-                          busy === key ? h('span', { className: 'ofm_mpickspinner' }, '…') : null),
-                        // 档位跟着模型走：不先把模型切过去也能直接「这个模型 + 这一档」。
-                        // 当前模型的档位高亮，其余模型只做入口，点一下即切换。
-                        efforts.length > 1
-                          ? h('div', { className: 'ofm_mpickefforts' }, efforts.map(effort => h('button', {
-                            key: effort.id, type: 'button', className: 'ofm_minibtn',
-                            'data-on': isCurrent && activeEffort === effort.id ? 'true' : 'false',
-                            disabled: busy !== '',
-                            title: effort.description ?? '',
-                            onClick: () => void choose(entry.group.id, model.id, effort.id),
-                          }, effort.name)))
-                          : null)
-                    }))))))
+                  : visible.flatMap(laneSections))))
       const routeBody = h(RouteGroupPanel, {
         t, routes, catalogGroups: groups, current, busy, setBusy, setNotice, notice, onUse: useRouteGroup,
       })

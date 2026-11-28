@@ -51,7 +51,7 @@
 
 import { CODE, UpstreamError, classifyFailure, classifyStreamFailure, readHead, readSse, replayStream, sniffBody, transportCause } from './http.js'
 import { egressFetch } from './egress.js'
-import { chatEndpoint, defaultHeaders, getProvider, modelsEndpoint, providerModelId } from './providers/index.js'
+import { chatEndpoint, defaultHeaders, getProvider, listingEndpoint, providerModelId } from './providers/index.js'
 import { displayModelName } from './catalog.js'
 
 /** The channel tag every aggregate row carries, the way EAC and Kilo rows do. */
@@ -125,7 +125,10 @@ function effectiveBaseUrl(provider, setting) {
  * one, and a guessed listing URL is worse than none.
  */
 function effectiveModelsUrl(provider, setting) {
-  const declared = modelsEndpoint(provider)
+  // `listingEndpoint` adds `{base}/models` for the OpenAI-shaped wires whose
+  // registry record only documented chat. Without it a provider like Volcengine
+  // Ark could neither be verified nor discovered, and both buttons read as dead.
+  const declared = listingEndpoint(provider)
   if (declared === null) return null
   const override = text(setting?.baseUrl).replace(/\/+$/, '')
   const registryBase = text(provider.baseUrl).replace(/\/+$/, '')
@@ -364,66 +367,30 @@ function retryAfterMs(response) {
 }
 
 /**
- * Fetch a provider's live model list when it declares a models endpoint;
- * returns ids, or null when the provider is unknown/unconfigured, declares no
- * listing, or the listing cannot be read.
+ * Ask the provider for its model listing and report *why* it failed.
  *
- * An authoritative empty listing returns `[]`, not null: the caller can then
- * clear a persisted roster, while a failed round keeps it — the same discipline
- * the Kilo channel's roster already follows.
+ * The older `fetchProviderModels` folded every outcome into `null`, so the
+ * settings page could only say "nothing happened" — the exact symptom the
+ * discover button had. This returns a verdict the page can print:
+ *
+ * - `ok:true` with ids, including an authoritative `[]`;
+ * - `ok:false` with a message naming the cause (no listing URL, 401, timeout,
+ *   shape not recognised), and `models:null` so the caller keeps the last
+ *   persisted roster.
+ *
+ * @returns {Promise<{ok:boolean, status:number, models:string[]|null, message:string}>}
  */
-export async function fetchProviderModels(config, providerId, { signal, timeoutMs = LISTING_TIMEOUT_MS } = {}) {
+export async function probeProviderListing(config, providerId, { signal, timeoutMs = LISTING_TIMEOUT_MS } = {}) {
   let resolved
-  try { resolved = resolveProvider(config, providerId) } catch { return null }
-  if (resolved.modelsUrl === null) return null
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  timer.unref?.()
-  let callerAborted = false
-  const onCallerAbort = () => { callerAborted = true; controller.abort() }
-  signal?.addEventListener('abort', onCallerAbort, { once: true })
-  try {
-    const response = await egressFetch(resolved.modelsUrl, {
-      headers: { ...resolved.headers, accept: 'application/json' },
-      redirect: 'error',
-      signal: controller.signal,
-    })
-    if (!response.ok) return null
-    const body = await response.text()
-    let payload
-    try { payload = JSON.parse(body) } catch { return null }
-    return modelIdsFrom(payload)
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timer)
-    signal?.removeEventListener?.('abort', onCallerAbort)
-  }
-}
-
-/**
- * Verify a key with a cheap non-generating call: the provider's model listing.
- * Never throws — the settings page shows the answer, and a probe that throws is
- * a probe the page has to guard.
- *
- * A provider that declares no listing (Anthropic, OpenAI, …) cannot be verified
- * without spending a generation, and this lane does not spend the user's money
- * behind their back: the answer says so instead of guessing at a URL.
- *
- * @returns {Promise<{ok:boolean, status:number, message:string, modelCount?:number}>}
- */
-export async function testProvider(config, providerId, { signal, timeoutMs = LISTING_TIMEOUT_MS } = {}) {
-  let resolved
-  try {
-    resolved = resolveProvider(config, providerId)
-  } catch (error) {
-    return { ok: false, status: 0, message: String(error?.message ?? error) }
+  try { resolved = resolveProvider(config, providerId) } catch (error) {
+    return { ok: false, status: 0, models: null, message: String(error?.message ?? error) }
   }
   if (resolved.modelsUrl === null) {
     return {
       ok: false,
       status: 0,
-      message: `"${resolved.provider.name}" declares no model listing, so its key cannot be verified without spending a generation`,
+      models: null,
+      message: `"${resolved.provider.name}" declares no model listing, and its wire gives no conventional /models path; fill in a base URL or list its models by hand`,
     }
   }
   const controller = new AbortController()
@@ -441,23 +408,126 @@ export async function testProvider(config, providerId, { signal, timeoutMs = LIS
     const body = await response.text().catch(() => '')
     if (!response.ok) {
       const failure = classifyUpstream(response.status, body, retryAfterMs(response), resolved.apiKey)
-      return { ok: false, status: response.status, message: failure.message }
+      return { ok: false, status: response.status, models: null, message: failure.message }
     }
     let payload
-    try { payload = JSON.parse(redact(body, resolved.apiKey)) } catch { payload = null }
+    try { payload = JSON.parse(redact(body, resolved.apiKey)) } catch {
+      return { ok: false, status: response.status, models: null, message: `the listing answered HTTP ${response.status} but its body was not JSON` }
+    }
     const ids = modelIdsFrom(payload)
     if (ids === null) {
-      return { ok: false, status: response.status, message: `the listing answered HTTP ${response.status} but its shape was not recognised` }
+      return { ok: false, status: response.status, models: null, message: `the listing answered HTTP ${response.status} but its shape was not recognised` }
     }
-    return { ok: true, status: response.status, message: `the key is accepted; ${ids.length} model(s) listed`, modelCount: ids.length }
+    return { ok: true, status: response.status, models: ids, message: `the key is accepted; ${ids.length} model(s) listed` }
+  } catch (error) {
+    if (callerAborted || signal?.aborted === true) {
+      return { ok: false, status: 0, models: null, message: 'request aborted' }
+    }
+    if (error?.name === 'AbortError') {
+      return { ok: false, status: 0, models: null, message: `the provider did not answer within ${timeoutMs}ms` }
+    }
+    return {
+      ok: false,
+      status: 0,
+      models: null,
+      message: redact(`the provider could not be reached: ${error?.message ?? error}${transportCause(error)}`, resolved.apiKey),
+    }
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener?.('abort', onCallerAbort)
+  }
+}
+
+/**
+ * Fetch a provider's live model list when it declares a models endpoint;
+ * returns ids, or null when the round failed or no listing exists.
+ *
+ * Kept for callers that only need the ids; `probeProviderListing` is the shape
+ * the settings page uses, because it can say why an empty answer was empty.
+ */
+export async function fetchProviderModels(config, providerId, options) {
+  const result = await probeProviderListing(config, providerId, options)
+  return result.ok ? result.models : null
+}
+
+/**
+ * Verify a key with a cheap non-generating call: the provider's model listing.
+ * Never throws — the settings page shows the answer, and a probe that throws is
+ * a probe the page has to guard.
+ *
+ * @returns {Promise<{ok:boolean, status:number, message:string, modelCount?:number}>}
+ */
+export async function testProvider(config, providerId, options) {
+  const result = await probeProviderListing(config, providerId, options)
+  return result.ok
+    ? { ok: true, status: result.status, message: result.message, modelCount: (result.models ?? []).length }
+    : { ok: false, status: result.status, message: result.message }
+}
+
+/**
+ * Spend one tiny generation to prove a *single* model is dialable.
+ *
+ * The key probe above only reads the listing; a model in that listing can still
+ * be dead for this account (not entitled, retired, wrong region). The settings
+ * page therefore offers a per-model test, and this is it: one non-streaming
+ * request with a 16-token ceiling — the smallest call every wire in the registry
+ * accepts.
+ *
+ * @returns {Promise<{ok:boolean, status:number, message:string}>}
+ */
+export async function testModel(config, providerId, modelId, { signal, timeoutMs = 60000 } = {}) {
+  let resolved
+  try { resolved = resolveProvider(config, providerId) } catch (error) {
+    return { ok: false, status: 0, message: String(error?.message ?? error) }
+  }
+  const model = text(modelId)
+  if (model === '') return { ok: false, status: 0, message: 'a model id is required' }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  timer.unref?.()
+  let callerAborted = false
+  const onCallerAbort = () => { callerAborted = true; controller.abort() }
+  signal?.addEventListener('abort', onCallerAbort, { once: true })
+  try {
+    const response = await egressFetch(resolved.chatUrl, {
+      method: 'POST',
+      headers: { ...resolved.headers, accept: 'application/json' },
+      body: JSON.stringify(probeBody(resolved.wire, model)),
+      redirect: 'error',
+      signal: controller.signal,
+    })
+    const body = await response.text().catch(() => '')
+    if (!response.ok) {
+      const failure = classifyUpstream(response.status, body, retryAfterMs(response), resolved.apiKey)
+      return { ok: false, status: response.status, message: failure.message }
+    }
+    let payload = null
+    try { payload = JSON.parse(redact(body, resolved.apiKey)) } catch { payload = null }
+    if (payload?.error !== undefined || payload?.type === 'error') {
+      const failure = classifyUpstream(response.status, body, undefined, resolved.apiKey)
+      return { ok: false, status: response.status, message: failure.message }
+    }
+    return { ok: true, status: response.status, message: `${resolved.provider.name} answered for "${model}"` }
   } catch (error) {
     if (callerAborted || signal?.aborted === true) return { ok: false, status: 0, message: 'request aborted' }
-    if (error?.name === 'AbortError') return { ok: false, status: 0, message: `the provider did not answer within ${timeoutMs}ms` }
+    if (error?.name === 'AbortError') return { ok: false, status: 0, message: `the model did not answer within ${timeoutMs}ms` }
     return { ok: false, status: 0, message: redact(`the provider could not be reached: ${error?.message ?? error}${transportCause(error)}`, resolved.apiKey) }
   } finally {
     clearTimeout(timer)
     signal?.removeEventListener?.('abort', onCallerAbort)
   }
+}
+
+/** The smallest legal completion body per wire (16 output tokens). */
+function probeBody(wire, model) {
+  const budget = 16
+  if (wire === 'messages') {
+    return { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: budget, stream: false }
+  }
+  if (wire === 'responses') {
+    return { model, input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ping' }] }], max_output_tokens: budget, stream: false, store: false }
+  }
+  return { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: budget, stream: false }
 }
 
 /**
@@ -487,11 +557,24 @@ function modelIdsFrom(payload) {
       }
     }
     if (id === '' || seen.has(id)) continue
+    // Some listings mix every capability into one roster (Volcengine Ark lists
+    // video, image, 3D and embedding models beside chat ones). A row that
+    // *declares* its endpoints and names none of the conversational ones is not
+    // a model this lane can post a turn to, so it is not offered as a candidate.
+    // Rows that declare nothing keep their benefit of the doubt.
+    if (isRecord(row) && isRecord(row.api_supported)) {
+      const supported = row.api_supported
+      const declared = Object.values(supported).some(value => value === true)
+      if (declared && !CONVERSATIONAL_API.some(key => supported[key] === true)) continue
+    }
     seen.add(id)
     ids.push(id)
   }
   return ids
 }
+
+/** Endpoint keys that mean "this model can answer a chat turn". */
+const CONVERSATIONAL_API = ['chat/completions', 'messages', 'responses']
 
 /**
  * POST one streaming completion to the provider and push raw SSE `data:`
