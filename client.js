@@ -2920,14 +2920,14 @@ window.__ModuleLoader__.load({
 @keyframes ofmrisein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .ofm_duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(272px,100%),1fr));gap:12px;align-items:start}
 .ofm_duo>*{min-width:0}
-.ofm_picklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:8px;max-height:330px;overflow:auto;padding:2px}
+.ofm_picklist{display:flex;flex-direction:column;gap:4px;max-height:330px;overflow:auto;padding:2px}
 /* 候选池按渠道分组：每组一个标题（渠道名 + 数量），组内仍是卡片网格。 */
 .ofm_pickgroups{display:flex;flex-direction:column;gap:14px;max-height:460px;overflow:auto;padding:2px 2px 8px}
 .ofm_pickgroup{display:flex;flex-direction:column;gap:8px}
 .ofm_pickgrouphead{display:flex;align-items:baseline;gap:8px;padding:2px 2px 0;border-bottom:1px solid var(--dsw-alias-border-l1);padding-bottom:6px}
 .ofm_pickgrouphead b{font-size:12px;font-weight:700;letter-spacing:.3px}
 .ofm_pickgroup .ofm_picklist{max-height:none;overflow:visible;padding:0}
-.ofm_pickmark{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:none;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.ofm_pickmark{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:16px;padding:0 3px;flex:none;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);font-size:10px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
 .ofm_pickrow[aria-pressed="true"] .ofm_pickmark{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff}
 .ofm_tagwarn{border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
 /* 发现结果的可点标签：点一下加入/移出模型覆盖，选中态用主题主色。 */
@@ -6334,23 +6334,28 @@ window.__ModuleLoader__.load({
         return [...map.entries()].sort((a, b) => groupRank(a[0]) - groupRank(b[0]) || a[0].localeCompare(b[0]))
       })()
       // 一行一张卡：勾选标记 + 名称，第二行只放用于区分的信息。
-      const pickRow = row => h('button', {
-        key: row.id, type: 'button', className: 'ofm_pickrow', disabled: busy,
-        'aria-pressed': chosen.includes(row.id) ? 'true' : 'false',
-        onClick: () => toggle(row.id),
-      },
-      h('span', { className: 'ofm_pickhead' },
-        h('span', { className: 'ofm_pickmark', 'aria-hidden': 'true' }, chosen.includes(row.id) ? '✓' : '＋'),
-        h('b', { title: row.name }, row.name ?? row.id)),
-      h('span', { className: 'ofm_pickmeta' },
-        h('span', { className: 'ofm_id' }, row.id),
-        row.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
-        row.vision === true ? h('span', { className: 'ofm_tag' }, t('tag.vision')) : null,
-        row.source === 'registry' ? h('span', { className: 'ofm_tag ofm_tagwarn', title: t('pool.sourceRegistryHint') }, t('pool.sourceRegistry')) : null,
-        row.source === 'discovered' ? h('span', { className: 'ofm_tag' }, t('pool.sourceDiscovered')) : null,
-        row.today === null || row.today === undefined ? null
-          : h('span', { className: 'ofm_note' }, t('pool.todayShort')
-            .replace('{calls}', String(row.today.calls)).replace('{failed}', String(row.today.failed)))))
+      // 一行一个模型：左侧显示它在池里的序号（未选是 ＋）。数字就是优先级，
+      // 和模型面板的路由分组读法一致，不必再去上面的列表里数第几个。
+      const pickRow = row => {
+        const seat = chosen.indexOf(row.id)
+        return h('button', {
+          key: row.id, type: 'button', className: 'ofm_pickrow', disabled: busy,
+          'aria-pressed': seat >= 0 ? 'true' : 'false',
+          onClick: () => toggle(row.id),
+        },
+        h('span', { className: 'ofm_pickhead' },
+          h('span', { className: 'ofm_pickmark', 'aria-hidden': 'true' }, seat >= 0 ? String(seat + 1) : '＋'),
+          h('b', { title: row.name }, row.name ?? row.id)),
+        h('span', { className: 'ofm_pickmeta' },
+          h('span', { className: 'ofm_id' }, row.id),
+          row.provider ? h('span', { className: 'ofm_tag' }, row.provider) : null,
+          row.vision === true ? h('span', { className: 'ofm_tag' }, t('tag.vision')) : null,
+          row.source === 'registry' ? h('span', { className: 'ofm_tag ofm_tagwarn', title: t('pool.sourceRegistryHint') }, t('pool.sourceRegistry')) : null,
+          row.source === 'discovered' ? h('span', { className: 'ofm_tag' }, t('pool.sourceDiscovered')) : null,
+          row.today === null || row.today === undefined ? null
+            : h('span', { className: 'ofm_note' }, t('pool.todayShort')
+              .replace('{calls}', String(row.today.calls)).replace('{failed}', String(row.today.failed)))))
+      }
       const picker = rows.length === 0
         ? h('p', { className: 'ofm_note' }, t('pool.noModel'))
         : h('div', { className: 'ofm_pickgroups' }, grouped.map(([channel, list]) => h('div', {
@@ -6486,7 +6491,9 @@ window.__ModuleLoader__.load({
                         : probe.ok === true
                           ? h('span', { className: 'ofm_tag', title: probe.message }, `${t('pool.probeOk')} ${probe.ttftMs}ms`)
                           : probe.ok === false
-                            ? h('span', { className: 'ofm_tag ofm_tagwarn', title: probe.message }, t('pool.probeFail'))
+                            // 原因直接印在行里：只挂在 tooltip 上等于让用户去猜。
+                            ? h('span', { className: 'ofm_tag ofm_tagwarn', title: probe.message },
+                              `${t('pool.probeFail')} · ${String(probe.message ?? '').slice(0, 46)}`)
                             : null),
                     h('span', { className: 'ofm_row', style: { marginLeft: 'auto' } },
                       miniBtn(t('pool.testMember'), () => void probeMember(id), { disabled: probe.busy === true || busy, title: t('pool.testMemberHint') }),

@@ -2255,9 +2255,19 @@ export function apply(ctx, config) {
           throw httpError(400, `"${id}" is not a member of this pool`)
         }
         const snapshot = state()
+        // Every probe leaves a line: "the panel said failed" has to be
+        // answerable from the log, including a 500 that never reached here.
+        const finish = result => {
+          diagLog({
+            kind: 'pool-probe', member: id, ok: result.ok === true,
+            ttftMs: result.ttftMs, elapsedMs: result.elapsedMs,
+            message: String(result.message ?? '').slice(0, 200),
+          })
+          return result
+        }
         const entry = (snapshot.routeCatalog ?? snapshot.catalog).find(row => row.id === id)
         if (entry === undefined) {
-          return { ok: false, message: 'this member is not in the current catalog — its channel or credential is gone', ttftMs: 0, elapsedMs: 0 }
+          return finish({ ok: false, message: 'this member is not in the current catalog — its channel or credential is gone', ttftMs: 0, elapsedMs: 0 })
         }
         const started = Date.now()
         const controller = new AbortController()
@@ -2293,9 +2303,9 @@ export function apply(ctx, config) {
         }
         const elapsedMs = Date.now() - started
         const ttftMs = firstAt === 0 ? 0 : firstAt - started
-        if (failure !== '') return { ok: false, message: failure, ttftMs, elapsedMs }
-        if (firstAt === 0) return { ok: false, message: 'the member closed the stream without producing a token', ttftMs: 0, elapsedMs }
-        return { ok: true, message: text.trim() === '' ? 'answered (reasoning only)' : 'answered', ttftMs, elapsedMs }
+        if (failure !== '') return finish({ ok: false, message: failure, ttftMs, elapsedMs })
+        if (firstAt === 0) return finish({ ok: false, message: 'the member closed the stream without producing a token', ttftMs: 0, elapsedMs })
+        return finish({ ok: true, message: text.trim() === '' ? 'answered (reasoning only)' : 'answered', ttftMs, elapsedMs })
       },
     },
     // ── token savers ────────────────────────────────────────────────────────

@@ -336,7 +336,10 @@ export function createModelRuntime({
     // 状态决定，见 `setOwnCatalog()`。
     const probeable = catalog.filter(entry => !isOwnRow(entry)
       && !isEacEntry(entry) && !isKiloEntry(entry) && !isAggregateEntry(entry) && !isComboEntry(entry)
-      && !isRouteEntry(entry))
+      // 池是虚拟行：探一次 `pool:auto` 会把「当时所有成员都失败」写成一个
+      // 永久结论，随后 membership 把池剔出 /v1/models，客户端再也请求不到它，
+      // 探测又继续判它不可用 —— 一个自己维持自己的死锁。它能不能用由成员决定。
+      && !isPoolEntry(entry) && !isRouteEntry(entry))
     const results = await probeCatalog(probeable, { attributionUserAgent, signal: lifetime.signal }, (id, result) => {
       if (disposed) return
       availability.edit(value => ({
@@ -471,9 +474,12 @@ export function computeMembership(catalog, availabilitySnapshot, settings) {
   const refusedAll = probeable.length > 0 && probeable.every(entry => verdictOf(entry) === STATE.unavailable)
   // 自有行永远进视图：availability.json 里可能还留着它们被误探活时写下的
   // `unavailable`，照单全收就会让 14 个分组一起从选择器里消失。
+  // 虚拟行（路由分组 / 组合链 / 对外入口池）同理：它们没有自己的端点，一条
+  // 历史探测结论（`pool:auto = unavailable`）不该让整行从网关和选择器消失。
+  const alwaysVisible = entry => isOwnRow(entry) || isRouteEntry(entry) || isComboEntry(entry) || isPoolEntry(entry)
   const usable = refusedAll
     ? catalog
-    : catalog.filter(entry => isOwnRow(entry) || verdictOf(entry) !== STATE.unavailable)
+    : catalog.filter(entry => alwaysVisible(entry) || verdictOf(entry) !== STATE.unavailable)
   const main = []
   const region = []
   /**
