@@ -2135,7 +2135,7 @@ export function apply(ctx, config) {
         const modelId = String(patch?.modelId ?? '').trim()
         if (getProvider(providerId) === null) throw httpError(400, `unknown provider "${providerId}"`)
         if (modelId === '') throw httpError(400, 'a modelId is required')
-        return testModel(settings.get().aggregate ?? {}, providerId, modelId, { timeoutMs: 60_000 })
+        return testModel(settings.get().aggregate ?? {}, providerId, modelId, { timeoutMs: 120_000 })
       },
     },
     // ── fallback chains ─────────────────────────────────────────────────────
@@ -2240,6 +2240,62 @@ export function apply(ctx, config) {
           // when it happened rather than letting the client 404 later.
           renamed: before.id !== next.id ? { from: before.name, to: next.name } : null,
         }
+      },
+      /**
+       * 真实调用一次某个成员，回答「它现在到底能不能用」。
+       *
+       * 池的价值取决于成员质量：一个空流成员加一个永不响应的成员，会把一次
+       * 正常请求拖到客户端超时，而用户只看到「流返回空」。面板据此让用户逐个
+       * 测、把坏的移出去，而不是靠猜。
+       */
+      test: async memberId => {
+        const id = String(memberId ?? '').trim()
+        const pool = normalizePool(settings.get().forwardPool)
+        if (id === '' || !pool.members.includes(id)) {
+          throw httpError(400, `"${id}" is not a member of this pool`)
+        }
+        const snapshot = state()
+        const entry = (snapshot.routeCatalog ?? snapshot.catalog).find(row => row.id === id)
+        if (entry === undefined) {
+          return { ok: false, message: 'this member is not in the current catalog — its channel or credential is gone', ttftMs: 0, elapsedMs: 0 }
+        }
+        const started = Date.now()
+        const controller = new AbortController()
+        // 120s rather than the turn budget: a member that has not produced a
+        // single byte by then is exactly the one that makes a client time out.
+        const timer = setTimeout(() => controller.abort(), 120_000)
+        timer.unref?.()
+        let firstAt = 0
+        let text = ''
+        let failure = ''
+        try {
+          for await (const chunk of adapter.stream({
+            provider: ROUTE_MAIN,
+            model: id,
+            messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],
+            maxTokens: 32,
+            sessionId: `pool-probe:${id}`,
+            signal: controller.signal,
+          }, entry, snapshot)) {
+            const type = chunk?.type
+            if (type === 'finish') {
+              if (chunk.reason?.kind === 'error') failure = String(chunk.reason.failure?.message ?? 'failed')
+              break
+            }
+            if (type === 'usage') continue
+            if (firstAt === 0) firstAt = Date.now()
+            if (type === 'text-delta' && typeof chunk.text === 'string') text += chunk.text
+          }
+        } catch (error) {
+          failure = String(error?.message ?? error)
+        } finally {
+          clearTimeout(timer)
+        }
+        const elapsedMs = Date.now() - started
+        const ttftMs = firstAt === 0 ? 0 : firstAt - started
+        if (failure !== '') return { ok: false, message: failure, ttftMs, elapsedMs }
+        if (firstAt === 0) return { ok: false, message: 'the member closed the stream without producing a token', ttftMs: 0, elapsedMs }
+        return { ok: true, message: text.trim() === '' ? 'answered (reasoning only)' : 'answered', ttftMs, elapsedMs }
       },
     },
     // ── token savers ────────────────────────────────────────────────────────
@@ -2981,6 +3037,10 @@ export function createApiRoutes(deps) {
       if (method === 'POST' && routePath === '/forward-pool') {
         const body = await readJson(req)
         return send(200, { ok: true, ...await deps.forwardPool.save(body) })
+      }
+      if (method === 'POST' && routePath === '/forward-pool/test') {
+        const body = await readJson(req)
+        return send(200, await deps.forwardPool.test(body?.memberId))
       }
       // ── compaction threshold (host engine, runtime takeover) ───────────────
       if (method === 'GET' && routePath === '/compaction') {

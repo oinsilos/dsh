@@ -240,6 +240,11 @@ window.__ModuleLoader__.load({
         'pool.hideOthersHint': '开启后客户端 `/v1/models` 只看到这一个名字；想精确指定某模型时关掉。只影响网关，不影响本机选择器。',
         'pool.membersTitle': '候选模型（共 {n} 个，顺序即优先级）',
         'pool.membersEmpty': '尚未勾选模型。从下方列表点选，至少一个才会在网关生效。',
+        'pool.testMember': '测',
+        'pool.testMemberHint': '真实调用一次（最多 32 tokens），确认这个成员现在能不能用',
+        'pool.probing': '测试中…',
+        'pool.probeOk': '可用',
+        'pool.probeFail': '不可用',
         'pool.addMember': '勾选模型',
         'pool.searchModel': '搜索模型名或 id',
         'pool.noModel': '没有匹配的模型。',
@@ -1107,6 +1112,11 @@ window.__ModuleLoader__.load({
         'pool.hideOthersHint': 'When on, clients see just this name in `/v1/models`; turn it off to pick a specific model. Gateway only — the local picker is unaffected.',
         'pool.membersTitle': 'Candidates ({n}, order is priority)',
         'pool.membersEmpty': 'No models ticked yet. Pick from the list below; at least one is needed before the gateway uses it.',
+        'pool.testMember': 'Test',
+        'pool.testMemberHint': 'One real call (32 tokens max) to prove this member works right now',
+        'pool.probing': 'Testing…',
+        'pool.probeOk': 'OK',
+        'pool.probeFail': 'Failed',
         'pool.addMember': 'Tick models',
         'pool.searchModel': 'Search name or id',
         'pool.noModel': 'No matching model.',
@@ -6279,6 +6289,8 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false)
       const [error, setError] = useState('')
       const [notice, setNotice] = useState('')
+      // Per-member live probe: id -> {busy, ok, message, ttftMs}
+      const [memberProbes, setMemberProbes] = useState({})
       useEffect(() => { if (panel.data !== undefined) setDraft({ ...pool, members: [...pool.members] }) }, [
         panel.data?.pool?.name, panel.data?.pool?.enabled, panel.data?.pool?.strategy,
         panel.data?.pool?.hideOthers, panel.data?.pool?.memberRetries, panel.data?.pool?.stickyLimit,
@@ -6351,6 +6363,20 @@ window.__ModuleLoader__.load({
         next.splice(target, 0, row)
         return { ...current, members: next }
       })
+      // 真实调用一次这个成员：池能否用，取决于成员本身是活的。空流成员和
+      // 永不响应的成员会把一次正常请求拖到客户端超时，而用户只看到「流为空」。
+      const probeMember = async id => {
+        setMemberProbes(current => ({ ...current, [id]: { busy: true, message: '' } }))
+        try {
+          const answer = await post('/forward-pool/test', { memberId: id }, 130_000)
+          setMemberProbes(current => ({
+            ...current,
+            [id]: { busy: false, ok: answer.ok === true, message: String(answer.message ?? ''), ttftMs: Number(answer.ttftMs) || 0 },
+          }))
+        } catch (failure) {
+          setMemberProbes(current => ({ ...current, [id]: { busy: false, ok: false, message: String(failure?.message ?? failure), ttftMs: 0 } }))
+        }
+      }
       const submit = async () => {
         if (draft === null) return
         setBusy(true); setError(''); setNotice('')
@@ -6429,6 +6455,7 @@ window.__ModuleLoader__.load({
                 : h('div', { className: 'ofm_chainlist' }, chosen.map((id, index) => {
                   const row = byId.get(id)
                   const usable = resolved.includes(id)
+                  const probe = memberProbes[id] ?? {}
                   return h('div', { key: id, className: 'ofm_chainrow', style: usable ? undefined : { opacity: 0.55 } },
                     h('span', { className: 'ofm_chainno' }, String(index + 1)),
                     h('span', { className: 'ofm_pickhead' }, h('b', { title: row?.name ?? id }, row?.name ?? id),
@@ -6441,8 +6468,16 @@ window.__ModuleLoader__.load({
                           .replace('{calls}', String(row.today.calls))
                           .replace('{failed}', String(row.today.failed))
                           .replace('{ttft}', row.today.meanTtftMs === null ? '—' : `${row.today.meanTtftMs}ms`)),
-                      usable ? null : h('span', { className: 'ofm_tag', title: t('pool.unavailableHint') }, t('pool.unavailable'))),
+                      usable ? null : h('span', { className: 'ofm_tag', title: t('pool.unavailableHint') }, t('pool.unavailable')),
+                      probe.busy === true
+                        ? h('span', { className: 'ofm_note' }, t('pool.probing'))
+                        : probe.ok === true
+                          ? h('span', { className: 'ofm_tag', title: probe.message }, `${t('pool.probeOk')} ${probe.ttftMs}ms`)
+                          : probe.ok === false
+                            ? h('span', { className: 'ofm_tag ofm_tagwarn', title: probe.message }, t('pool.probeFail'))
+                            : null),
                     h('span', { className: 'ofm_row', style: { marginLeft: 'auto' } },
+                      miniBtn(t('pool.testMember'), () => void probeMember(id), { disabled: probe.busy === true || busy, title: t('pool.testMemberHint') }),
                       miniBtn('↑', () => move(index, -1), { disabled: index === 0 || busy }),
                       miniBtn('↓', () => move(index, 1), { disabled: index === chosen.length - 1 || busy }),
                       miniBtn('×', () => toggle(id), { danger: true, disabled: busy })))
@@ -6815,8 +6850,15 @@ window.__ModuleLoader__.load({
       const testOne = async id => {
         setProbes(current => ({ ...current, [id]: { busy: true, message: '' } }))
         try {
-          const answer = await post('/providers/test-model', { providerId: provider.id, modelId: id }, 70_000)
-          setProbes(current => ({ ...current, [id]: { busy: false, ok: answer.ok === true, message: String(answer.message ?? '') } }))
+          const answer = await post('/providers/test-model', { providerId: provider.id, modelId: id }, 135_000)
+          setProbes(current => ({
+            ...current,
+            [id]: {
+              busy: false, ok: answer.ok === true,
+              message: String(answer.message ?? ''),
+              elapsedMs: Number(answer.elapsedMs) || 0,
+            },
+          }))
         } catch (failure) {
           setProbes(current => ({ ...current, [id]: { busy: false, ok: false, message: String(failure?.message ?? failure) } }))
         }
@@ -6939,7 +6981,9 @@ window.__ModuleLoader__.load({
                         className: 'ofm_foundpill',
                         'data-ok': probe.ok === true ? 'true' : 'false',
                         title: probe.message,
-                      }, probe.ok === true ? 'OK' : 'FAIL'))
+                      }, probe.ok === true
+                        ? `OK ${(Number(probe.elapsedMs) || 0) / 1000 > 0.1 ? `${((Number(probe.elapsedMs) || 0) / 1000).toFixed(1)}s` : ''}`.trim()
+                        : 'FAIL'))
                 }))
               : null),
         error === '' ? null : h('div', { className: 'ofm_callout ofm_error' },

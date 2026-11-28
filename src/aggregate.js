@@ -473,9 +473,15 @@ export async function testProvider(config, providerId, options) {
  * request with a small ceiling — the smallest call every wire in the registry
  * accepts.
  *
- * @returns {Promise<{ok:boolean, status:number, message:string}>}
+ * @returns {Promise<{ok:boolean, status:number, message:string, elapsedMs:number}>}
  */
-export async function testModel(config, providerId, modelId, { signal, timeoutMs = 60000 } = {}) {
+export async function testModel(config, providerId, modelId, options = {}) {
+  const started = Date.now()
+  const result = await runModelProbe(config, providerId, modelId, options)
+  return { ...result, elapsedMs: Date.now() - started }
+}
+
+async function runModelProbe(config, providerId, modelId, { signal, timeoutMs = 120000 } = {}) {
   let resolved
   try { resolved = resolveProvider(config, providerId) } catch (error) {
     return { ok: false, status: 0, message: String(error?.message ?? error) }
@@ -489,25 +495,75 @@ export async function testModel(config, providerId, modelId, { signal, timeoutMs
   const onCallerAbort = () => { callerAborted = true; controller.abort() }
   signal?.addEventListener('abort', onCallerAbort, { once: true })
   try {
+    // Streamed, and stopped at the first real frame: a client dials this model
+    // with `stream:true`, so this is the latency the user will actually see.
+    // A non-streaming probe waited for the whole answer (69s for a model whose
+    // first token arrives at 30s) and reported "timeout" for one that streams
+    // fine but never finishes inside the budget.
     const response = await egressFetch(resolved.chatUrl, {
       method: 'POST',
-      headers: { ...resolved.headers, accept: 'application/json' },
-      body: JSON.stringify(probeBody(resolved.wire, model)),
+      headers: { ...resolved.headers, accept: 'text/event-stream' },
+      body: JSON.stringify({ ...probeBody(resolved.wire, model), stream: true }),
       redirect: 'error',
       signal: controller.signal,
     })
-    const body = await response.text().catch(() => '')
     if (!response.ok) {
+      const body = await response.text().catch(() => '')
       const failure = classifyUpstream(response.status, body, retryAfterMs(response), resolved.apiKey)
       return { ok: false, status: response.status, message: emptyBodyHint(failure.message, body) }
     }
-    let payload = null
-    try { payload = JSON.parse(redact(body, resolved.apiKey)) } catch { payload = null }
-    if (payload?.error !== undefined || payload?.type === 'error') {
-      const failure = classifyUpstream(response.status, body, undefined, resolved.apiKey)
-      return { ok: false, status: response.status, message: failure.message }
+    if (response.body === null) {
+      return { ok: false, status: response.status, message: 'the provider returned no body for a streamed request' }
     }
-    return { ok: true, status: response.status, message: `${resolved.provider.name} answered for "${model}"` }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let verdict = null
+    try {
+      while (verdict === null) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data:')) continue
+          const frame = trimmed.slice(5).trim()
+          if (frame === '') continue
+          if (frame === '[DONE]') { verdict = { ok: true }; break }
+          let payload = null
+          try { payload = JSON.parse(redact(frame, resolved.apiKey)) } catch { continue }
+          if (payload?.error !== undefined || payload?.type === 'error') {
+            verdict = { ok: false, message: classifyUpstream(response.status, frame, undefined, resolved.apiKey).message }
+          } else {
+            verdict = { ok: true }
+          }
+          break
+        }
+        // A provider that ignores `stream:true` answers one JSON document.
+        if (verdict === null && buffer.trimStart().startsWith('{') && buffer.length > 65536) break
+      }
+      if (verdict === null) {
+        const raw = buffer.trim()
+        if (raw.startsWith('{')) {
+          try {
+            const payload = JSON.parse(redact(raw, resolved.apiKey))
+            verdict = payload?.error !== undefined || payload?.type === 'error'
+              ? { ok: false, message: classifyUpstream(response.status, raw, undefined, resolved.apiKey).message }
+              : { ok: true }
+          } catch { /* not a document either */ }
+        }
+      }
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
+    if (verdict === null) {
+      return { ok: false, status: response.status, message: 'the provider closed the stream without producing a single frame' }
+    }
+    return verdict.ok
+      ? { ok: true, status: response.status, message: `${resolved.provider.name} answered for "${model}"` }
+      : { ok: false, status: response.status, message: verdict.message }
   } catch (error) {
     if (callerAborted || signal?.aborted === true) return { ok: false, status: 0, message: 'request aborted' }
     if (error?.name === 'AbortError') return { ok: false, status: 0, message: `the model did not answer within ${timeoutMs}ms` }
